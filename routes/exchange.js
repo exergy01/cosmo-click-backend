@@ -24,16 +24,24 @@ router.post('/convert', async (req, res) => {
       return res.status(400).json({ error: 'Invalid conversion' });
     }
 
-    await pool.query(
-      'INSERT INTO exchange_history (telegram_id, from_currency, to_currency, amount, converted_amount) VALUES ($1, $2, $3, $4, $5)',
-      [telegramId, fromCurrency, toCurrency, amount, convertedAmount]
-    );
-    const updatedPlayer = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
+    const updatedPlayerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
+    const updatedPlayer = updatedPlayerResult.rows[0];
+
+    // Получение систем
+    const systemsResult = await pool.query('SELECT system_id FROM systems WHERE telegram_id = $1', [telegramId]);
+    const systems = systemsResult.rows.map(row => row.system_id);
+
+    // Получение cargo_levels
+    const cargoLevelsResult = await pool.query('SELECT system, level FROM cargo_levels WHERE telegram_id = $1', [telegramId]);
+    const cargoLevels = cargoLevelsResult.rows;
+
     res.json({
-      ...updatedPlayer.rows[0],
-      ccc: parseFloat(updatedPlayer.rows[0].ccc),
-      cs: parseFloat(updatedPlayer.rows[0].cs),
-      ton: parseFloat(updatedPlayer.rows[0].ton)
+      ...updatedPlayer,
+      ccc: parseFloat(updatedPlayer.ccc),
+      cs: parseFloat(updatedPlayer.cs),
+      ton: parseFloat(updatedPlayer.ton),
+      systems,
+      cargo_levels: cargoLevels
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

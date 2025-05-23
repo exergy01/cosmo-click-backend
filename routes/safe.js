@@ -20,6 +20,13 @@ router.post('/collect', async (req, res) => {
       return res.status(404).json({ error: 'Player not found' });
     }
 
+    // Получение дронов и астероидов из таблиц
+    const dronesResult = await pool.query('SELECT drone_id, system FROM drones WHERE telegram_id = $1', [telegramId]);
+    const drones = dronesResult.rows.map(row => ({ id: row.drone_id, system: row.system }));
+
+    const asteroidsResult = await pool.query('SELECT asteroid_id, system FROM asteroids WHERE telegram_id = $1', [telegramId]);
+    const asteroids = asteroidsResult.rows.map(row => ({ id: row.asteroid_id, system: row.system }));
+
     const currentCcc = Number(player.ccc) || 0;
     const collectedBySystem = player.collected_by_system || { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 };
     const currentTotalCollected = Number(collectedBySystem[system] || 0);
@@ -28,7 +35,7 @@ router.post('/collect', async (req, res) => {
     const currentTime = new Date(last_collection_time).getTime();
     const timeElapsed = (currentTime - lastCollection) / 1000;
 
-    const totalCccPerDay = player.drones
+    const totalCccPerDay = drones
       .filter(d => d.system === system)
       .reduce((sum, d) => {
         const drone = droneData.find(item => item.id === d.id && item.system === system);
@@ -36,7 +43,7 @@ router.post('/collect', async (req, res) => {
       }, 0);
     const miningSpeed = totalCccPerDay / (24 * 60 * 60);
 
-    const asteroidTotal = player.asteroids
+    const asteroidTotal = asteroids
       .filter(a => a.system === system)
       .reduce((sum, a) => {
         const asteroid = asteroidData.find(item => item.id === a.id && item.system === system);
@@ -102,11 +109,18 @@ router.post('/update-counter', async (req, res) => {
       return res.status(404).json({ error: 'Player not found' });
     }
 
+    // Получение дронов и астероидов из таблиц
+    const dronesResult = await pool.query('SELECT drone_id, system FROM drones WHERE telegram_id = $1', [telegramId]);
+    const drones = dronesResult.rows.map(row => ({ id: row.drone_id, system: row.system }));
+
+    const asteroidsResult = await pool.query('SELECT asteroid_id, system FROM asteroids WHERE telegram_id = $1', [telegramId]);
+    const asteroids = asteroidsResult.rows.map(row => ({ id: row.asteroid_id, system: row.system }));
+
     const lastCollection = player.last_collection_time?.[system] ? new Date(player.last_collection_time[system]).getTime() : 0;
     const currentTime = new Date(last_collection_time).getTime();
     const timeElapsed = (currentTime - lastCollection) / 1000;
 
-    const totalCccPerDay = player.drones
+    const totalCccPerDay = drones
       .filter(d => d.system === system)
       .reduce((sum, d) => {
         const drone = droneData.find(item => item.id === d.id && item.system === system);
@@ -114,7 +128,7 @@ router.post('/update-counter', async (req, res) => {
       }, 0);
     const miningSpeed = totalCccPerDay / (24 * 60 * 60);
 
-    const asteroidTotal = player.asteroids
+    const asteroidTotal = asteroids
       .filter(a => a.system === system)
       .reduce((sum, a) => {
         const asteroid = asteroidData.find(item => item.id === a.id && item.system === system);

@@ -10,12 +10,24 @@ router.get('/:telegramId', async (req, res) => {
     if (!player) {
       const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
       await pool.query(
-        'INSERT INTO players (telegram_id, username, ccc, cs, ton, systems, referral_link, stellar_vault, cosmic_reserve, color, collected_by_system) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-        [telegramId, `User${telegramId}`, 2000.0, 993.0, 1.0, '[1]', referralLink, 0, '0', '#00f0ff', JSON.stringify({ "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 })]
+        'INSERT INTO players (telegram_id, username, ccc, cs, ton, referral_link, color, collected_by_system) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [telegramId, `User${telegramId}`, 2000.0, 993.0, 1.0, referralLink, '#00f0ff', JSON.stringify({ "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 })]
+      );
+      await pool.query(
+        'INSERT INTO systems (telegram_id, system_id) VALUES ($1, $2)',
+        [telegramId, 1]
       );
       const newPlayerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
       player = newPlayerResult.rows[0];
     }
+
+    // Получение систем
+    const systemsResult = await pool.query('SELECT system_id FROM systems WHERE telegram_id = $1', [telegramId]);
+    const systems = systemsResult.rows.map(row => row.system_id);
+
+    // Получение cargo_levels
+    const cargoLevelsResult = await pool.query('SELECT system, level FROM cargo_levels WHERE telegram_id = $1', [telegramId]);
+    const cargoLevels = cargoLevelsResult.rows;
 
     const token = `token_${telegramId}_${Date.now()}`;
     res.json({
@@ -24,9 +36,9 @@ router.get('/:telegramId', async (req, res) => {
       ccc: parseFloat(player.ccc),
       cs: parseFloat(player.cs),
       ton: parseFloat(player.ton),
-      last_collection_time: player.last_collection_time,
-      stellar_vault: parseFloat(player.stellar_vault || 0),
-      cosmic_reserve: player.cosmic_reserve || '0',
+      last_collection_time: player.last_collection_time || {},
+      systems,
+      cargo_levels: cargoLevels,
       color: player.color || '#00f0ff',
       collected_by_system: player.collected_by_system || { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }
     });
@@ -76,14 +88,22 @@ router.put('/:telegramId', async (req, res) => {
     const updatedPlayerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
     let updatedPlayer = updatedPlayerResult.rows[0];
 
+    // Получение систем
+    const systemsResult = await pool.query('SELECT system_id FROM systems WHERE telegram_id = $1', [telegramId]);
+    const systems = systemsResult.rows.map(row => row.system_id);
+
+    // Получение cargo_levels
+    const cargoLevelsResult = await pool.query('SELECT system, level FROM cargo_levels WHERE telegram_id = $1', [telegramId]);
+    const cargoLevels = cargoLevelsResult.rows;
+
     res.json({
       ...updatedPlayer,
       ccc: parseFloat(updatedPlayer.ccc),
       cs: parseFloat(updatedPlayer.cs),
       ton: parseFloat(updatedPlayer.ton),
-      last_collection_time: updatedPlayer.last_collection_time,
-      stellar_vault: parseFloat(updatedPlayer.stellar_vault || 0),
-      cosmic_reserve: updatedPlayer.cosmic_reserve || '0',
+      last_collection_time: updatedPlayer.last_collection_time || {},
+      systems,
+      cargo_levels: cargoLevels,
       color: updatedPlayer.color || '#00f0ff',
       collected_by_system: updatedPlayer.collected_by_system || { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }
     });
@@ -107,14 +127,22 @@ router.post('/language', async (req, res) => {
     const updatedPlayerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
     let updatedPlayer = updatedPlayerResult.rows[0];
 
+    // Получение систем
+    const systemsResult = await pool.query('SELECT system_id FROM systems WHERE telegram_id = $1', [telegramId]);
+    const systems = systemsResult.rows.map(row => row.system_id);
+
+    // Получение cargo_levels
+    const cargoLevelsResult = await pool.query('SELECT system, level FROM cargo_levels WHERE telegram_id = $1', [telegramId]);
+    const cargoLevels = cargoLevelsResult.rows;
+
     res.json({
       ...updatedPlayer,
       ccc: parseFloat(updatedPlayer.ccc),
       cs: parseFloat(updatedPlayer.cs),
       ton: parseFloat(updatedPlayer.ton),
-      last_collection_time: updatedPlayer.last_collection_time,
-      stellar_vault: parseFloat(updatedPlayer.stellar_vault || 0),
-      cosmic_reserve: updatedPlayer.cosmic_reserve || '0',
+      last_collection_time: updatedPlayer.last_collection_time || {},
+      systems,
+      cargo_levels: cargoLevels,
       color: updatedPlayer.color || '#00f0ff',
       collected_by_system: updatedPlayer.collected_by_system || { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }
     });
@@ -139,14 +167,22 @@ router.post('/color', async (req, res) => {
     const updatedPlayerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
     let updatedPlayer = updatedPlayerResult.rows[0];
 
+    // Получение систем
+    const systemsResult = await pool.query('SELECT system_id FROM systems WHERE telegram_id = $1', [telegramId]);
+    const systems = systemsResult.rows.map(row => row.system_id);
+
+    // Получение cargo_levels
+    const cargoLevelsResult = await pool.query('SELECT system, level FROM cargo_levels WHERE telegram_id = $1', [telegramId]);
+    const cargoLevels = cargoLevelsResult.rows;
+
     res.json({
       ...updatedPlayer,
       ccc: parseFloat(updatedPlayer.ccc),
       cs: parseFloat(updatedPlayer.cs),
       ton: parseFloat(updatedPlayer.ton),
-      last_collection_time: updatedPlayer.last_collection_time,
-      stellar_vault: parseFloat(updatedPlayer.stellar_vault || 0),
-      cosmic_reserve: updatedPlayer.cosmic_reserve || '0',
+      last_collection_time: updatedPlayer.last_collection_time || {},
+      systems,
+      cargo_levels: cargoLevels,
       color: updatedPlayer.color || '#00f0ff',
       collected_by_system: updatedPlayer.collected_by_system || { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0 }
     });

@@ -35,8 +35,8 @@ router.post('/join', async (req, res) => {
     await pool.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, telegramId]);
     await pool.query('UPDATE players SET referrals_count = referrals_count + 1, cs = cs + 50 WHERE telegram_id = $1', [referrerId]);
     await pool.query(
-      'INSERT INTO referrals (telegram_id, referrer_id, cs_earned, ton_earned) VALUES ($1, $2, $3, $4)',
-      [telegramId, referrerId, 0, 0]
+      'INSERT INTO referrals (telegram_id, username, cs_earned, ton_earned) VALUES ($1, $2, $3, $4)',
+      [telegramId, player.username, 0, 0]
     );
     await sendNotification(referrerId, 'New referral joined! You earned 50 CS.');
     const updatedPlayer = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
@@ -50,7 +50,7 @@ router.get('/list/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   try {
     const referralsResult = await pool.query(
-      'SELECT r.*, p.username FROM referrals r JOIN players p ON r.telegram_id = p.telegram_id WHERE r.referrer_id = $1',
+      'SELECT r.*, p.username FROM referrals r JOIN players p ON r.telegram_id = p.telegram_id WHERE p.referrer_id = $1',
       [telegramId]
     );
     res.json(referralsResult.rows);
@@ -62,7 +62,7 @@ router.get('/list/:telegramId', async (req, res) => {
 router.get('/honor-board', async (req, res) => {
   try {
     const honorBoardResult = await pool.query(
-      'SELECT telegram_id, username, referrals_count FROM players WHERE referrals_count > 0 ORDER BY referrals_count DESC'
+      'SELECT p.telegram_id, p.username, p.referrals_count FROM players p WHERE p.referrals_count > 0 ORDER BY p.referrals_count DESC'
     );
     res.json(honorBoardResult.rows);
   } catch (err) {
