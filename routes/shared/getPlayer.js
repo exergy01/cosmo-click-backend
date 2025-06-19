@@ -1,11 +1,25 @@
 const pool = require('../../db');
 
-async function getPlayer(telegramId) {
+async function getPlayer(telegramId, telegramData = null) {
   const playerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
   let player = playerResult.rows[0];
 
   if (!player) {
+    console.log(`🆕 Создание нового игрока с ID: ${telegramId}`);
+    console.log(`📱 Данные Telegram:`, telegramData);
+    
     const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
+    
+    // 🔥 ИСПОЛЬЗУЕМ РЕАЛЬНЫЕ ДАННЫЕ ИЗ TELEGRAM
+    let username = `user_${telegramId}`;
+    let firstName = `User${telegramId.slice(-4)}`;
+    
+    if (telegramData) {
+      username = telegramData.username || username;
+      firstName = telegramData.first_name || telegramData.firstName || firstName;
+    }
+    
+    console.log(`✅ Создаем игрока: username="${username}", firstName="${firstName}"`);
     
     // ИСПРАВЛЕНО: Используем JSON.stringify для правильного формата
     const initialCollectedBySystem = JSON.stringify({
@@ -36,20 +50,21 @@ async function getPlayer(telegramId) {
 
     const insertQuery = `
       INSERT INTO players (
-        telegram_id, username, ccc, cs, ton, referral_link, color, 
+        telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
         collected_by_system, cargo_levels, drones, asteroids, 
         last_collection_time, language, unlocked_systems, current_system,
-        mining_speed_data, asteroid_total_data, max_cargo_capacity_data
+        mining_speed_data, asteroid_total_data, max_cargo_capacity_data, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *;
     `;
     const insertValues = [
       telegramId,
-      `user_${telegramId}`,
-      0,
-      0,
-      0,
+      username, // 🔥 РЕАЛЬНЫЙ USERNAME
+      firstName, // 🔥 РЕАЛЬНОЕ ИМЯ
+      0, // ccc
+      0, // cs
+      0, // ton
       referralLink,
       '#61dafb',
       initialCollectedBySystem,
@@ -63,10 +78,17 @@ async function getPlayer(telegramId) {
       initialMiningSpeedData,
       initialAsteroidTotalData,
       initialMaxCargoCapacityData,
+      new Date().toISOString() // created_at
     ];
     
     const newPlayerResult = await pool.query(insertQuery, insertValues);
     player = newPlayerResult.rows[0];
+    
+    console.log(`✅ СОЗДАН НОВЫЙ ИГРОК:`, {
+      telegram_id: player.telegram_id,
+      username: player.username,
+      first_name: player.first_name
+    });
   }
 
   // Убеждаемся что все нужные поля существуют
@@ -113,15 +135,11 @@ async function getPlayer(telegramId) {
     const maxCargoCapacity = systemCargo.reduce((max, c) => Math.max(max, c.capacity || 0), 0);
     maxCargoCapacityData[system] = Number(maxCargoCapacity);
 
-    console.log(`🔧 getPlayer система ${system}: карго объекты =`, systemCargo, `максимум = ${maxCargoCapacity}`);
-
     if (!hasCargo || !hasAsteroid || !hasDrone) {
       maxCargoCapacityData[system] = 0;
       miningSpeedData[system] = 0;
     }
   });
-
-  console.log('🔧 getPlayer: финальные max_cargo_capacity_data =', maxCargoCapacityData);
 
   return {
     ...player,

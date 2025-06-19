@@ -312,4 +312,54 @@ router.get('/api/recalculate/:telegramId', async (req, res) => {
   }
 });
 
+// 🆕 ДОБАВЬТЕ ЭТО В КОНЕЦ ФАЙЛА routes/index.js ПЕРЕД module.exports
+
+// 🆕 НОВЫЙ ЭНДПОИНТ ДЛЯ СОЗДАНИЯ/ПОЛУЧЕНИЯ ИГРОКА С РЕАЛЬНЫМИ ДАННЫМИ TELEGRAM
+router.post('/api/auth/player', async (req, res) => {
+  console.log('🔍 POST /api/auth/player - получены данные:', req.body);
+  
+  const { telegramId, telegramData } = req.body;
+  
+  if (!telegramId) {
+    console.log('❌ Отсутствует telegramId');
+    return res.status(400).json({ error: 'telegramId is required' });
+  }
+
+  try {
+    console.log(`🎯 Получение/создание игрока с ID: ${telegramId}`);
+    console.log(`📱 Данные Telegram:`, telegramData);
+    
+    // Используем функцию getPlayer с поддержкой telegramData
+    const player = await getPlayer(telegramId, telegramData);
+    
+    console.log(`✅ Игрок получен/создан:`, {
+      telegram_id: player.telegram_id,
+      username: player.username,
+      first_name: player.first_name
+    });
+    
+    res.json(player);
+  } catch (error) {
+    console.error('❌ Ошибка при получении/создании игрока:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🆕 GET версия для совместимости
+router.get('/api/auth/player/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  
+  if (!telegramId) {
+    return res.status(400).json({ error: 'telegramId is required' });
+  }
+
+  try {
+    const player = await getPlayer(telegramId);
+    res.json(player);
+  } catch (error) {
+    console.error('❌ Ошибка при получении игрока:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
