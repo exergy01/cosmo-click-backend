@@ -84,7 +84,7 @@ async function getPlayer(telegramId, telegramData = null) {
       JSON.stringify([]),
       JSON.stringify([]),
       initialLastCollectionTime,
-      telegramData?.language_code || 'en', // 🔥 ЯЗЫК ИЗ TELEGRAM
+      null, // 🔥 ЯЗЫК НЕ УСТАНАВЛИВАЕМ! ПУСТЬ ВЫБИРАЕТ!
       JSON.stringify([1]), // ИСПРАВЛЕНО: правильный JSON массив
       1,
       initialMiningSpeedData,
@@ -128,7 +128,7 @@ async function getPlayer(telegramId, telegramData = null) {
         JSON.stringify([]),
         JSON.stringify([]),
         initialLastCollectionTime,
-        telegramData?.language_code || 'en',
+        null, // 🔥 ЯЗЫК НЕ УСТАНАВЛИВАЕМ!
         JSON.stringify([1]),
         1,
         initialMiningSpeedData,
