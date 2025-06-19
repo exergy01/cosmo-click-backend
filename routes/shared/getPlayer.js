@@ -15,11 +15,14 @@ async function getPlayer(telegramId, telegramData = null) {
     let firstName = `User${telegramId.slice(-4)}`;
     
     if (telegramData) {
-      username = telegramData.username || username;
-      firstName = telegramData.first_name || telegramData.firstName || firstName;
+      // 🔥 ПРИОРИТЕТ: берем данные из telegramData
+      username = telegramData.username || `user_${telegramId}`;
+      firstName = telegramData.first_name || `User${telegramId.slice(-4)}`;
+      
+      console.log(`✅ Используем данные из Telegram: username="${username}", firstName="${firstName}"`);
+    } else {
+      console.log(`⚠️ telegramData не передан, используем fallback: username="${username}", firstName="${firstName}"`);
     }
-    
-    console.log(`✅ Создаем игрока: username="${username}", firstName="${firstName}"`);
     
     // ИСПРАВЛЕНО: Используем JSON.stringify для правильного формата
     const initialCollectedBySystem = JSON.stringify({
@@ -48,6 +51,7 @@ async function getPlayer(telegramId, telegramData = null) {
       "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
     });
 
+    // 🔥 ОБНОВЛЕННЫЙ SQL ЗАПРОС с поддержкой first_name
     const insertQuery = `
       INSERT INTO players (
         telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
@@ -61,7 +65,7 @@ async function getPlayer(telegramId, telegramData = null) {
     const insertValues = [
       telegramId,
       username, // 🔥 РЕАЛЬНЫЙ USERNAME
-      firstName, // 🔥 РЕАЛЬНОЕ ИМЯ
+      firstName, // 🔥 РЕАЛЬНОЕ ИМЯ (first_name)
       0, // ccc
       0, // cs
       0, // ton
@@ -72,7 +76,7 @@ async function getPlayer(telegramId, telegramData = null) {
       JSON.stringify([]),
       JSON.stringify([]),
       initialLastCollectionTime,
-      'en',
+      telegramData?.language_code || 'en', // 🔥 ЯЗЫК ИЗ TELEGRAM
       JSON.stringify([1]), // ИСПРАВЛЕНО: правильный JSON массив
       1,
       initialMiningSpeedData,
@@ -81,10 +85,59 @@ async function getPlayer(telegramId, telegramData = null) {
       new Date().toISOString() // created_at
     ];
     
-    const newPlayerResult = await pool.query(insertQuery, insertValues);
-    player = newPlayerResult.rows[0];
-    
-    console.log(`✅ СОЗДАН НОВЫЙ ИГРОК:`, {
+    try {
+      const newPlayerResult = await pool.query(insertQuery, insertValues);
+      player = newPlayerResult.rows[0];
+      
+      console.log(`✅ СОЗДАН НОВЫЙ ИГРОК:`, {
+        telegram_id: player.telegram_id,
+        username: player.username,
+        first_name: player.first_name,
+        language: player.language
+      });
+    } catch (error) {
+      console.error(`❌ Ошибка создания игрока:`, error);
+      
+      // 🔥 FALLBACK: если поле first_name не существует, создаем без него
+      const fallbackQuery = `
+        INSERT INTO players (
+          telegram_id, username, ccc, cs, ton, referral_link, color, 
+          collected_by_system, cargo_levels, drones, asteroids, 
+          last_collection_time, language, unlocked_systems, current_system,
+          mining_speed_data, asteroid_total_data, max_cargo_capacity_data
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        RETURNING *;
+      `;
+      const fallbackValues = [
+        telegramId,
+        username,
+        0, 0, 0,
+        referralLink,
+        '#61dafb',
+        initialCollectedBySystem,
+        JSON.stringify([]),
+        JSON.stringify([]),
+        JSON.stringify([]),
+        initialLastCollectionTime,
+        telegramData?.language_code || 'en',
+        JSON.stringify([1]),
+        1,
+        initialMiningSpeedData,
+        initialAsteroidTotalData,
+        initialMaxCargoCapacityData,
+      ];
+      
+      const fallbackResult = await pool.query(fallbackQuery, fallbackValues);
+      player = fallbackResult.rows[0];
+      
+      console.log(`✅ СОЗДАН ИГРОК (FALLBACK БЕЗ first_name):`, {
+        telegram_id: player.telegram_id,
+        username: player.username
+      });
+    }
+  } else {
+    console.log(`✅ Игрок найден в базе:`, {
       telegram_id: player.telegram_id,
       username: player.username,
       first_name: player.first_name
