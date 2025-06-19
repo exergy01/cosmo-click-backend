@@ -6,7 +6,15 @@ async function getPlayer(telegramId, telegramData = null) {
 
   if (!player) {
     console.log(`🆕 Создание нового игрока с ID: ${telegramId}`);
-    console.log(`📱 Данные Telegram:`, telegramData);
+    
+    // 🚨 КРИТИЧЕСКАЯ ДИАГНОСТИКА
+    console.log('🚨 === ДИАГНОСТИКА getPlayer ===');
+    console.log('telegramId:', telegramId);
+    console.log('telegramData:', telegramData);
+    console.log('telegramData тип:', typeof telegramData);
+    console.log('telegramData.username:', telegramData?.username);
+    console.log('telegramData.first_name:', telegramData?.first_name);
+    console.log('🚨 === КОНЕЦ ДИАГНОСТИКИ ===');
     
     const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
     
