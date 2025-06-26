@@ -1,26 +1,13 @@
-// index.js
 const express = require('express');
 const cors = require('cors');
-const playerRoutes = require('./routes/player');
-const exchangeRoutes = require('./routes/exchange');
-const referralRoutes = require('./routes/referrals');
-const shopRoutes = require('./routes/shop');
-const questRoutes = require('./routes/quests');
-const safeRoutes = require('./routes/safe');
-const logRoutes = require('./routes/log');
+const routes = require('./routes/index'); // ИСПРАВЛЕНО: было routes/routes
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/player', playerRoutes);
-app.use('/api/exchange', exchangeRoutes);
-app.use('/api/referrals', referralRoutes);
-app.use('/api/shop', shopRoutes);
-app.use('/api/quests', questRoutes);
-app.use('/api/safe', safeRoutes);
-app.use('/api/log', logRoutes);
+app.use('/', routes);
 
 app.get('/api/time', (req, res) => {
   res.json({ serverTime: new Date().toISOString() });
