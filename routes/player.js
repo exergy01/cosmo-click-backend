@@ -6,18 +6,27 @@ const { getPlayerStatistics } = require('./shared/logger');
 const router = express.Router();
 
 // POST /api/player/language
+// POST /api/player/language
 router.post('/language', async (req, res) => {
-  const { telegramId, language } = req.body;
+  const { telegramId, language, isFirstLanguageSelection } = req.body;
   if (!telegramId || !language) return res.status(400).json({ error: 'Telegram ID and language are required' });
 
   try {
     const player = await getPlayer(telegramId);
     if (!player) return res.status(404).json({ error: 'Player not found' });
 
-    await pool.query(
-      'UPDATE players SET language = $1 WHERE telegram_id = $2',
-      [language, telegramId]
-    );
+    // 🔥 ИСПРАВЛЕНО: Записываем registration_language при первом выборе
+    if (isFirstLanguageSelection) {
+      await pool.query(
+        'UPDATE players SET language = $1, registration_language = $2 WHERE telegram_id = $3',
+        [language, language, telegramId]
+      );
+    } else {
+      await pool.query(
+        'UPDATE players SET language = $1 WHERE telegram_id = $2',
+        [language, telegramId]
+      );
+    }
 
     const updatedPlayer = await getPlayer(telegramId);
     res.json(updatedPlayer);
