@@ -8,8 +8,10 @@ async function getPlayer(telegramId) {
     const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
     
     // 🔥 ИСПРАВЛЕНО: Получаем данные из Telegram
-    let username = `user_${telegramId}`;
-    let first_name = `User${telegramId.slice(-4)}`;
+// Получаем данные из Telegram (если доступны)
+const telegramUser = req.body?.telegramData || null; // Это будет позже
+let username = telegramUser?.username || `user_${telegramId}`;
+let first_name = telegramUser?.first_name || `User${telegramId.slice(-4)}`;
     
     // Пытаемся получить реальные данные из Telegram Web App (если доступны)
     // В production эти данные должны передаваться с фронтенда
