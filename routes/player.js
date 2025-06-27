@@ -6,22 +6,32 @@ const { getPlayerStatistics } = require('./shared/logger');
 const router = express.Router();
 
 // POST /api/player/language
-// POST /api/player/language
 router.post('/language', async (req, res) => {
   const { telegramId, language, isFirstLanguageSelection } = req.body;
+  
+  // ДИАГНОСТИКА
+  console.log('=== LANGUAGE ENDPOINT ===');
+  console.log('Request body:', req.body);
+  console.log('telegramId:', telegramId);
+  console.log('language:', language);
+  console.log('isFirstLanguageSelection:', isFirstLanguageSelection);
+  console.log('========================');
+  
   if (!telegramId || !language) return res.status(400).json({ error: 'Telegram ID and language are required' });
 
   try {
     const player = await getPlayer(telegramId);
     if (!player) return res.status(404).json({ error: 'Player not found' });
 
-    // 🔥 ИСПРАВЛЕНО: Записываем registration_language при первом выборе
+    // Записываем registration_language при первом выборе
     if (isFirstLanguageSelection) {
+      console.log('📝 Обновляем registration_language:', language);
       await pool.query(
         'UPDATE players SET language = $1, registration_language = $2 WHERE telegram_id = $3',
         [language, language, telegramId]
       );
     } else {
+      console.log('📝 Обновляем только language:', language);
       await pool.query(
         'UPDATE players SET language = $1 WHERE telegram_id = $2',
         [language, telegramId]
@@ -29,6 +39,11 @@ router.post('/language', async (req, res) => {
     }
 
     const updatedPlayer = await getPlayer(telegramId);
+    console.log('✅ Обновленный игрок:', {
+      telegram_id: updatedPlayer.telegram_id,
+      language: updatedPlayer.language,
+      registration_language: updatedPlayer.registration_language
+    });
     res.json(updatedPlayer);
   } catch (err) {
     console.error('Error updating language:', err);
@@ -107,7 +122,7 @@ router.post('/:telegramId', async (req, res) => {
   }
 });
 
-// 📊 GET /api/player/stats/:telegramId - НОВЫЙ ENDPOINT ДЛЯ СТАТИСТИКИ
+// GET /api/player/stats/:telegramId - ENDPOINT ДЛЯ СТАТИСТИКИ
 router.get('/stats/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   
