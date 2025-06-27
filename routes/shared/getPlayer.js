@@ -7,7 +7,13 @@ async function getPlayer(telegramId) {
   if (!player) {
     const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
     
-    // ИСПРАВЛЕНО: Используем JSON.stringify для правильного формата
+    // 🔥 ИСПРАВЛЕНО: Получаем данные из Telegram
+    let username = `user_${telegramId}`;
+    let first_name = `User${telegramId.slice(-4)}`;
+    
+    // Пытаемся получить реальные данные из Telegram Web App (если доступны)
+    // В production эти данные должны передаваться с фронтенда
+    
     const initialCollectedBySystem = JSON.stringify({
       "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
     });
@@ -36,17 +42,18 @@ async function getPlayer(telegramId) {
 
     const insertQuery = `
       INSERT INTO players (
-        telegram_id, username, ccc, cs, ton, referral_link, color, 
+        telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
         collected_by_system, cargo_levels, drones, asteroids, 
         last_collection_time, language, unlocked_systems, current_system,
         mining_speed_data, asteroid_total_data, max_cargo_capacity_data
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *;
     `;
     const insertValues = [
       telegramId,
-      `user_${telegramId}`,
+      username,
+      first_name, // 🔥 ДОБАВЛЕНО: first_name поле
       0,
       0,
       0,
@@ -57,8 +64,8 @@ async function getPlayer(telegramId) {
       JSON.stringify([]),
       JSON.stringify([]),
       initialLastCollectionTime,
-      'en',
-      JSON.stringify([1]), // ИСПРАВЛЕНО: правильный JSON массив
+      null, // language остается null
+      JSON.stringify([1]),
       1,
       initialMiningSpeedData,
       initialAsteroidTotalData,
