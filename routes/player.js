@@ -27,7 +27,7 @@ router.post('/language', async (req, res) => {
     if (isFirstLanguageSelection) {
       console.log('📝 Обновляем registration_language:', language);
       await pool.query(
-        'UPDATE players SET language = $1, registration_language = COALESCE(registration_language, $2) WHERE telegram_id = $3',
+        'UPDATE players SET language = $1, registration_language = $2 WHERE telegram_id = $3',
         [language, language, telegramId]
       );
     } else {
