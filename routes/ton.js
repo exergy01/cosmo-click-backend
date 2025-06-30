@@ -18,6 +18,9 @@ const logTime = (label, timestamp) => {
   console.log(`⏰ ${label}: ${timestamp} (${new Date(timestamp).toISOString()})`);
 };
 
+// FORCE DEPLOY: 2025-06-30-14:55
+console.log('🔥🔥🔥 TON.JS VERSION 14:55 DEPLOYED 🔥🔥🔥');
+
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
   console.log('🧮 ЗАПРОС РАСЧЕТА ПЛАНОВ:', req.params.amount);
