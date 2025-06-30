@@ -164,23 +164,39 @@ router.post('/stake', async (req, res) => {
       console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Добавляем поля start_time_ms и end_time_ms + отладка
+    // 🔥 УНИВЕРСАЛЬНАЯ совместимость - пробуем с новыми полями, фалбэк на старые
     console.log('🔥 ПОПЫТКА СОЗДАНИЯ СТЕЙКА В БД...');
     console.log('🔥 Данные для вставки:', {
       telegramId, systemId, stakeAmountNum, planType, planPercent, 
       actualDurationForDB, returnAmount, startTimeMs, endTimeMs
     });
     
-    const stakeResult = await client.query(
-      `INSERT INTO ton_staking (
-        telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
-        return_amount, start_date, end_date, start_time_ms, end_time_ms
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, $9) RETURNING *`,
-      [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startTimeMs, endTimeMs]
-    ).catch(err => {
-      console.error('❌ ОШИБКА ВСТАВКИ В БД:', err);
-      throw err;
-    });
+    let stakeResult;
+    try {
+      // Пробуем с новыми полями start_time_ms, end_time_ms
+      stakeResult = await client.query(
+        `INSERT INTO ton_staking (
+          telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
+          return_amount, start_date, end_date, start_time_ms, end_time_ms
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, $9) RETURNING *`,
+        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startTimeMs, endTimeMs]
+      );
+      console.log('✅ СТЕЙК СОЗДАН С НОВЫМИ ПОЛЯМИ');
+    } catch (err) {
+      console.log('⚠️ Ошибка с новыми полями, пробуем старую схему:', err.message);
+      // Фалбэк на старую схему без start_time_ms, end_time_ms
+      stakeResult = await client.query(
+        `INSERT INTO ton_staking (
+          telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
+          return_amount, start_date, end_date
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 
+          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $8,
+          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $9
+        ) RETURNING *`,
+        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000)]
+      );
+      console.log('✅ СТЕЙК СОЗДАН СО СТАРОЙ СХЕМОЙ');
+    }
     
     console.log(`✅ СТЕЙК СОЗДАН В БД:`);
     console.log(`   ID: ${stakeResult.rows[0].id}`);
@@ -231,17 +247,33 @@ router.get('/stakes/:telegramId', async (req, res) => {
   try {
     console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Читаем числовые поля времени
-    const result = await pool.query(
-      `SELECT 
-        id, system_id, stake_amount, plan_type, plan_percent, plan_days,
-        return_amount, start_date, end_date, status, created_at,
-        start_time_ms, end_time_ms
-      FROM ton_staking 
-      WHERE telegram_id = $1 AND status = 'active'
-      ORDER BY created_at DESC`,
-      [telegramId]
-    );
+    // 🔥 УНИВЕРСАЛЬНОЕ чтение - пробуем новые поля, фалбэк на старые
+    let result;
+    try {
+      // Пробуем с новыми полями
+      result = await pool.query(
+        `SELECT 
+          id, system_id, stake_amount, plan_type, plan_percent, plan_days,
+          return_amount, start_date, end_date, status, created_at,
+          start_time_ms, end_time_ms
+        FROM ton_staking 
+        WHERE telegram_id = $1 AND status = 'active'
+        ORDER BY created_at DESC`,
+        [telegramId]
+      );
+    } catch (err) {
+      console.log('⚠️ Новые поля недоступны, используем старые:', err.message);
+      // Фалбэк на старую схему
+      result = await pool.query(
+        `SELECT 
+          id, system_id, stake_amount, plan_type, plan_percent, plan_days,
+          return_amount, start_date, end_date, status, created_at
+        FROM ton_staking 
+        WHERE telegram_id = $1 AND status = 'active'
+        ORDER BY created_at DESC`,
+        [telegramId]
+      );
+    }
     
     console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
     
@@ -249,8 +281,16 @@ router.get('/stakes/:telegramId', async (req, res) => {
     console.log(`⏰ Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
     
     const stakes = result.rows.map(stake => {
-      // 🔥 ПРОСТОЕ РЕШЕНИЕ: Используем числовые поля
-      const endTimeMs = parseInt(stake.end_time_ms);
+      // 🔥 УНИВЕРСАЛЬНЫЙ расчет времени
+      let endTimeMs;
+      if (stake.end_time_ms) {
+        // Новая схема - используем числовые поля
+        endTimeMs = parseInt(stake.end_time_ms);
+      } else {
+        // Старая схема - используем дату
+        endTimeMs = new Date(stake.end_date).getTime();
+      }
+      
       const timeLeftMs = endTimeMs - currentTimeMs;
       
       console.log(`📊 СТЕЙК ${stake.id}:`);
