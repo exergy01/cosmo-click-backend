@@ -611,4 +611,44 @@ router.get('/time/debug', (req, res) => {
   });
 });
 
+// В конце файла перед module.exports
+router.get('/debug/all-stakes/:telegramId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, start_date, end_date, plan_days, plan_type, created_at FROM ton_staking WHERE telegram_id = $1 ORDER BY created_at DESC',
+      [req.params.telegramId]
+    );
+    
+    const now = Date.now();
+    
+    const stakes = result.rows.map(stake => {
+      const startTime = new Date(stake.start_date).getTime();
+      const endTime = new Date(stake.end_date).getTime();
+      const duration = endTime - startTime;
+      const timeLeft = endTime - now;
+      
+      return {
+        id: stake.id,
+        created_at: stake.created_at,
+        plan_days: stake.plan_days,
+        plan_type: stake.plan_type,
+        start_iso: stake.start_date,
+        end_iso: stake.end_date,
+        duration_ms: duration,
+        duration_minutes: Math.round(duration / (1000 * 60)),
+        time_left_ms: timeLeft,
+        time_left_minutes: Math.round(timeLeft / (1000 * 60)),
+        is_ready: timeLeft <= 0
+      };
+    });
+    
+    res.json({
+      current_time: new Date(now).toISOString(),
+      stakes: stakes
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
