@@ -3,6 +3,9 @@ const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
 
+// FORCE DEPLOY: 2025-06-30-14:55
+console.log('🔥🔥🔥 TON.JS VERSION 14:55 DEPLOYED 🔥🔥🔥');
+
 const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
@@ -17,9 +20,6 @@ const getUTCTimestamp = () => {
 const logTime = (label, timestamp) => {
   console.log(`⏰ ${label}: ${timestamp} (${new Date(timestamp).toISOString()})`);
 };
-
-// FORCE DEPLOY: 2025-06-30-14:55
-console.log('🔥🔥🔥 TON.JS VERSION 14:55 DEPLOYED 🔥🔥🔥');
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
