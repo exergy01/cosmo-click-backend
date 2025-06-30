@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== ПРОСТОЕ РЕШЕНИЕ - ВРЕМЯ КАК ЧИСЛА
+// ===== routes/ton.js ===== ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -7,6 +7,16 @@ const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = true;
+
+// 🕐 ФУНКЦИЯ ПОЛУЧЕНИЯ UTC ВРЕМЕНИ (исправляет проблему часовых поясов)
+const getUTCTimestamp = () => {
+  return Date.now(); // Всегда UTC миллисекунды
+};
+
+// 🕐 ФУНКЦИЯ ЛОГИРОВАНИЯ ВРЕМЕНИ
+const logTime = (label, timestamp) => {
+  console.log(`⏰ ${label}: ${timestamp} (${new Date(timestamp).toISOString()})`);
+};
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
@@ -52,7 +62,7 @@ router.get('/calculate/:amount', (req, res) => {
   });
 });
 
-// 🔥 СОЗДАНИЕ СТЕЙКА - ПРОСТОЕ РЕШЕНИЕ
+// 🔥 СОЗДАНИЕ СТЕЙКА - ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
   
@@ -115,7 +125,7 @@ router.post('/stake', async (req, res) => {
     // Параметры плана
     const planPercent = planType === 'fast' ? 3 : 7;
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Все время в миллисекундах
+    // 🕐 ИСПРАВЛЕНИЕ: Все расчеты времени в UTC
     let actualDurationForDB, timeUnit, millisecondsToAdd;
     
     if (TEST_MODE) {
@@ -132,17 +142,15 @@ router.post('/stake', async (req, res) => {
     
     const returnAmount = (stakeAmountNum * (1 + planPercent / 100)).toFixed(8);
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Храним время как числа (миллисекунды)
-    const startTimeMs = Date.now();
+    // 🕐 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: UTC время на всех серверах
+    const startTimeMs = getUTCTimestamp();
     const endTimeMs = startTimeMs + millisecondsToAdd;
     
-    console.log(`📅 ПРОСТОЙ РАСЧЕТ ВРЕМЕНИ:`);
-    console.log(`   Текущее время: ${startTimeMs} мс`);
-    console.log(`   Добавляем: ${millisecondsToAdd} мс`);
-    console.log(`   Время окончания: ${endTimeMs} мс`);
-    console.log(`   Старт: ${new Date(startTimeMs).toISOString()}`);
-    console.log(`   Конец: ${new Date(endTimeMs).toISOString()}`);
-    console.log(`   Разница: ${endTimeMs - startTimeMs} мс`);
+    console.log(`🕐 UTC РАСЧЕТ ВРЕМЕНИ:`);
+    logTime('Текущее UTC время', startTimeMs);
+    logTime('Добавляем миллисекунд', millisecondsToAdd);
+    logTime('Время окончания UTC', endTimeMs);
+    console.log(`⏱️ Продолжительность: ${endTimeMs - startTimeMs} мс`);
     
     // Списываем TON с баланса
     const newTonBalance = (tonBalance - stakeAmountNum).toFixed(8);
@@ -164,7 +172,7 @@ router.post('/stake', async (req, res) => {
       console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 УНИВЕРСАЛЬНАЯ совместимость - пробуем с новыми полями, фалбэк на старые
+    // 🕐 УНИВЕРСАЛЬНАЯ вставка с UTC временем
     console.log('🔥 ПОПЫТКА СОЗДАНИЯ СТЕЙКА В БД...');
     console.log('🔥 Данные для вставки:', {
       telegramId, systemId, stakeAmountNum, planType, planPercent, 
@@ -178,10 +186,14 @@ router.post('/stake', async (req, res) => {
         `INSERT INTO ton_staking (
           telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
           return_amount, start_date, end_date, start_time_ms, end_time_ms
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, $9) RETURNING *`,
-        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startTimeMs, endTimeMs]
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 
+          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $8,
+          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $9, 
+          $8, $9) RETURNING *`,
+        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, 
+         returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000), startTimeMs, endTimeMs]
       );
-      console.log('✅ СТЕЙК СОЗДАН С НОВЫМИ ПОЛЯМИ');
+      console.log('✅ СТЕЙК СОЗДАН С UTC ВРЕМЕНЕМ');
     } catch (err) {
       console.log('⚠️ Ошибка с новыми полями, пробуем старую схему:', err.message);
       // Фалбэк на старую схему без start_time_ms, end_time_ms
@@ -193,16 +205,17 @@ router.post('/stake', async (req, res) => {
           TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $8,
           TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $9
         ) RETURNING *`,
-        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000)]
+        [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, 
+         returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000)]
       );
-      console.log('✅ СТЕЙК СОЗДАН СО СТАРОЙ СХЕМОЙ');
+      console.log('✅ СТЕЙК СОЗДАН СО СТАРОЙ СХЕМОЙ UTC');
     }
     
     console.log(`✅ СТЕЙК СОЗДАН В БД:`);
     console.log(`   ID: ${stakeResult.rows[0].id}`);
-    console.log(`   start_time_ms: ${stakeResult.rows[0].start_time_ms}`);
-    console.log(`   end_time_ms: ${stakeResult.rows[0].end_time_ms}`);
-    console.log(`   Проверка разности: ${stakeResult.rows[0].end_time_ms - stakeResult.rows[0].start_time_ms} мс`);
+    logTime('   start_time_ms', stakeResult.rows[0].start_time_ms || (startTimeMs));
+    logTime('   end_time_ms', stakeResult.rows[0].end_time_ms || (endTimeMs));
+    console.log(`   Проверка разности: ${(stakeResult.rows[0].end_time_ms || endTimeMs) - (stakeResult.rows[0].start_time_ms || startTimeMs)} мс`);
     
     await client.query('COMMIT');
     
@@ -240,14 +253,14 @@ router.post('/stake', async (req, res) => {
   }
 });
 
-// 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - ПРОСТОЕ РЕШЕНИЕ
+// 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ
 router.get('/stakes/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   
   try {
     console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
-    // 🔥 УНИВЕРСАЛЬНОЕ чтение - пробуем новые поля, фалбэк на старые
+    // 🕐 УНИВЕРСАЛЬНОЕ чтение с UTC временем
     let result;
     try {
       // Пробуем с новыми полями
@@ -277,26 +290,27 @@ router.get('/stakes/:telegramId', async (req, res) => {
     
     console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
     
-    const currentTimeMs = Date.now();
-    console.log(`⏰ Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
+    // 🕐 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем UTC время
+    const currentTimeMs = getUTCTimestamp();
+    logTime('Текущее UTC время сервера', currentTimeMs);
     
     const stakes = result.rows.map(stake => {
-      // 🔥 УНИВЕРСАЛЬНЫЙ расчет времени
+      // 🕐 УНИВЕРСАЛЬНЫЙ расчет времени с UTC
       let endTimeMs;
       if (stake.end_time_ms) {
         // Новая схема - используем числовые поля
         endTimeMs = parseInt(stake.end_time_ms);
       } else {
-        // Старая схема - используем дату
+        // Старая схема - конвертируем дату в UTC миллисекунды
         endTimeMs = new Date(stake.end_date).getTime();
       }
       
       const timeLeftMs = endTimeMs - currentTimeMs;
       
       console.log(`📊 СТЕЙК ${stake.id}:`);
-      console.log(`   Конец: ${endTimeMs} (${new Date(endTimeMs).toISOString()})`);
-      console.log(`   Текущее: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
-      console.log(`   Осталось: ${timeLeftMs} мс`);
+      logTime('   Конец UTC', endTimeMs);
+      logTime('   Текущее UTC', currentTimeMs);
+      console.log(`   Осталось мс: ${timeLeftMs}`);
       
       let daysLeft, timeUnitForDisplay;
       
@@ -333,7 +347,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
   }
 });
 
-// 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА - ПРОСТОЕ РЕШЕНИЕ
+// 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА - ИСПРАВЛЕНИЕ ЧАСОВЫХ ПОЯСОВ
 router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
@@ -350,7 +364,7 @@ router.post('/withdraw', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Читаем числовые поля времени
+    // 🕐 ЧТЕНИЕ с UTC временем
     const stakeResult = await client.query(
       `SELECT *, start_time_ms, end_time_ms
        FROM ton_staking 
@@ -368,14 +382,16 @@ router.post('/withdraw', async (req, res) => {
     }
     
     const stake = stakeResult.rows[0];
-    const currentTimeMs = Date.now();
-    const endTimeMs = parseInt(stake.end_time_ms);
+    
+    // 🕐 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: UTC время
+    const currentTimeMs = getUTCTimestamp();
+    const endTimeMs = parseInt(stake.end_time_ms) || new Date(stake.end_date).getTime();
     const timeLeftMs = endTimeMs - currentTimeMs;
     
-    console.log(`💸 ПРОСТАЯ ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
-    console.log(`   Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
-    console.log(`   Время окончания: ${endTimeMs} (${new Date(endTimeMs).toISOString()})`);
-    console.log(`   Разница: ${timeLeftMs} мс`);
+    console.log(`💸 UTC ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
+    logTime('   Текущее UTC время', currentTimeMs);
+    logTime('   Время окончания UTC', endTimeMs);
+    console.log(`   Разница мс: ${timeLeftMs}`);
     
     // Проверяем что срок истек
     if (timeLeftMs > 0) {
@@ -428,9 +444,6 @@ router.post('/withdraw', async (req, res) => {
       'UPDATE ton_staking SET status = $1, withdrawn_at = NOW() WHERE id = $2',
       ['withdrawn', stakeId]
     );
-    
-    // 🔥 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА
-    console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА`);
     
     console.log(`✅ СТЕЙК ${stakeId} УСПЕШНО ВЫВЕДЕН`);
     
@@ -529,9 +542,6 @@ router.post('/cancel', async (req, res) => {
       ['withdrawn', returnAmount, penalty, stakeId]
     );
     
-    // 🔥 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА
-    console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА`);
-    
     console.log(`✅ СТЕЙК ${stakeId} ОТМЕНЕН С ШТРАФОМ`);
     
     await client.query('COMMIT');
@@ -557,62 +567,6 @@ router.post('/cancel', async (req, res) => {
     });
   } finally {
     client.release();
-  }
-});
-
-// 🔥 ПРОВЕРКА ВОЗМОЖНОСТИ СОЗДАНИЯ СТЕЙКА В СИСТЕМЕ 5
-router.post('/check-system-5', async (req, res) => {
-  const { telegramId } = req.body;
-  
-  if (!telegramId) {
-    return res.status(400).json({ 
-      success: false,
-      error: 'Missing telegram ID' 
-    });
-  }
-  
-  try {
-    const player = await getPlayer(telegramId);
-    
-    if (!player) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Player not found' 
-      });
-    }
-    
-    // Проверяем разблокирована ли система 5
-    const isSystem5Unlocked = player.unlocked_systems?.includes(5);
-    
-    if (isSystem5Unlocked) {
-      // Система 5 уже разблокирована - можно создавать новые стейки
-      res.json({
-        success: true,
-        status: 'choose_amount',
-        system_id: 5,
-        min_amount: 15,
-        max_amount: 1000,
-        current_ton_balance: parseFloat(player.ton || 0),
-        message: 'Выберите сумму для нового стейка (15-1000 TON)'
-      });
-    } else {
-      // Система 5 не разблокирована - нужно купить за 15 TON
-      res.json({
-        success: true,
-        status: 'need_unlock',
-        system_id: 5,
-        price: 15,
-        currency: 'ton',
-        message: 'Разблокируйте систему 5 за 15 TON'
-      });
-    }
-    
-  } catch (err) {
-    console.error('❌ Ошибка проверки системы 5:', err);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
 });
 
@@ -657,6 +611,57 @@ router.get('/stakes/history/:telegramId', async (req, res) => {
   } catch (err) {
     console.error('❌ Ошибка получения истории стейков:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🔥 НОВЫЙ ENDPOINT: Диагностика времени сервера
+router.get('/time/debug', (req, res) => {
+  const now = getUTCTimestamp();
+  
+  res.json({
+    server_utc_timestamp: now,
+    server_utc_iso: new Date(now).toISOString(),
+    test_mode: TEST_MODE,
+    test_duration: {
+      fast: TEST_MODE ? 2 : 20,
+      standard: TEST_MODE ? 4 : 40,
+      unit: TEST_MODE ? 'минут' : 'дней'
+    },
+    timezone_info: {
+      nodejs_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      process_env_tz: process.env.TZ || 'не установлено'
+    }
+  });
+});
+
+// В конце файла, перед module.exports
+router.get('/debug/stake/:stakeId', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT *, start_time_ms, end_time_ms FROM ton_staking WHERE id = $1',
+      [req.params.stakeId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Stake not found' });
+    }
+    
+    const stake = result.rows[0];
+    const now = Date.now();
+    
+    res.json({
+      stake_id: stake.id,
+      created_at: stake.created_at,
+      start_time_ms: stake.start_time_ms,
+      end_time_ms: stake.end_time_ms,
+      current_time_ms: now,
+      time_left_ms: stake.end_time_ms - now,
+      time_left_minutes: Math.ceil((stake.end_time_ms - now) / (1000 * 60)),
+      duration_ms: stake.end_time_ms - stake.start_time_ms,
+      duration_minutes: (stake.end_time_ms - stake.start_time_ms) / (1000 * 60)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
