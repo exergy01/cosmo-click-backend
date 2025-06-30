@@ -580,4 +580,74 @@ router.post('/check-system-5', async (req, res) => {
   }
 });
 
+// 🧪 ОТЛАДОЧНЫЙ ENDPOINT ДЛЯ ТЕСТИРОВАНИЯ ВРЕМЕНИ
+router.get('/debug-time/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  
+  try {
+    console.log('🧪 ОТЛАДКА ВРЕМЕНИ');
+    
+    const currentTime = Date.now();
+    console.log(`⏰ Текущее время JS: ${currentTime} (${new Date(currentTime).toISOString()})`);
+    
+    // Проверяем время в PostgreSQL
+    const pgTimeResult = await pool.query('SELECT NOW() as pg_now, EXTRACT(EPOCH FROM NOW()) * 1000 as pg_timestamp');
+    const pgTime = pgTimeResult.rows[0];
+    
+    console.log(`🐘 PostgreSQL время: ${pgTime.pg_timestamp} (${pgTime.pg_now})`);
+    console.log(`🔍 Разница JS vs PG: ${currentTime - parseFloat(pgTime.pg_timestamp)} мс`);
+    
+    // Создаем тестовый стейк на 30 секунд
+    const testStartTime = currentTime;
+    const testEndTime = currentTime + 30000; // 30 секунд
+    const testStartTimestamp = Math.floor(testStartTime / 1000);
+    const testEndTimestamp = Math.floor(testEndTime / 1000);
+    
+    console.log(`🧪 ТЕСТ: создаем стейк на 30 секунд`);
+    console.log(`   Старт: ${testStartTime} (${new Date(testStartTime).toISOString()})`);
+    console.log(`   Конец: ${testEndTime} (${new Date(testEndTime).toISOString()})`);
+    
+    // Вставляем тестовый стейк
+    const insertResult = await pool.query(
+      `INSERT INTO ton_staking (
+        telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
+        return_amount, start_date, end_date, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8) AT TIME ZONE 'UTC', to_timestamp($9) AT TIME ZONE 'UTC', $10) RETURNING 
+        id, start_date, end_date,
+        EXTRACT(EPOCH FROM start_date AT TIME ZONE 'UTC') * 1000 as start_ms,
+        EXTRACT(EPOCH FROM end_date AT TIME ZONE 'UTC') * 1000 as end_ms`,
+      [telegramId, 5, 1, 'test', 0, 0.5, 1, testStartTimestamp, testEndTimestamp, 'active']
+    );
+    
+    const testStake = insertResult.rows[0];
+    console.log(`📋 РЕЗУЛЬТАТ ВСТАВКИ:`);
+    console.log(`   ID: ${testStake.id}`);
+    console.log(`   Старт в БД: ${testStake.start_ms} (${new Date(parseFloat(testStake.start_ms)).toISOString()})`);
+    console.log(`   Конец в БД: ${testStake.end_ms} (${new Date(parseFloat(testStake.end_ms)).toISOString()})`);
+    console.log(`   Ожидали конец: ${testEndTime} (${new Date(testEndTime).toISOString()})`);
+    console.log(`   Разница: ${parseFloat(testStake.end_ms) - testEndTime} мс`);
+    
+    const timeLeft = parseFloat(testStake.end_ms) - currentTime;
+    console.log(`⏱️ Времени до окончания: ${timeLeft} мс (${Math.ceil(timeLeft / 1000)} сек)`);
+    
+    res.json({
+      debug: 'time-test',
+      js_time: currentTime,
+      pg_time: parseFloat(pgTime.pg_timestamp),
+      difference_ms: currentTime - parseFloat(pgTime.pg_timestamp),
+      test_stake: {
+        id: testStake.id,
+        expected_end: testEndTime,
+        actual_end: parseFloat(testStake.end_ms),
+        time_diff: parseFloat(testStake.end_ms) - testEndTime,
+        seconds_left: Math.ceil(timeLeft / 1000)
+      }
+    });
+    
+  } catch (err) {
+    console.error('❌ Ошибка отладки времени:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
