@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== ОТЛАДОЧНАЯ ВЕРСИЯ С ДЕТАЛЬНЫМ ЛОГИРОВАНИЕМ
+// ===== routes/ton.js ===== ИСПРАВЛЕНЫ ЧАСОВЫЕ ПОЯСА PostgreSQL
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -135,20 +135,22 @@ router.post('/stake', async (req, res) => {
     
     const returnAmount = (stakeAmountNum * (1 + planPercent / 100)).toFixed(8);
     
-    // 🔥 ИСПРАВЛЕНО: Используем только миллисекунды для точности
-    const startTime = Date.now(); // Текущее время в миллисекундах
-    const endTime = startTime + millisecondsToAdd; // Время окончания в миллисекундах
+    // 🔥 ИСПРАВЛЕНО: Используем только миллисекунды для точности и сохраняем как timestamp
+    const startTimeMs = Date.now(); // Текущее время в миллисекундах
+    const endTimeMs = startTimeMs + millisecondsToAdd; // Время окончания в миллисекундах
     
-    const startDate = new Date(startTime);
-    const endDate = new Date(endTime);
+    // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем timestamp вместо ISO строк для PostgreSQL
+    const startTimestamp = Math.floor(startTimeMs / 1000); // Unix timestamp в секундах
+    const endTimestamp = Math.floor(endTimeMs / 1000); // Unix timestamp в секундах
     
     console.log(`📅 РАСЧЕТ ВРЕМЕНИ:`);
-    console.log(`   Текущее время (мс): ${startTime}`);
+    console.log(`   Текущее время (мс): ${startTimeMs}`);
     console.log(`   Длительность (мс): ${millisecondsToAdd}`);
-    console.log(`   Время окончания (мс): ${endTime}`);
-    console.log(`   Старт: ${startDate.toISOString()}`);
-    console.log(`   Конец: ${endDate.toISOString()}`);
-    console.log(`   Разница: ${endTime - startTime} мс`);
+    console.log(`   Время окончания (мс): ${endTimeMs}`);
+    console.log(`   Старт timestamp: ${startTimestamp}`);
+    console.log(`   Конец timestamp: ${endTimestamp}`);
+    console.log(`   Старт ISO: ${new Date(startTimeMs).toISOString()}`);
+    console.log(`   Конец ISO: ${new Date(endTimeMs).toISOString()}`);
     console.log(`💰 РАСЧЕТ: ${stakeAmount} TON * ${planPercent}% = ${returnAmount} TON`);
     
     // Списываем TON с баланса
@@ -172,20 +174,21 @@ router.post('/stake', async (req, res) => {
       console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 ИСПРАВЛЕНО: Создаем запись стейка с точным временем
+    // 🔥 ИСПРАВЛЕНО: Создаем запись стейка используя UTC timestamp
     const stakeResult = await client.query(
       `INSERT INTO ton_staking (
         telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
         return_amount, start_date, end_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startDate.toISOString(), endDate.toISOString()]
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8) AT TIME ZONE 'UTC', to_timestamp($9) AT TIME ZONE 'UTC') RETURNING *`,
+      [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startTimestamp, endTimestamp]
     );
     
     console.log(`✅ СТЕЙК СОЗДАН В БД:`);
     console.log(`   ID: ${stakeResult.rows[0].id}`);
-    console.log(`   Старт: ${stakeResult.rows[0].start_date}`);
-    console.log(`   Конец: ${stakeResult.rows[0].end_date}`);
-    console.log(`   Длительность в БД: ${stakeResult.rows[0].plan_days} ${timeUnit}`);
+    console.log(`   Старт в БД: ${stakeResult.rows[0].start_date}`);
+    console.log(`   Конец в БД: ${stakeResult.rows[0].end_date}`);
+    console.log(`   Проверка - конец timestamp: ${Math.floor(new Date(stakeResult.rows[0].end_date).getTime() / 1000)}`);
+    console.log(`   Ожидаемый timestamp: ${endTimestamp}`);
     
     await client.query('COMMIT');
     
@@ -204,7 +207,7 @@ router.post('/stake', async (req, res) => {
         plan_days: actualDurationForDB, // Возвращаем реальную длительность
         plan_percent: planPercent,
         return_amount: returnAmount,
-        end_date: endDate.toISOString(),
+        end_date: new Date(endTimeMs).toISOString(),
         days_left: actualDurationForDB,
         time_unit: timeUnit
       },
@@ -230,11 +233,13 @@ router.get('/stakes/:telegramId', async (req, res) => {
   try {
     console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
-    // Получаем активные стейки
+    // 🔥 ИСПРАВЛЕНО: Получаем активные стейки с extract для timestamp в UTC
     const result = await pool.query(
       `SELECT 
         id, system_id, stake_amount, plan_type, plan_percent, plan_days,
-        return_amount, start_date, end_date, status, created_at
+        return_amount, start_date, end_date, status, created_at,
+        EXTRACT(EPOCH FROM end_date AT TIME ZONE 'UTC') * 1000 as end_timestamp_ms,
+        EXTRACT(EPOCH FROM start_date AT TIME ZONE 'UTC') * 1000 as start_timestamp_ms
       FROM ton_staking 
       WHERE telegram_id = $1 AND status = 'active'
       ORDER BY created_at DESC`,
@@ -243,15 +248,16 @@ router.get('/stakes/:telegramId', async (req, res) => {
     
     console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
     
-    const currentTime = Date.now(); // Текущее время в миллисекундах
-    console.log(`⏰ Текущее время: ${currentTime} (${new Date(currentTime).toISOString()})`);
+    const currentTimeMs = Date.now(); // Текущее время в миллисекундах
+    console.log(`⏰ Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
     
     const stakes = result.rows.map(stake => {
-      const endTime = new Date(stake.end_date).getTime(); // Время окончания в миллисекундах
-      const timeLeftMs = endTime - currentTime; // Разница в миллисекундах
+      const endTimeMs = parseFloat(stake.end_timestamp_ms); // Время окончания в миллисекундах
+      const timeLeftMs = endTimeMs - currentTimeMs; // Разница в миллисекундах
       
       console.log(`📊 СТЕЙК ${stake.id}:`);
-      console.log(`   Конец: ${endTime} (${stake.end_date})`);
+      console.log(`   Конец timestamp: ${endTimeMs} (${new Date(endTimeMs).toISOString()})`);
+      console.log(`   Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
       console.log(`   Осталось мс: ${timeLeftMs}`);
       
       let daysLeft, timeUnitForDisplay;
@@ -308,9 +314,11 @@ router.post('/withdraw', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // Получаем данные стейка
+    // 🔥 ИСПРАВЛЕНО: Получаем данные стейка с timestamp в UTC
     const stakeResult = await client.query(
-      'SELECT * FROM ton_staking WHERE id = $1 AND telegram_id = $2 AND status = $3',
+      `SELECT *, EXTRACT(EPOCH FROM end_date AT TIME ZONE 'UTC') * 1000 as end_timestamp_ms 
+       FROM ton_staking 
+       WHERE id = $1 AND telegram_id = $2 AND status = $3`,
       [stakeId, telegramId, 'active']
     );
     
@@ -324,13 +332,13 @@ router.post('/withdraw', async (req, res) => {
     }
     
     const stake = stakeResult.rows[0];
-    const currentTime = Date.now();
-    const endTime = new Date(stake.end_date).getTime();
-    const timeLeftMs = endTime - currentTime;
+    const currentTimeMs = Date.now();
+    const endTimeMs = parseFloat(stake.end_timestamp_ms);
+    const timeLeftMs = endTimeMs - currentTimeMs;
     
     console.log(`💸 ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
-    console.log(`   Текущее время: ${currentTime} (${new Date(currentTime).toISOString()})`);
-    console.log(`   Время окончания: ${endTime} (${stake.end_date})`);
+    console.log(`   Текущее время: ${currentTimeMs} (${new Date(currentTimeMs).toISOString()})`);
+    console.log(`   Время окончания: ${endTimeMs} (${new Date(endTimeMs).toISOString()})`);
     console.log(`   Разница: ${timeLeftMs} мс`);
     
     // Проверяем что срок истек
@@ -381,8 +389,8 @@ router.post('/withdraw', async (req, res) => {
     
     // Обновляем статус стейка
     await client.query(
-      'UPDATE ton_staking SET status = $1, withdrawn_at = $2 WHERE id = $3',
-      ['withdrawn', new Date().toISOString(), stakeId]
+      'UPDATE ton_staking SET status = $1, withdrawn_at = NOW() WHERE id = $2',
+      ['withdrawn', stakeId]
     );
     
     // 🔥 НИКОГДА НЕ БЛОКИРУЕМ СИСТЕМУ 5!
@@ -478,11 +486,11 @@ router.post('/cancel', async (req, res) => {
     await client.query(
       `UPDATE ton_staking SET 
         status = $1, 
-        withdrawn_at = $2,
-        return_amount = $3,
-        penalty_amount = $4
-      WHERE id = $5`,
-      ['withdrawn', new Date().toISOString(), returnAmount, penalty, stakeId]
+        withdrawn_at = NOW(),
+        return_amount = $2,
+        penalty_amount = $3
+      WHERE id = $4`,
+      ['withdrawn', returnAmount, penalty, stakeId]
     );
     
     // 🔥 НИКОГДА НЕ БЛОКИРУЕМ СИСТЕМУ 5!
