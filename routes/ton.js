@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== ИСПРАВЛЕНЫ ВРЕМЕННЫЕ ЗОНЫ
+// ===== routes/ton.js ===== ИСПРАВЛЕНЫ ВРЕМЕННЫЕ ЗОНЫ И МАРШРУТЫ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -8,21 +8,79 @@ const router = express.Router();
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: false = обычные сроки (20/40 дней)
 const TEST_MODE = true;
 
+// 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА - ИСПРАВЛЕНО
+router.get('/calculate/:amount', (req, res) => {
+  console.log('🧮 ЗАПРОС РАСЧЕТА ПЛАНОВ:', req.params.amount);
+  
+  const amount = parseFloat(req.params.amount);
+  
+  if (isNaN(amount) || amount < 15 || amount > 1000) {
+    console.log('❌ Неверная сумма:', amount);
+    return res.status(400).json({ 
+      success: false,
+      error: 'Amount must be between 15 and 1000 TON' 
+    });
+  }
+  
+  const fastPlan = {
+    type: 'fast',
+    days: TEST_MODE ? 2 : 20,
+    percent: 3,
+    stake_amount: amount,
+    return_amount: (amount * 1.03).toFixed(8),
+    profit: (amount * 0.03).toFixed(8),
+    time_unit: TEST_MODE ? 'минут' : 'дней'
+  };
+  
+  const standardPlan = {
+    type: 'standard',
+    days: TEST_MODE ? 4 : 40,
+    percent: 7,
+    stake_amount: amount,
+    return_amount: (amount * 1.07).toFixed(8),
+    profit: (amount * 0.07).toFixed(8),
+    time_unit: TEST_MODE ? 'минут' : 'дней'
+  };
+  
+  console.log('✅ ПЛАНЫ РАССЧИТАНЫ:', { fastPlan, standardPlan });
+  
+  res.json({
+    success: true,
+    amount: amount,
+    plans: [fastPlan, standardPlan],
+    test_mode: TEST_MODE
+  });
+});
+
 // 🔥 СОЗДАНИЕ СТЕЙКА (выбор тарифа после покупки системы)
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
   
+  console.log('🔥 СОЗДАНИЕ СТЕЙКА - ЗАПРОС:', { telegramId, systemId, stakeAmount, planType });
+  
   if (!telegramId || !systemId || !stakeAmount || !planType) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    console.log('❌ Отсутствуют обязательные поля');
+    return res.status(400).json({ 
+      success: false,
+      error: 'Missing required fields' 
+    });
   }
   
   if (!['fast', 'standard'].includes(planType)) {
-    return res.status(400).json({ error: 'Invalid plan type' });
+    console.log('❌ Неверный тип плана:', planType);
+    return res.status(400).json({ 
+      success: false,
+      error: 'Invalid plan type' 
+    });
   }
   
   // 🔥 ТОЛЬКО СИСТЕМА 5 ПОДДЕРЖИВАЕТСЯ
   if (parseInt(systemId) !== 5) {
-    return res.status(400).json({ error: 'Only system 5 is supported' });
+    console.log('❌ Неподдерживаемая система:', systemId);
+    return res.status(400).json({ 
+      success: false,
+      error: 'Only system 5 is supported' 
+    });
   }
   
   const client = await pool.connect();
@@ -35,7 +93,11 @@ router.post('/stake', async (req, res) => {
     const player = await getPlayer(telegramId);
     if (!player) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Player not found' });
+      console.log('❌ Игрок не найден');
+      return res.status(404).json({ 
+        success: false,
+        error: 'Player not found' 
+      });
     }
     
     // Проверяем баланс TON
@@ -44,7 +106,11 @@ router.post('/stake', async (req, res) => {
     
     if (tonBalance < stakeAmountNum) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Insufficient TON balance' });
+      console.log('❌ Недостаточно TON:', { tonBalance, stakeAmountNum });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Insufficient TON balance' 
+      });
     }
     
     // Параметры плана
@@ -132,7 +198,10 @@ router.post('/stake', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Ошибка создания стейка:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   } finally {
     client.release();
   }
@@ -218,7 +287,10 @@ router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
   if (!telegramId || !stakeId) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Missing required fields' 
+    });
   }
   
   const client = await pool.connect();
@@ -235,7 +307,10 @@ router.post('/withdraw', async (req, res) => {
     
     if (stakeResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Stake not found or already withdrawn' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Stake not found or already withdrawn' 
+      });
     }
     
     const stake = stakeResult.rows[0];
@@ -258,6 +333,7 @@ router.post('/withdraw', async (req, res) => {
       }
       
       return res.status(400).json({ 
+        success: false,
         error: 'Stake period not completed',
         time_left: timeLeftText
       });
@@ -267,7 +343,10 @@ router.post('/withdraw', async (req, res) => {
     const player = await getPlayer(telegramId);
     if (!player) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Player not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Player not found' 
+      });
     }
     
     // Добавляем TON к балансу
@@ -326,7 +405,10 @@ router.post('/withdraw', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Ошибка вывода стейка:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   } finally {
     client.release();
   }
@@ -340,7 +422,10 @@ router.post('/cancel', async (req, res) => {
   
   if (!telegramId || !stakeId) {
     console.log('❌ Отсутствуют обязательные поля');
-    return res.status(400).json({ error: 'Missing required fields' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Missing required fields' 
+    });
   }
   
   const client = await pool.connect();
@@ -357,7 +442,10 @@ router.post('/cancel', async (req, res) => {
     
     if (stakeResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Stake not found or already processed' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Stake not found or already processed' 
+      });
     }
     
     const stake = stakeResult.rows[0];
@@ -366,7 +454,10 @@ router.post('/cancel', async (req, res) => {
     const player = await getPlayer(telegramId);
     if (!player) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Player not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Player not found' 
+      });
     }
     
     // Рассчитываем возврат с штрафом 10%
@@ -437,7 +528,10 @@ router.post('/cancel', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Ошибка отмены стейка:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   } finally {
     client.release();
   }
@@ -448,14 +542,20 @@ router.post('/check-system-5', async (req, res) => {
   const { telegramId } = req.body;
   
   if (!telegramId) {
-    return res.status(400).json({ error: 'Missing telegram ID' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Missing telegram ID' 
+    });
   }
   
   try {
     const player = await getPlayer(telegramId);
     
     if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Player not found' 
+      });
     }
     
     // Проверяем разблокирована ли система 5
@@ -464,6 +564,7 @@ router.post('/check-system-5', async (req, res) => {
     if (isSystem5Unlocked) {
       // Система 5 уже разблокирована - можно создавать новые стейки
       res.json({
+        success: true,
         status: 'choose_amount',
         system_id: 5,
         min_amount: 15,
@@ -474,6 +575,7 @@ router.post('/check-system-5', async (req, res) => {
     } else {
       // Система 5 не разблокирована - нужно купить за 15 TON
       res.json({
+        success: true,
         status: 'need_unlock',
         system_id: 5,
         price: 15,
@@ -484,42 +586,11 @@ router.post('/check-system-5', async (req, res) => {
     
   } catch (err) {
     console.error('❌ Ошибка проверки системы 5:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   }
-});
-
-router.get('/calculate/:amount', (req, res) => {
-  const amount = parseFloat(req.params.amount);
-  
-  if (isNaN(amount) || amount < 15 || amount > 1000) {
-    return res.status(400).json({ error: 'Amount must be between 15 and 1000 TON' });
-  }
-  
-  const fastPlan = {
-    type: 'fast',
-    days: TEST_MODE ? 2 : 20, // 🔥 ИСПРАВЛЕНО: показываем правильные сроки
-    percent: 3,
-    stake_amount: amount,
-    return_amount: (amount * 1.03).toFixed(8),
-    profit: (amount * 0.03).toFixed(8),
-    time_unit: TEST_MODE ? 'минут' : 'дней' // 🔥 ДОБАВЛЕНО
-  };
-  
-  const standardPlan = {
-    type: 'standard',
-    days: TEST_MODE ? 4 : 40, // 🔥 ИСПРАВЛЕНО: показываем правильные сроки
-    percent: 7,
-    stake_amount: amount,
-    return_amount: (amount * 1.07).toFixed(8),
-    profit: (amount * 0.07).toFixed(8),
-    time_unit: TEST_MODE ? 'минут' : 'дней' // 🔥 ДОБАВЛЕНО
-  };
-  
-  res.json({
-    amount: amount,
-    plans: [fastPlan, standardPlan],
-    test_mode: TEST_MODE
-  });
 });
 
 module.exports = router;
