@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== ИСПРАВЛЕНЫ ВРЕМЕННЫЕ ЗОНЫ И МАРШРУТЫ
+// ===== routes/ton.js ===== ПОЛНОСТЬЮ ИСПРАВЛЕННЫЙ КОД
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -8,7 +8,7 @@ const router = express.Router();
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: false = обычные сроки (20/40 дней)
 const TEST_MODE = true;
 
-// 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА - ИСПРАВЛЕНО
+// 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
   console.log('🧮 ЗАПРОС РАСЧЕТА ПЛАНОВ:', req.params.amount);
   
@@ -119,25 +119,39 @@ router.post('/stake', async (req, res) => {
     
     // 🔥 ИСПРАВЛЕНО: в тестовом режиме сроки в минутах, в обычном - в днях
     let timeUnit = 'дней';
+    let actualDuration = planDays; // Для записи в БД используем оригинальные значения
+    
     if (TEST_MODE) {
-      planDays = planType === 'fast' ? 2 : 4; // 2 или 4 минуты для тестов
+      actualDuration = planType === 'fast' ? 2 : 4; // 2 или 4 минуты для тестов
       timeUnit = 'минут';
-      console.log(`🧪 ТЕСТОВЫЙ РЕЖИМ: ${planDays} минут вместо дней`);
+      console.log(`🧪 ТЕСТОВЫЙ РЕЖИМ: ${actualDuration} минут вместо ${planDays} дней`);
     }
     
     const returnAmount = (stakeAmountNum * (1 + planPercent / 100)).toFixed(8);
     
-    // 🔥 ИСПРАВЛЕНО: Всегда используем UTC время
-    const startDate = new Date(); // UTC время
-    const endDate = new Date(startDate);
-    
+    // 🔥 ИСПРАВЛЕНО: Правильный расчет времени окончания с использованием UTC
+    const startDate = new Date(); // Текущее время
+    const endDate = new Date(); // Создаем копию для расчета конца
+
     if (TEST_MODE) {
-      endDate.setMinutes(endDate.getMinutes() + planDays); // Добавляем минуты для тестов
+      // В тестовом режиме добавляем МИНУТЫ используя setTime()
+      const currentTime = startDate.getTime(); // Получаем текущий timestamp в миллисекундах
+      const minutesToAdd = actualDuration; // 2 или 4 минуты
+      const millisecondsToAdd = minutesToAdd * 60 * 1000; // Конвертируем минуты в миллисекунды
+      endDate.setTime(currentTime + millisecondsToAdd); // Устанавливаем новое время
+      
+      console.log(`🧪 ТЕСТОВЫЙ РЕЖИМ: добавляем ${actualDuration} минут (${millisecondsToAdd} мс)`);
+      console.log(`🧪 Текущее время: ${currentTime}, Новое время: ${currentTime + millisecondsToAdd}`);
     } else {
-      endDate.setDate(endDate.getDate() + planDays); // Добавляем дни для продакшена
+      // В обычном режиме добавляем ДНИ
+      endDate.setDate(endDate.getDate() + actualDuration);
+      console.log(`🏭 ПРОДАКШН РЕЖИМ: добавляем ${actualDuration} дней`);
     }
-    
-    console.log(`📅 ДАТЫ (UTC): старт ${startDate.toISOString()}, конец ${endDate.toISOString()}`);
+
+    console.log(`📅 ДАТЫ (UTC):`);
+    console.log(`   Старт: ${startDate.toISOString()}`);
+    console.log(`   Конец: ${endDate.toISOString()}`);
+    console.log(`   Разница в мс: ${endDate.getTime() - startDate.getTime()}`);
     console.log(`💰 РАСЧЕТ: ${stakeAmount} TON * ${planPercent}% = ${returnAmount} TON`);
     
     // Списываем TON с баланса
@@ -147,29 +161,30 @@ router.post('/stake', async (req, res) => {
       [newTonBalance, telegramId]
     );
     
-    // Добавляем систему в unlocked_systems если еще нет
+    // 🔥 ИСПРАВЛЕНО: ВСЕГДА разблокируем систему 5 при первом стейке
+    // Система 5 должна оставаться разблокированной НАВСЕГДА после первой покупки
     if (!player.unlocked_systems.includes(systemId)) {
       const updatedUnlockedSystems = [...player.unlocked_systems, systemId];
-      console.log(`🔓 РАЗБЛОКИРУЕМ СИСТЕМУ: было ${JSON.stringify(player.unlocked_systems)}, станет ${JSON.stringify(updatedUnlockedSystems)}`);
+      console.log(`🔓 РАЗБЛОКИРУЕМ СИСТЕМУ 5 НАВСЕГДА: было ${JSON.stringify(player.unlocked_systems)}, станет ${JSON.stringify(updatedUnlockedSystems)}`);
       
       await client.query(
         'UPDATE players SET unlocked_systems = $1 WHERE telegram_id = $2',
         [JSON.stringify(updatedUnlockedSystems), telegramId]
       );
     } else {
-      console.log(`🔓 СИСТЕМА УЖЕ РАЗБЛОКИРОВАНА: ${systemId}`);
+      console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 ИСПРАВЛЕНО: Создаем запись стейка с UTC временем
+    // 🔥 ИСПРАВЛЕНО: Создаем запись стейка с правильным временем
     const stakeResult = await client.query(
       `INSERT INTO ton_staking (
         telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
         return_amount, start_date, end_date
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [telegramId, systemId, stakeAmountNum, planType, planPercent, planDays, returnAmount, startDate.toISOString(), endDate.toISOString()]
+      [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDuration, returnAmount, startDate.toISOString(), endDate.toISOString()]
     );
     
-    console.log(`✅ СТЕЙК СОЗДАН: ID ${stakeResult.rows[0].id}`);
+    console.log(`✅ СТЕЙК СОЗДАН: ID ${stakeResult.rows[0].id}, завершится ${endDate.toISOString()}`);
     
     await client.query('COMMIT');
     
@@ -185,11 +200,11 @@ router.post('/stake', async (req, res) => {
         system_id: systemId,
         stake_amount: stakeAmount,
         plan_type: planType,
-        plan_days: planDays,
+        plan_days: actualDuration, // Возвращаем реальную длительность
         plan_percent: planPercent,
         return_amount: returnAmount,
         end_date: endDate.toISOString(),
-        days_left: planDays,
+        days_left: actualDuration,
         time_unit: timeUnit // 🔥 ДОБАВЛЕНО: указываем единицу времени
       },
       player: updatedPlayer
@@ -249,27 +264,34 @@ router.get('/stakes/:telegramId', async (req, res) => {
     });
     
     const stakes = result.rows.map(stake => {
-      // 🔥 ИСПРАВЛЕНО: Всегда используем UTC время для расчетов
-      const now = new Date(); // UTC время
-      const endDate = new Date(stake.end_date); // Конвертируем в UTC
-      const timeLeft = endDate - now;
+      // 🔥 ИСПРАВЛЕНО: Правильный расчет оставшегося времени
+      const now = new Date(); // Текущее время
+      const endDate = new Date(stake.end_date); // Время окончания стейка
+      const timeLeftMs = endDate.getTime() - now.getTime(); // Разница в миллисекундах
       
       let daysLeft;
+      let timeUnitForDisplay;
+      
       if (TEST_MODE) {
         // В тестовом режиме показываем минуты
-        daysLeft = Math.max(0, Math.ceil(timeLeft / (1000 * 60)));
+        daysLeft = Math.max(0, Math.ceil(timeLeftMs / (1000 * 60))); // Миллисекунды -> минуты
+        timeUnitForDisplay = 'минут';
       } else {
-        // В обычном режиме показываем дни
-        daysLeft = Math.max(0, Math.ceil(timeLeft / (1000 * 60 * 60 * 24)));
+        // В обычном режиме показываем дни  
+        daysLeft = Math.max(0, Math.ceil(timeLeftMs / (1000 * 60 * 60 * 24))); // Миллисекунды -> дни
+        timeUnitForDisplay = 'дней';
       }
+      
+      console.log(`   📊 Стейк ${stake.id}: timeLeftMs=${timeLeftMs}, осталось ${daysLeft} ${timeUnitForDisplay}`);
       
       return {
         ...stake,
         days_left: daysLeft,
-        is_ready: timeLeft <= 0,
+        is_ready: timeLeftMs <= 0, // Готов к сбору если время истекло
         end_date: endDate.toISOString(),
         start_date: new Date(stake.start_date).toISOString(),
-        test_mode: TEST_MODE
+        test_mode: TEST_MODE,
+        time_unit: timeUnitForDisplay
       };
     });
     
@@ -365,27 +387,9 @@ router.post('/withdraw', async (req, res) => {
       ['withdrawn', new Date().toISOString(), stakeId]
     );
     
-    // 🔥 ПРОВЕРЯЕМ ЕСТЬ ЛИ ЕЩЕ АКТИВНЫЕ СТЕЙКИ В СИСТЕМЕ 5
-    const activeStakesResult = await client.query(
-      'SELECT COUNT(*) as count FROM ton_staking WHERE telegram_id = $1 AND system_id = 5 AND status = $2',
-      [telegramId, 'active']
-    );
-    
-    const activeStakesCount = parseInt(activeStakesResult.rows[0].count);
-    console.log(`🔍 АКТИВНЫХ СТЕЙКОВ В СИСТЕМЕ 5: ${activeStakesCount}`);
-    
-    if (activeStakesCount === 0) {
-      console.log('🔒 БЛОКИРУЕМ СИСТЕМУ 5 - НЕТ АКТИВНЫХ СТЕЙКОВ');
-      const currentUnlockedSystems = player.unlocked_systems || [];
-      const updatedUnlockedSystems = currentUnlockedSystems.filter(sysId => sysId !== 5);
-      
-      await client.query(
-        'UPDATE players SET unlocked_systems = $1 WHERE telegram_id = $2',
-        [JSON.stringify(updatedUnlockedSystems), telegramId]
-      );
-    } else {
-      console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ - ЕСТЬ ${activeStakesCount} АКТИВНЫХ СТЕЙКОВ`);
-    }
+    // 🔥 ИСПРАВЛЕНО: НИКОГДА НЕ БЛОКИРУЕМ СИСТЕМУ 5 ПОСЛЕ РАЗБЛОКИРОВКИ!
+    // Система 5 остается разблокированной навсегда после первой покупки за 15 TON
+    console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА - вывод стейка не влияет на разблокировку`);
     
     console.log(`✅ СТЕЙК ВЫВЕДЕН: ${returnAmount} TON добавлено к балансу`);
     
@@ -487,27 +491,9 @@ router.post('/cancel', async (req, res) => {
       ['withdrawn', new Date().toISOString(), returnAmount, penalty, stakeId]
     );
     
-    // 🔥 ПРОВЕРЯЕМ ЕСТЬ ЛИ ЕЩЕ АКТИВНЫЕ СТЕЙКИ В СИСТЕМЕ 5
-    const activeStakesResult = await client.query(
-      'SELECT COUNT(*) as count FROM ton_staking WHERE telegram_id = $1 AND system_id = 5 AND status = $2',
-      [telegramId, 'active']
-    );
-    
-    const activeStakesCount = parseInt(activeStakesResult.rows[0].count);
-    console.log(`🔍 АКТИВНЫХ СТЕЙКОВ В СИСТЕМЕ 5: ${activeStakesCount}`);
-    
-    if (activeStakesCount === 0) {
-      console.log('🔒 БЛОКИРУЕМ СИСТЕМУ 5 - НЕТ АКТИВНЫХ СТЕЙКОВ');
-      const currentUnlockedSystems = player.unlocked_systems || [];
-      const updatedUnlockedSystems = currentUnlockedSystems.filter(sysId => sysId !== 5);
-      
-      await client.query(
-        'UPDATE players SET unlocked_systems = $1 WHERE telegram_id = $2',
-        [JSON.stringify(updatedUnlockedSystems), telegramId]
-      );
-    } else {
-      console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ - ЕСТЬ ${activeStakesCount} АКТИВНЫХ СТЕЙКОВ`);
-    }
+    // 🔥 ИСПРАВЛЕНО: НИКОГДА НЕ БЛОКИРУЕМ СИСТЕМУ 5 ПОСЛЕ РАЗБЛОКИРОВКИ!
+    // Система 5 остается разблокированной навсегда после первой покупки за 15 TON
+    console.log(`🔓 СИСТЕМА 5 ОСТАЕТСЯ РАЗБЛОКИРОВАННОЙ НАВСЕГДА - отмена стейка не влияет на разблокировку`);
     
     console.log(`✅ СТЕЙК ОТМЕНЕН: возврат ${returnAmount} TON, штраф ${penalty} TON`);
     
