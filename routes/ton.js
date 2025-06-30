@@ -190,8 +190,8 @@ router.post('/stake', async (req, res) => {
           telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
           return_amount, start_date, end_date
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 
-          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $8,
-          TIMESTAMP WITH TIME ZONE 'epoch' + INTERVAL '1 second' * $9
+          TO_TIMESTAMP($8 / 1000.0) AT TIME ZONE 'UTC',
+          TO_TIMESTAMP($9 / 1000.0) AT TIME ZONE 'UTC'
         ) RETURNING *`,
         [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, 
          returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000)]
