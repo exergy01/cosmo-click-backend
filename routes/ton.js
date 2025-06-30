@@ -164,14 +164,23 @@ router.post('/stake', async (req, res) => {
       console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Добавляем поля start_time_ms и end_time_ms
+    // 🔥 ПРОСТОЕ РЕШЕНИЕ: Добавляем поля start_time_ms и end_time_ms + отладка
+    console.log('🔥 ПОПЫТКА СОЗДАНИЯ СТЕЙКА В БД...');
+    console.log('🔥 Данные для вставки:', {
+      telegramId, systemId, stakeAmountNum, planType, planPercent, 
+      actualDurationForDB, returnAmount, startTimeMs, endTimeMs
+    });
+    
     const stakeResult = await client.query(
       `INSERT INTO ton_staking (
         telegram_id, system_id, stake_amount, plan_type, plan_percent, plan_days, 
         return_amount, start_date, end_date, start_time_ms, end_time_ms
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, $9) RETURNING *`,
       [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, returnAmount, startTimeMs, endTimeMs]
-    );
+    ).catch(err => {
+      console.error('❌ ОШИБКА ВСТАВКИ В БД:', err);
+      throw err;
+    });
     
     console.log(`✅ СТЕЙК СОЗДАН В БД:`);
     console.log(`   ID: ${stakeResult.rows[0].id}`);
