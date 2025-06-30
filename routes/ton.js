@@ -194,7 +194,7 @@ router.post('/stake', async (req, res) => {
           TO_TIMESTAMP($9 / 1000.0) AT TIME ZONE 'UTC'
         ) RETURNING *`,
         [telegramId, systemId, stakeAmountNum, planType, planPercent, actualDurationForDB, 
-         returnAmount, Math.floor(startTimeMs/1000), Math.floor(endTimeMs/1000)]
+         returnAmount, startTimeMs, endTimeMs ]
       );
       console.log('✅ СТЕЙК СОЗДАН С UTC ВРЕМЕНЕМ (упрощенная схема)');
     } catch (err) {
