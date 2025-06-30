@@ -616,4 +616,48 @@ router.post('/check-system-5', async (req, res) => {
   }
 });
 
+// 📚 ПОЛУЧЕНИЕ ИСТОРИИ СТЕЙКОВ ИГРОКА
+router.get('/stakes/history/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  
+  try {
+    console.log(`📚 ПОЛУЧЕНИЕ ИСТОРИИ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
+    
+    // Получаем завершенные стейки
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT 
+          id, system_id, stake_amount, plan_type, plan_percent, plan_days,
+          return_amount, start_date, end_date, status, created_at, withdrawn_at,
+          penalty_amount, start_time_ms, end_time_ms
+        FROM ton_staking 
+        WHERE telegram_id = $1 AND status = 'withdrawn'
+        ORDER BY withdrawn_at DESC`,
+        [telegramId]
+      );
+    } catch (err) {
+      // Фалбэк на старую схему
+      result = await pool.query(
+        `SELECT 
+          id, system_id, stake_amount, plan_type, plan_percent, plan_days,
+          return_amount, start_date, end_date, status, created_at, withdrawn_at,
+          penalty_amount
+        FROM ton_staking 
+        WHERE telegram_id = $1 AND status = 'withdrawn'
+        ORDER BY withdrawn_at DESC`,
+        [telegramId]
+      );
+    }
+    
+    console.log(`📚 НАЙДЕНО ЗАВЕРШЕННЫХ СТЕЙКОВ: ${result.rows.length}`);
+    
+    res.json(result.rows);
+    
+  } catch (err) {
+    console.error('❌ Ошибка получения истории стейков:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
