@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== СЕРВЕРНЫЕ РАСЧЕТЫ ВРЕМЕНИ
+// ===== routes/ton.js ===== СЕРВЕРНЫЕ РАСЧЕТЫ ВРЕМЕНИ (ИСПРАВЛЕННЫЙ)
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -51,7 +51,6 @@ router.get('/calculate/:amount', (req, res) => {
     test_mode: TEST_MODE
   });
 });
-
 // 🔥 СОЗДАНИЕ СТЕЙКА
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
@@ -213,7 +212,6 @@ router.post('/stake', async (req, res) => {
     client.release();
   }
 });
-
 // 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - 🔥 ВСЕ РАСЧЕТЫ НА СЕРВЕРЕ
 router.get('/stakes/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
@@ -281,22 +279,21 @@ router.get('/stakes/:telegramId', async (req, res) => {
       
       console.log(`📊 СТЕЙК ${stake.id}: осталось ${timeLeftMs}мс, прогресс ${progress.toFixed(1)}%, готов: ${isReady}`);
       
-// В ton.js в эндпоинте /stakes/:telegramId 
-// ЗАМЕНИТЕ return {...stake, ...} на это:
-
-return {
-  ...stake,
-  // 🔥 СТАРЫЕ ПОЛЯ для совместимости
-  days_left: Math.max(0, Math.ceil(timeLeftMs / (TEST_MODE ? 60000 : 86400000))),
-  is_ready: isReady,
-  test_mode: TEST_MODE,
-  
-  // 🔥 НОВЫЕ ПОЛЯ с готовыми данными  
-  time_left_text: timeLeftText,
-  progress_percent: progress,
-  remaining_time_ms: Math.max(0, timeLeftMs),
-  server_time_utc: currentTimeUTC.toISOString()
-};
+      return {
+        ...stake,
+        // 🔥 СЕРВЕР ОТДАЕТ ГОТОВЫЕ ДАННЫЕ
+        time_left_text: timeLeftText,
+        progress_percent: progress,
+        is_ready: isReady,
+        remaining_time_ms: Math.max(0, timeLeftMs),
+        test_mode: TEST_MODE,
+        server_time_utc: currentTimeUTC.toISOString(),
+        // Добавляем для совместимости со старым кодом
+        days_left: Math.max(0, TEST_MODE ? 
+          Math.ceil(timeLeftMs / (1000 * 60)) : 
+          Math.ceil(timeLeftMs / (1000 * 60 * 60 * 24))
+        )
+      };
     });
     
     console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков с готовыми расчетами`);
@@ -307,7 +304,6 @@ return {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 // 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА
 router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
@@ -438,7 +434,6 @@ router.post('/withdraw', async (req, res) => {
     client.release();
   }
 });
-
 // 💸 ОТМЕНА СТЕЙКА СО ШТРАФОМ 10%
 router.post('/cancel', async (req, res) => {
   const { telegramId, stakeId } = req.body;
