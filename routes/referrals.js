@@ -1,4 +1,4 @@
-// ===== routes/referrals.js =====
+// ===== routes/referrals.js - ПОЛНЫЙ ИСПРАВЛЕННЫЙ КОД =====
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -6,7 +6,7 @@ const { logPlayerAction, detectSuspiciousActivity, updateLifetimeStats, logBalan
 
 const router = express.Router();
 
-// POST /api/referrals/register
+// POST /api/referrals/register - БЕЗ ФИКСИРОВАННЫХ НАГРАД
 router.post('/register', async (req, res) => {
   const { telegramId, referrerId } = req.body;
   if (!telegramId || !referrerId) return res.status(400).json({ error: 'Telegram ID and Referrer ID are required' });
@@ -26,25 +26,19 @@ router.post('/register', async (req, res) => {
       console.log(`🚨 Подозрительная активность при регистрации реферала: ${telegramId}`);
     }
 
-    // Получаем данные реферера для логирования баланса
+    // Получаем данные реферера для проверки
     const referrer = await getPlayer(referrerId);
     if (!referrer) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Referrer not found' });
     }
 
-    // 📊 СОХРАНЯЕМ БАЛАНС РЕФЕРЕРА ДО ОПЕРАЦИИ
-    const referrerBalanceBefore = {
-      ccc: parseFloat(referrer.ccc),
-      cs: parseFloat(referrer.cs),
-      ton: parseFloat(referrer.ton)
-    };
-
+    // 🔥 ИСПРАВЛЕНО: Только записываем связь И увеличиваем счетчик рефералов
     await client.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, telegramId]);
-    const referralRewardCs = 100;
-    const referralRewardTon = 0.001;
-    await client.query('UPDATE players SET cs = cs + $1, ton = ton + $2, referrals_count = referrals_count + 1 WHERE telegram_id = $3', [referralRewardCs, referralRewardTon, referrerId]);
-    await client.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, referralRewardCs, referralRewardTon]);
+    await client.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
+    
+    // 🔥 ИСПРАВЛЕНО: Записываем в таблицу рефералов БЕЗ НАГРАДЫ (0, 0)
+    await client.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, 0, 0]);
 
     // 📝 ЛОГИРОВАНИЕ РЕГИСТРАЦИИ РЕФЕРАЛА ДЛЯ НОВОГО ИГРОКА
     await logPlayerAction(
@@ -60,37 +54,22 @@ router.post('/register', async (req, res) => {
       req
     );
 
-    // 📝 ЛОГИРОВАНИЕ НАГРАДЫ ЗА РЕФЕРАЛА ДЛЯ РЕФЕРЕРА
-    const actionId = await logPlayerAction(
+    // 📝 ЛОГИРОВАНИЕ РЕГИСТРАЦИИ РЕФЕРАЛА ДЛЯ РЕФЕРЕРА (БЕЗ НАГРАДЫ)
+    await logPlayerAction(
       referrerId, 
-      'referral_reward', 
-      referralRewardCs, 
+      'referral_registered', 
+      0, 
       null, 
       null, 
       {
         referredId: telegramId,
-        rewardCs: referralRewardCs,
-        rewardTon: referralRewardTon,
-        action: 'received_referral_reward'
+        action: 'new_referral_registered'
       }, 
       req
     );
 
-    // 📊 ЛОГИРУЕМ ИЗМЕНЕНИЕ БАЛАНСА РЕФЕРЕРА
-    const referrerBalanceAfter = {
-      ccc: parseFloat(referrer.ccc),
-      cs: parseFloat(referrer.cs) + referralRewardCs,
-      ton: parseFloat(referrer.ton) + referralRewardTon
-    };
-
-    if (actionId) {
-      await logBalanceChange(referrerId, actionId, referrerBalanceBefore, referrerBalanceAfter);
-    }
-
-    // 📊 ОБНОВЛЯЕМ LIFETIME СТАТИСТИКУ РЕФЕРЕРА
-    await updateLifetimeStats(referrerId, 'collect_cs', referralRewardCs);
-    await updateLifetimeStats(referrerId, 'collect_ton', referralRewardTon);
-    await updateLifetimeStats(referrerId, 'referral_reward', 1);
+    // 📊 ОБНОВЛЯЕМ LIFETIME СТАТИСТИКУ РЕФЕРЕРА (только счетчик рефералов)
+    await updateLifetimeStats(referrerId, 'referral_registered', 1);
 
     await client.query('COMMIT');
     const updatedPlayer = await getPlayer(telegramId);
