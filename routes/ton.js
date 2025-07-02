@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== УПРОЩЕННЫЙ ПОДХОД ЧЕРЕЗ UTC + СЕРВЕРНОЕ ВРЕМЯ
+// ===== routes/ton.js ===== СЕРВЕРНЫЕ РАСЧЕТЫ ВРЕМЕНИ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -7,21 +7,6 @@ const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = true;
-
-// ⏰ ПОЛУЧЕНИЕ СЕРВЕРНОГО UTC ВРЕМЕНИ
-// В ton.js добавляем timestamp:
-router.get('/server-time', (req, res) => {
-  const serverTimeUTC = new Date();
-  
-  console.log(`⏰ ЗАПРОС СЕРВЕРНОГО ВРЕМЕНИ: ${serverTimeUTC.toISOString()}`);
-  
-  res.json({
-    success: true,
-    server_time_utc: serverTimeUTC.toISOString(),
-    timestamp: serverTimeUTC.getTime(), // ← ЭТО КЛЮЧЕВОЕ!
-    server_timezone_offset: serverTimeUTC.getTimezoneOffset()
-  });
-});
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
@@ -67,7 +52,7 @@ router.get('/calculate/:amount', (req, res) => {
   });
 });
 
-// 🔥 СОЗДАНИЕ СТЕЙКА - УПРОЩЕННЫЙ ПОДХОД
+// 🔥 СОЗДАНИЕ СТЕЙКА
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
   
@@ -130,7 +115,6 @@ router.post('/stake', async (req, res) => {
     // Параметры плана
     const planPercent = planType === 'fast' ? 3 : 7;
     
-    // 🔥 УПРОЩЕННЫЙ ПОДХОД: Только продолжительность в числах
     let planDaysForDB, timeUnit;
     
     if (TEST_MODE) {
@@ -145,23 +129,20 @@ router.post('/stake', async (req, res) => {
     
     const returnAmount = (stakeAmountNum * (1 + planPercent / 100)).toFixed(8);
     
-    // 🔥 ПРОСТОЕ ВРЕМЯ: Используем start_date и end_date в UTC
+    // 🔥 СЕРВЕРНОЕ ВРЕМЯ
     const startDateUTC = new Date();
     let endDateUTC;
     
     if (TEST_MODE) {
-      // Добавляем минуты для тестового режима
       endDateUTC = new Date(startDateUTC.getTime() + (planDaysForDB * 60 * 1000));
     } else {
-      // Добавляем дни для продакшена
       endDateUTC = new Date(startDateUTC.getTime() + (planDaysForDB * 24 * 60 * 60 * 1000));
     }
     
-    console.log(`📅 ПРОСТОЙ РАСЧЕТ:`);
+    console.log(`📅 СЕРВЕРНОЕ ВРЕМЯ:`);
     console.log(`   Время старта UTC: ${startDateUTC.toISOString()}`);
     console.log(`   Время окончания UTC: ${endDateUTC.toISOString()}`);
     console.log(`   Продолжительность: ${planDaysForDB} ${timeUnit}`);
-    console.log(`   Тестовый режим: ${TEST_MODE}`);
     
     // Списываем TON с баланса
     const newTonBalance = (tonBalance - stakeAmountNum).toFixed(8);
@@ -183,7 +164,7 @@ router.post('/stake', async (req, res) => {
       console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
-    // 🔥 СОЗДАНИЕ СТЕЙКА С end_date В БД
+    // 🔥 СОЗДАНИЕ СТЕЙКА
     console.log('🔥 СОЗДАНИЕ СТЕЙКА В БД...');
     
     const stakeResult = await client.query(
@@ -196,8 +177,6 @@ router.post('/stake', async (req, res) => {
     
     const createdStake = stakeResult.rows[0];
     console.log(`✅ СТЕЙК СОЗДАН В БД: ID ${createdStake.id}`);
-    console.log(`✅ Start date: ${createdStake.start_date}`);
-    console.log(`✅ End date: ${createdStake.end_date}`);
     
     await client.query('COMMIT');
     
@@ -217,7 +196,6 @@ router.post('/stake', async (req, res) => {
         return_amount: returnAmount,
         start_date: createdStake.start_date,
         end_date: createdStake.end_date,
-        days_left: planDaysForDB,
         time_unit: timeUnit,
         test_mode: TEST_MODE
       },
@@ -236,14 +214,13 @@ router.post('/stake', async (req, res) => {
   }
 });
 
-// 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - УПРОЩЕННЫЙ ПОДХОД
+// 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - 🔥 ВСЕ РАСЧЕТЫ НА СЕРВЕРЕ
 router.get('/stakes/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   
   try {
     console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
-    // Получаем активные стейки
     const result = await pool.query(
       `SELECT 
         id, system_id, stake_amount, plan_type, plan_percent, plan_days,
@@ -256,56 +233,67 @@ router.get('/stakes/:telegramId', async (req, res) => {
     
     console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
     
+    // 🔥 СЕРВЕРНОЕ ВРЕМЯ И РАСЧЕТЫ
     const currentTimeUTC = new Date();
-    console.log(`⏰ Текущее время UTC: ${currentTimeUTC.toISOString()}`);
+    console.log(`⏰ СЕРВЕРНОЕ время UTC: ${currentTimeUTC.toISOString()}`);
     
     const stakes = result.rows.map(stake => {
-      // 🔥 УПРОЩЕННЫЙ расчет: start_date + duration
       const startTimeUTC = new Date(stake.start_date);
       
       let endTimeUTC;
       if (TEST_MODE) {
-        // Добавляем минуты
         endTimeUTC = new Date(startTimeUTC.getTime() + (stake.plan_days * 60 * 1000));
       } else {
-        // Добавляем дни
         endTimeUTC = new Date(startTimeUTC.getTime() + (stake.plan_days * 24 * 60 * 60 * 1000));
       }
       
       const timeLeftMs = endTimeUTC.getTime() - currentTimeUTC.getTime();
+      const totalDurationMs = endTimeUTC.getTime() - startTimeUTC.getTime();
+      const elapsedTimeMs = currentTimeUTC.getTime() - startTimeUTC.getTime();
       
-      console.log(`📊 СТЕЙК ${stake.id}:`);
-      console.log(`   Старт UTC: ${startTimeUTC.toISOString()}`);
-      console.log(`   Конец UTC: ${endTimeUTC.toISOString()}`);
-      console.log(`   Осталось: ${timeLeftMs} мс`);
+      // 🔥 СЕРВЕР СЧИТАЕТ ВСЕ СРАЗУ
+      const progress = Math.min(100, Math.max(0, (elapsedTimeMs / totalDurationMs) * 100));
+      const isReady = timeLeftMs <= 0;
       
-      let daysLeft, timeUnitForDisplay;
-      
-      if (TEST_MODE) {
-        daysLeft = Math.max(0, Math.ceil(timeLeftMs / (1000 * 60)));
-        timeUnitForDisplay = 'минут';
-        console.log(`   🧪 Тест режим: ${daysLeft} минут до окончания`);
+      let timeLeftText;
+      if (isReady) {
+        timeLeftText = 'Готово к сбору!';
       } else {
-        daysLeft = Math.max(0, Math.ceil(timeLeftMs / (1000 * 60 * 60 * 24)));
-        timeUnitForDisplay = 'дней';
-        console.log(`   🏭 Прод режим: ${daysLeft} дней до окончания`);
+        if (TEST_MODE) {
+          const totalSeconds = Math.floor(timeLeftMs / 1000);
+          const minutes = Math.floor(totalSeconds / 60);
+          const seconds = totalSeconds % 60;
+          timeLeftText = `${minutes}м ${seconds}с`;
+        } else {
+          const days = Math.floor(timeLeftMs / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((timeLeftMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const minutes = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60));
+          
+          if (days > 0) {
+            timeLeftText = `${days}д ${hours}ч ${minutes}м`;
+          } else if (hours > 0) {
+            timeLeftText = `${hours}ч ${minutes}м`;
+          } else {
+            timeLeftText = `${minutes}м`;
+          }
+        }
       }
       
-      const isReady = timeLeftMs <= 0;
-      console.log(`   ✅ Готов к сбору: ${isReady}`);
+      console.log(`📊 СТЕЙК ${stake.id}: осталось ${timeLeftMs}мс, прогресс ${progress.toFixed(1)}%, готов: ${isReady}`);
       
       return {
         ...stake,
-        start_date_utc: startTimeUTC.toISOString(),
-        end_date_utc: endTimeUTC.toISOString(),
-        days_left: daysLeft,
+        // 🔥 СЕРВЕР ОТДАЕТ ГОТОВЫЕ ДАННЫЕ
+        time_left_text: timeLeftText,
+        progress_percent: progress,
         is_ready: isReady,
+        remaining_time_ms: Math.max(0, timeLeftMs),
         test_mode: TEST_MODE,
-        time_unit: timeUnitForDisplay
+        server_time_utc: currentTimeUTC.toISOString()
       };
     });
     
-    console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков`);
+    console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков с готовыми расчетами`);
     res.json(stakes);
     
   } catch (err) {
@@ -314,7 +302,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
   }
 });
 
-// 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА - УПРОЩЕННАЯ ПРОВЕРКА
+// 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА
 router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
@@ -351,7 +339,7 @@ router.post('/withdraw', async (req, res) => {
     const currentTimeUTC = new Date();
     const startTimeUTC = new Date(stake.start_date);
     
-    // 🔥 УПРОЩЕННАЯ проверка времени
+    // 🔥 СЕРВЕРНАЯ проверка времени
     let endTimeUTC;
     if (TEST_MODE) {
       endTimeUTC = new Date(startTimeUTC.getTime() + (stake.plan_days * 60 * 1000));
@@ -361,7 +349,7 @@ router.post('/withdraw', async (req, res) => {
     
     const timeLeftMs = endTimeUTC.getTime() - currentTimeUTC.getTime();
     
-    console.log(`💸 ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
+    console.log(`💸 СЕРВЕРНАЯ ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
     console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
     console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
     console.log(`   Разница: ${timeLeftMs} мс`);
@@ -445,7 +433,7 @@ router.post('/withdraw', async (req, res) => {
   }
 });
 
-// 💸 ОТМЕНА СТЕЙКА СО ШТРАФОМ 10% - УПРОЩЕННАЯ ПРОВЕРКА
+// 💸 ОТМЕНА СТЕЙКА СО ШТРАФОМ 10%
 router.post('/cancel', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
@@ -480,7 +468,7 @@ router.post('/cancel', async (req, res) => {
     const currentTimeUTC = new Date();
     const startTimeUTC = new Date(stake.start_date);
     
-    // 🔥 УПРОЩЕННАЯ проверка: можно ли отменить стейк
+    // 🔥 СЕРВЕРНАЯ проверка: можно ли отменить стейк
     let endTimeUTC;
     if (TEST_MODE) {
       endTimeUTC = new Date(startTimeUTC.getTime() + (stake.plan_days * 60 * 1000));
@@ -490,7 +478,7 @@ router.post('/cancel', async (req, res) => {
     
     const timeLeftMs = endTimeUTC.getTime() - currentTimeUTC.getTime();
     
-    console.log(`🔍 ПРОВЕРКА ВОЗМОЖНОСТИ ОТМЕНЫ СТЕЙКА ${stakeId}:`);
+    console.log(`🔍 СЕРВЕРНАЯ ПРОВЕРКА ВОЗМОЖНОСТИ ОТМЕНЫ СТЕЙКА ${stakeId}:`);
     console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
     console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
     console.log(`   Разница: ${timeLeftMs} мс`);
