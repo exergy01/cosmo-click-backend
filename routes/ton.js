@@ -9,6 +9,7 @@ const router = express.Router();
 const TEST_MODE = true;
 
 // ⏰ ПОЛУЧЕНИЕ СЕРВЕРНОГО UTC ВРЕМЕНИ
+// В ton.js добавляем timestamp:
 router.get('/server-time', (req, res) => {
   const serverTimeUTC = new Date();
   
@@ -17,7 +18,8 @@ router.get('/server-time', (req, res) => {
   res.json({
     success: true,
     server_time_utc: serverTimeUTC.toISOString(),
-    timestamp: serverTimeUTC.getTime()
+    timestamp: serverTimeUTC.getTime(), // ← ЭТО КЛЮЧЕВОЕ!
+    server_timezone_offset: serverTimeUTC.getTimezoneOffset()
   });
 });
 
