@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== УПРОЩЕННЫЙ ПОДХОД ЧЕРЕЗ UTC
+// ===== routes/ton.js ===== УПРОЩЕННЫЙ ПОДХОД ЧЕРЕЗ UTC + СЕРВЕРНОЕ ВРЕМЯ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -7,6 +7,19 @@ const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = true;
+
+// ⏰ ПОЛУЧЕНИЕ СЕРВЕРНОГО UTC ВРЕМЕНИ
+router.get('/server-time', (req, res) => {
+  const serverTimeUTC = new Date();
+  
+  console.log(`⏰ ЗАПРОС СЕРВЕРНОГО ВРЕМЕНИ: ${serverTimeUTC.toISOString()}`);
+  
+  res.json({
+    success: true,
+    server_time_utc: serverTimeUTC.toISOString(),
+    timestamp: serverTimeUTC.getTime()
+  });
+});
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
