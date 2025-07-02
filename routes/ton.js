@@ -6,7 +6,7 @@ const { getPlayer } = require('./shared/getPlayer');
 const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
-const TEST_MODE = true;
+const TEST_MODE = false;
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
