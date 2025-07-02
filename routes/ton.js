@@ -281,16 +281,22 @@ router.get('/stakes/:telegramId', async (req, res) => {
       
       console.log(`📊 СТЕЙК ${stake.id}: осталось ${timeLeftMs}мс, прогресс ${progress.toFixed(1)}%, готов: ${isReady}`);
       
-      return {
-        ...stake,
-        // 🔥 СЕРВЕР ОТДАЕТ ГОТОВЫЕ ДАННЫЕ
-        time_left_text: timeLeftText,
-        progress_percent: progress,
-        is_ready: isReady,
-        remaining_time_ms: Math.max(0, timeLeftMs),
-        test_mode: TEST_MODE,
-        server_time_utc: currentTimeUTC.toISOString()
-      };
+// В ton.js в эндпоинте /stakes/:telegramId 
+// ЗАМЕНИТЕ return {...stake, ...} на это:
+
+return {
+  ...stake,
+  // 🔥 СТАРЫЕ ПОЛЯ для совместимости
+  days_left: Math.max(0, Math.ceil(timeLeftMs / (TEST_MODE ? 60000 : 86400000))),
+  is_ready: isReady,
+  test_mode: TEST_MODE,
+  
+  // 🔥 НОВЫЕ ПОЛЯ с готовыми данными  
+  time_left_text: timeLeftText,
+  progress_percent: progress,
+  remaining_time_ms: Math.max(0, timeLeftMs),
+  server_time_utc: currentTimeUTC.toISOString()
+};
     });
     
     console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков с готовыми расчетами`);
