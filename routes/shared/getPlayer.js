@@ -1,10 +1,15 @@
 const pool = require('../../db');
 
 async function getPlayer(telegramId) {
+  console.log(`🔍 getPlayer вызван для игрока: ${telegramId}`);
+  
   const playerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
   let player = playerResult.rows[0];
 
   if (!player) {
+    console.log(`❗ ВНИМАНИЕ: getPlayer создает нового игрока ${telegramId} вместо нового endpoint!`);
+    console.log(`❗ Это означает что frontend НЕ ИСПОЛЬЗУЕТ новый endpoint create-with-referrer!`);
+    
     // 🔥 ИСПРАВЛЕНО: Используем startapp вместо start для Mini Apps
     const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
     
