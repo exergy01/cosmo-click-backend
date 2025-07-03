@@ -55,7 +55,7 @@ async function getPlayer(telegramId) {
       RETURNING *;
     `;
     
-    const referrerId = '1222791281'; // дефолтный рефер
+    const referrerId = '1222791281'; // дефолтный рефер (временно)
     
     const insertValues = [
       telegramId,
@@ -97,8 +97,11 @@ async function getPlayer(telegramId) {
           // Увеличиваем счетчик рефералов у реферера
           await pool.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
           
-          // Записываем в таблицу рефералов
-          await pool.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, 0, 0]);
+          // 🔥 ИСПРАВЛЕНО: Используем правильные поля для таблицы referrals
+          await pool.query(
+            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())', 
+            [referrerId, telegramId, 0, 0]
+          );
           
           console.log(`✅ Реферальная регистрация успешна: ${telegramId} → ${referrerId}`);
         } else {

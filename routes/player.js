@@ -5,6 +5,98 @@ const { getPlayerStatistics } = require('./shared/logger');
 
 const router = express.Router();
 
+// Добавьте этот код в ваш routes/player.js В САМОМ НАЧАЛЕ (после require)
+
+// POST /api/player/create-with-referrer - СОЗДАНИЕ ИГРОКА С РЕФЕРАЛЬНЫМИ ДАННЫМИ
+router.post('/create-with-referrer', async (req, res) => {
+  const { telegramId, referralData } = req.body;
+  if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
+
+  console.log(`🎯 Создание игрока с реферальными данными: ${telegramId}`);
+  console.log(`🔗 Реферальные данные:`, referralData);
+
+  try {
+    // 🔥 ИЗВЛЕКАЕМ РЕФЕРЕРА ИЗ ДАННЫХ
+    let referrerId = '1222791281'; // дефолтный
+
+    // Приоритет 1: tgWebAppStartParam из URL
+    if (referralData?.tgWebAppStartParam) {
+      referrerId = referralData.tgWebAppStartParam;
+      console.log(`🎯 Реферер найден в tgWebAppStartParam: ${referrerId}`);
+    }
+    // Приоритет 2: start_param из Telegram WebApp
+    else if (referralData?.start_param) {
+      referrerId = referralData.start_param;
+      console.log(`🎯 Реферер найден в start_param: ${referrerId}`);
+    }
+    // Приоритет 3: другие параметры
+    else if (referralData?.startapp || referralData?.ref) {
+      referrerId = referralData.startapp || referralData.ref;
+      console.log(`🎯 Реферер найден в других параметрах: ${referrerId}`);
+    }
+
+    console.log(`🎯 Финальный реферер: ${referrerId}`);
+
+    // 🔥 ВРЕМЕННО ПЕРЕЗАПИСЫВАЕМ ДЕФОЛТНОГО РЕФЕРЕРА
+    // Это нужно сделать до создания игрока
+    const originalReferrer = '1222791281';
+    
+    // Получаем игрока (создается автоматически если не существует)
+    const { getPlayer } = require('./shared/getPlayer');
+    
+    // Временный хак: перезаписываем дефолтного реферера в getPlayer
+    const originalGetPlayer = getPlayer;
+    const customGetPlayer = async (tgId) => {
+      // Создаем игрока через обычную логику
+      const player = await originalGetPlayer(tgId);
+      
+      // Если это новый игрок И у нас есть правильный реферер - обновляем
+      if (player && referrerId !== originalReferrer && referrerId !== tgId) {
+        console.log(`🔄 Обновляем реферера с ${originalReferrer} на ${referrerId}`);
+        
+        try {
+          // Обновляем реферера у игрока
+          await pool.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, tgId]);
+          
+          // Проверяем что новый рефер существует
+          const referrerCheck = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
+          if (referrerCheck.rows.length > 0) {
+            // Убираем +1 у старого реферера
+            await pool.query('UPDATE players SET referrals_count = referrals_count - 1 WHERE telegram_id = $1', [originalReferrer]);
+            
+            // Добавляем +1 к новому рефереру
+            await pool.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
+            
+            // Обновляем запись в referrals
+            await pool.query('UPDATE referrals SET referrer_id = $1 WHERE referred_id = $2', [referrerId, tgId]);
+            
+            console.log(`✅ Реферер успешно обновлен: ${tgId} → ${referrerId}`);
+          } else {
+            console.log(`❌ Новый рефер ${referrerId} не найден, оставляем дефолтного`);
+          }
+          
+          // Обновляем объект игрока
+          player.referrer_id = referrerId;
+          
+        } catch (updateErr) {
+          console.error('❌ Ошибка обновления реферера:', updateErr);
+        }
+      }
+      
+      return player;
+    };
+    
+    const player = await customGetPlayer(telegramId);
+    
+    console.log(`✅ Игрок создан/обновлен с правильным реферером: ${player.referrer_id}`);
+    res.json(player);
+
+  } catch (err) {
+    console.error('❌ Ошибка создания игрока с рефералом:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С РЕФЕРАЛЬНОЙ ЛОГИКОЙ
 router.post('/create', async (req, res) => {
   const { telegramId, referralData } = req.body;
