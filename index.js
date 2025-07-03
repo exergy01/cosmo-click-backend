@@ -1,19 +1,15 @@
 const express = require('express');
 const cors = require('cors');
-// const bodyParser = require('body-parser'); // В вашем оригинальном файле не было bodyParser.json(). express.json() обычно достаточно.
-// const dotenv = require('dotenv'); // У вас уже работает без него на Render, так что убираем.
-const { Telegraf } = require('telegraf'); // <<< ЭТО НАМ НУЖНО: Импортируем Telegraf
-
-// dotenv.config(); // Убираем, так как Render сам грузит ENV
+const { Telegraf } = require('telegraf');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; // <<< Используем TELEGRAM_BOT_TOKEN как в вашем .env
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Инициализируем бота
-const bot = new Telegraf(BOT_TOKEN); // <<< Инициализируем бота с вашим токеном
+const bot = new Telegraf(BOT_TOKEN);
 
-// Middleware
+// Middleware CORS - ДОЛЖЕН БЫТЬ ОЧЕНЬ РАННО
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -42,15 +38,15 @@ app.use((req, res, next) => {
   }
 });
 
-app.use(express.json()); // Ваш оригинальный мидлвар для JSON
+// JSON Body Parser - ДОЛЖЕН БЫТЬ ПЕРЕД ВЕБХУКОМ TELEGRAM
+app.use(express.json());
 
-// --- >>> ВАЖНОЕ ДОБАВЛЕНИЕ ДЛЯ ВЕБХУКА TELEGRAM <<< ---
-// Этот middleware должен быть установлен ПЕРЕД другими маршрутами API,
+// --- >>> КРИТИЧЕСКИ ВАЖНО: ВЕБХУК TELEGRAM ДОЛЖЕН СТОЯТЬ ЗДЕСЬ <<< ---
+// Он должен быть после express.json(), но ПЕРЕД любыми другими маршрутами API,
 // чтобы Telegraf мог перехватывать входящие обновления от Telegram на /webhook.
-app.use(bot.webhookCallback('/webhook')); // <<< ЭТО СОЗДАЕТ POST /webhook
+app.use(bot.webhookCallback('/webhook'));
 
 // Обработка тестовых команд бота (для проверки, что бот работает)
-// Если эти команды не нужны, их можно удалить, но они помогают убедиться, что бот живой.
 bot.start((ctx) => {
   console.log('Bot /start command received.');
   ctx.reply('Привет! Бот запущен и готов к работе. Запускай игру через Web App!');
@@ -217,8 +213,7 @@ app.listen(PORT, async () => {
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
 
   // --- >>> ВАЖНОЕ: Установка вебхука Telegram при запуске сервера <<< ---
-  // Используем ваш BOT_TOKEN, который уже определен
-  const webhookUrl = `https://cosmoclick-backend.onrender.com/webhook`; // Замените на ваш фактический публичный URL
+  const webhookUrl = `https://cosmoclick-backend.onrender.com/webhook`;
   try {
     const success = await bot.telegram.setWebhook(webhookUrl);
     console.log(`📡 Установка вебхука Telegram (${webhookUrl}): ${success ? '✅ Успешно' : '❌ Ошибка'}`);
