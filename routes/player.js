@@ -6,10 +6,6 @@ const { getPlayerStatistics } = require('./shared/logger');
 const router = express.Router();
 
 // POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С РЕФЕРАЛЬНОЙ ЛОГИКОЙ
-// Исправленный endpoint POST /api/player/create в routes/player.js
-// Добавить этот код в ваш файл routes/player.js
-
-// POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С ПРАВИЛЬНОЙ РЕФЕРАЛЬНОЙ ЛОГИКОЙ
 router.post('/create', async (req, res) => {
   const { telegramId, referralData } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
@@ -67,7 +63,7 @@ router.post('/create', async (req, res) => {
     console.log(`🎯 Финальный реферер: ${referrerId}`);
 
     // Создаем игрока
-    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`; // 🔥 ИСПРАВЛЕНО: startapp вместо start
+    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
     
     const initialCollectedBySystem = JSON.stringify({
       "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
@@ -165,7 +161,6 @@ router.post('/create', async (req, res) => {
     await client.query('COMMIT');
     
     // Получаем полные данные игрока
-    const { getPlayer } = require('./shared/getPlayer');
     const fullPlayer = await getPlayer(telegramId);
     
     console.log(`✅ Игрок ${telegramId} создан успешно с реферером ${referrerId}`);
@@ -208,9 +203,8 @@ function extractReferrerFromUrl(url) {
     console.error('❌ Ошибка парсинга URL:', err);
     return null;
   }
-};
+}
 
-// POST /api/player/language
 // POST /api/player/language
 router.post('/language', async (req, res) => {
   const { telegramId, language, isFirstLanguageSelection } = req.body;
