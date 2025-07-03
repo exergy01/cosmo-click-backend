@@ -369,11 +369,15 @@ router.post('/color', async (req, res) => {
 });
 
 // GET /api/player/:telegramId
+// GET /api/player/:telegramId
 router.get('/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   try {
     const player = await getPlayer(telegramId);
-    if (!player) return res.status(404).json({ error: 'Player not found' });
+    if (!player) {
+      console.log(`❌ GET /api/player/${telegramId} - игрок не найден, возвращаем 404`);
+      return res.status(404).json({ error: 'Player not found' });
+    }
     res.json(player);
   } catch (err) {
     console.error('Error fetching player data:', err);

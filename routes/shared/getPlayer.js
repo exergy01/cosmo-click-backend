@@ -7,118 +7,12 @@ async function getPlayer(telegramId) {
   let player = playerResult.rows[0];
 
   if (!player) {
-    console.log(`❗ ВНИМАНИЕ: getPlayer создает нового игрока ${telegramId} вместо нового endpoint!`);
-    console.log(`❗ Это означает что frontend НЕ ИСПОЛЬЗУЕТ новый endpoint create-with-referrer!`);
-    
-    // 🔥 ИСПРАВЛЕНО: Используем startapp вместо start для Mini Apps
-    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
-    
-    // Получаем данные из Telegram (если доступны)
-    const telegramUser = null; // Данные Telegram будут получены на фронтенде
-    let username = `user_${telegramId}`;
-    let first_name = `User${telegramId.slice(-4)}`;
-
-    // Пытаемся получить реальные данные из Telegram Web App (если доступны)
-    // В production эти данные должны передаваться с фронтенда
-    
-    const initialCollectedBySystem = JSON.stringify({
-      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
-    });
-    
-    const initialLastCollectionTime = JSON.stringify({
-      "1": new Date().toISOString(),
-      "2": new Date().toISOString(), 
-      "3": new Date().toISOString(),
-      "4": new Date().toISOString(),
-      "5": new Date().toISOString(),
-      "6": new Date().toISOString(),
-      "7": new Date().toISOString()
-    });
-
-    const initialMiningSpeedData = JSON.stringify({
-      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
-    });
-
-    const initialAsteroidTotalData = JSON.stringify({
-      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
-    });
-
-    const initialMaxCargoCapacityData = JSON.stringify({
-      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
-    });
-
-    // 🔥 ИСПРАВЛЕНО: Добавляем referrer_id сразу при создании
-    const insertQuery = `
-      INSERT INTO players (
-        telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
-        collected_by_system, cargo_levels, drones, asteroids, 
-        last_collection_time, language, unlocked_systems, current_system,
-        mining_speed_data, asteroid_total_data, max_cargo_capacity_data,
-        referrer_id, referrals_count
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-      RETURNING *;
-    `;
-    
-    const referrerId = '1222791281'; // дефолтный рефер (временно)
-    
-    const insertValues = [
-      telegramId,
-      username,
-      first_name,
-      0, // ccc
-      0, // cs
-      0, // ton
-      referralLink,
-      '#61dafb',
-      initialCollectedBySystem,
-      JSON.stringify([]),
-      JSON.stringify([]),
-      JSON.stringify([]),
-      initialLastCollectionTime,
-      null, // language остается null
-      JSON.stringify([1]),
-      1,
-      initialMiningSpeedData,
-      initialAsteroidTotalData,
-      initialMaxCargoCapacityData,
-      referrerId, // 🔥 ДОБАВЛЕНО: referrer_id
-      0 // 🔥 ДОБАВЛЕНО: referrals_count
-    ];
-    
-    const newPlayerResult = await pool.query(insertQuery, insertValues);
-    player = newPlayerResult.rows[0];
-    
-    console.log(`🎯 Создан новый игрок ${telegramId} с реферером ${referrerId}`);
-
-    // 🎯 РЕФЕРАЛЬНАЯ ЛОГИКА ПРИ СОЗДАНИИ ИГРОКА
-    try {
-      console.log(`🎯 Регистрируем нового игрока ${telegramId} под рефером ${referrerId}`);
-      
-      // Проверяем, что рефер существует и это не сам игрок
-      if (referrerId !== telegramId) {
-        const referrerCheck = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
-        if (referrerCheck.rows.length > 0) {
-          // Увеличиваем счетчик рефералов у реферера
-          await pool.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
-          
-          // 🔥 ИСПРАВЛЕНО: Используем правильные поля для таблицы referrals
-          await pool.query(
-            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())', 
-            [referrerId, telegramId, 0, 0]
-          );
-          
-          console.log(`✅ Реферальная регистрация успешна: ${telegramId} → ${referrerId}`);
-        } else {
-          console.log(`❌ Рефер ${referrerId} не найден в базе данных`);
-        }
-      }
-      
-    } catch (referralErr) {
-      console.error('❌ Ошибка реферальной регистрации:', referralErr);
-      // НЕ падаем если реферальная регистрация не удалась
-    }
+    console.log(`❌ getPlayer: игрок ${telegramId} НЕ НАЙДЕН - возвращаем null`);
+    console.log(`ℹ️ Создание игроков теперь происходит через endpoint create-with-referrer`);
+    return null; // 🔥 НЕ СОЗДАЕМ ИГРОКА - возвращаем null
   }
+
+  console.log(`✅ getPlayer: игрок ${telegramId} найден, referrer_id = ${player.referrer_id}`);
 
   // Убеждаемся что все нужные поля существуют
   player.asteroids = player.asteroids || [];
@@ -173,7 +67,6 @@ async function getPlayer(telegramId) {
   });
 
   console.log('🔧 getPlayer: финальные max_cargo_capacity_data =', maxCargoCapacityData);
-  console.log(`🔧 getPlayer: игрок ${telegramId}, referrer_id = ${player.referrer_id}`);
 
   return {
     ...player,
