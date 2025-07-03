@@ -5,32 +5,195 @@ const { getPlayerStatistics } = require('./shared/logger');
 
 const router = express.Router();
 
-// POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА
+// POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С РЕФЕРАЛЬНОЙ ЛОГИКОЙ
 router.post('/create', async (req, res) => {
-  const { telegramId } = req.body;
+  const { telegramId, referralData } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
 
   console.log(`🆕 Создание нового игрока: ${telegramId}`);
+  console.log(`🔗 Данные реферала:`, referralData);
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Проверяем, что игрок не существует
-    const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
+    const existingPlayer = await client.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
     if (existingPlayer.rows.length > 0) {
+      await client.query('ROLLBACK');
       console.log(`❌ Игрок ${telegramId} уже существует`);
       return res.status(400).json({ error: 'Player already exists' });
     }
 
-    // Создаем игрока через getPlayer (там уже есть вся логика)
-    const newPlayer = await getPlayer(telegramId);
+    // 🎯 ИЗВЛЕКАЕМ РЕФЕРЕРА ИЗ РАЗНЫХ ИСТОЧНИКОВ
+    let referrerId = '1222791281'; // дефолтный рефер
+
+    // Приоритет 1: Из переданных данных (start_param из Telegram)
+    if (referralData?.start_param) {
+      referrerId = referralData.start_param;
+      console.log(`🔗 Реферер из start_param: ${referrerId}`);
+    }
+    // Приоритет 2: Из initData
+    else if (referralData?.initData) {
+      const urlParams = new URLSearchParams(referralData.initData);
+      const startParam = urlParams.get('start');
+      if (startParam) {
+        referrerId = startParam;
+        console.log(`🔗 Реферер из initData: ${referrerId}`);
+      }
+    }
+    // Приоритет 3: Из прямой ссылки
+    else if (referralData?.url) {
+      const referrerFromUrl = extractReferrerFromUrl(referralData.url);
+      if (referrerFromUrl) {
+        referrerId = referrerFromUrl;
+        console.log(`🔗 Реферер из URL: ${referrerId}`);
+      }
+    }
+
+    console.log(`🎯 Финальный реферер: ${referrerId}`);
+
+    // Создаем игрока (используем существующую логику из getPlayer)
+    const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
     
-    console.log(`✅ Игрок ${telegramId} создан успешно`);
-    res.json(newPlayer);
+    const initialCollectedBySystem = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+    
+    const initialLastCollectionTime = JSON.stringify({
+      "1": new Date().toISOString(),
+      "2": new Date().toISOString(), 
+      "3": new Date().toISOString(),
+      "4": new Date().toISOString(),
+      "5": new Date().toISOString(),
+      "6": new Date().toISOString(),
+      "7": new Date().toISOString()
+    });
+
+    const initialMiningSpeedData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    const initialAsteroidTotalData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    const initialMaxCargoCapacityData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    // 🔥 СОЗДАЕМ ИГРОКА СРАЗУ С РЕФЕРЕРОМ
+    const insertQuery = `
+      INSERT INTO players (
+        telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
+        collected_by_system, cargo_levels, drones, asteroids, 
+        last_collection_time, language, unlocked_systems, current_system,
+        mining_speed_data, asteroid_total_data, max_cargo_capacity_data,
+        referrer_id, referrals_count
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      RETURNING *;
+    `;
+    
+    const insertValues = [
+      telegramId,
+      `user_${telegramId}`,
+      `User${telegramId.slice(-4)}`,
+      0, // ccc
+      0, // cs  
+      0, // ton
+      referralLink,
+      '#61dafb',
+      initialCollectedBySystem,
+      JSON.stringify([]),
+      JSON.stringify([]),
+      JSON.stringify([]),
+      initialLastCollectionTime,
+      null, // language
+      JSON.stringify([1]),
+      1,
+      initialMiningSpeedData,
+      initialAsteroidTotalData,
+      initialMaxCargoCapacityData,
+      referrerId, // 🎯 РЕФЕРЕР!
+      0 // referrals_count
+    ];
+    
+    const newPlayerResult = await client.query(insertQuery, insertValues);
+    let player = newPlayerResult.rows[0];
+
+    console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
+
+    // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА
+    try {
+      // Проверяем, что рефер существует и это не сам игрок
+      if (referrerId !== telegramId) {
+        const referrerCheck = await client.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
+        if (referrerCheck.rows.length > 0) {
+          // Увеличиваем счетчик рефералов у реферера
+          await client.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
+          
+          // Записываем в таблицу рефералов
+          await client.query(
+            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', 
+            [referrerId, telegramId, 0, 0]
+          );
+          
+          console.log(`✅ Статистика реферера ${referrerId} обновлена`);
+        } else {
+          console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
+        }
+      }
+    } catch (referralErr) {
+      console.error('❌ Ошибка обновления статистики реферера:', referralErr);
+      // НЕ откатываем транзакцию - игрок уже создан
+    }
+
+    await client.query('COMMIT');
+    
+    // Получаем полные данные игрока через getPlayer
+    const { getPlayer } = require('./shared/getPlayer');
+    const fullPlayer = await getPlayer(telegramId);
+    
+    console.log(`✅ Игрок ${telegramId} создан успешно с реферером ${referrerId}`);
+    res.json(fullPlayer);
 
   } catch (err) {
-    console.error('Error creating player:', err);
+    await client.query('ROLLBACK');
+    console.error('❌ Ошибка создания игрока:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
+
+// 🔧 ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Извлечение реферера из URL
+function extractReferrerFromUrl(url) {
+  try {
+    // Ищем паттерны: start=123456, startApp=123456, и т.д.
+    const patterns = [
+      /[?&]start=([^&]+)/,
+      /[?&]startApp=([^&]+)/,
+      /[?&]startapp=([^&]+)/,
+      /[?&]ref=([^&]+)/,
+      /[?&]referrer=([^&]+)/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        console.log(`🔗 Найден реферер в URL: ${match[1]} (паттерн: ${pattern})`);
+        return match[1];
+      }
+    }
+    
+    console.log(`🔗 Реферер в URL не найден: ${url}`);
+    return null;
+  } catch (err) {
+    console.error('❌ Ошибка парсинга URL:', err);
+    return null;
+  }
+};
 
 // POST /api/player/language
 // POST /api/player/language
