@@ -52,9 +52,9 @@ app.get('/webhook', (req, res, next) => {
   console.log('🔍 Query params:', req.query);
   console.log('🔍 Has params:', hasParams);
   
-  // Если это браузер с параметрами - это старая реферальная ссылка
-  if (userAgent.includes('Mozilla') && hasParams) {
-    console.log('🔄 REDIRECT: Старая реферальная ссылка обнаружена');
+  // Если это браузерный запрос - redirect на frontend
+  if (userAgent.includes('Mozilla')) {
+    console.log('🔄 REDIRECT: Браузерный запрос обнаружен');
     
     // Извлекаем реферальный параметр
     const referralParam = req.query.tgWebAppStartParam || req.query.startapp || req.query.start;
@@ -64,6 +64,8 @@ app.get('/webhook', (req, res, next) => {
     if (referralParam) {
       redirectUrl += `?tgWebAppStartParam=${referralParam}`;
       console.log(`🎯 Реферальный параметр: ${referralParam}`);
+    } else {
+      console.log('🎯 Прямое открытие бота (без реферального параметра)');
     }
     
     console.log('🎯 Redirect на frontend:', redirectUrl);
