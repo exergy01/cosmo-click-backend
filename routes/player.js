@@ -52,15 +52,17 @@ router.post('/create-with-referrer', async (req, res) => {
 
     console.log(`🎯 ФИНАЛЬНЫЙ РЕФЕРЕР: ${referrerId}`);
 
-    // Создаем игрока через обычную логику сначала
-    console.log('🔧 Вызываем getPlayer для создания/получения игрока...');
-    const player = await getPlayer(telegramId);
-    console.log('🔧 getPlayer завершен, игрок:', player ? 'создан/найден' : 'не найден');
-    
-    if (!player) {
-      console.log('❌ Игрок не был создан через getPlayer');
-      return res.status(500).json({ error: 'Failed to create player' });
-    }
+// Проверяем, что игрок не существует
+const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
+if (existingPlayer.rows.length > 0) {
+  console.log(`❌ Игрок ${telegramId} уже существует`);
+  const player = await getPlayer(telegramId);
+  return res.json(player);
+}
+
+// Создаем нового игрока напрямую в БД
+console.log('🔧 Создаем нового игрока в базе данных...');
+// [здесь код создания игрока из старого getPlayer.js]
 
     console.log(`🔧 Текущий реферер игрока: ${player.referrer_id}`);
     
