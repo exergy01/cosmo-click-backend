@@ -41,9 +41,37 @@ app.use((req, res, next) => {
 // JSON Body Parser - ДОЛЖЕН БЫТЬ ПЕРЕД ВЕБХУКОМ TELEGRAM
 app.use(express.json());
 
-// --- >>> КРИТИЧЕСКИ ВАЖНО: ВЕБХУК TELEGRAM ДОЛЖЕН СТОЯТЬ ЗДЕСЬ <<< ---
-// Он должен быть после express.json(), но ПЕРЕД любыми другими маршрутами API,
-// чтобы Telegraf мог перехватывать входящие обновления от Telegram на /webhook.
+// 🔥 КРИТИЧЕСКИ ВАЖНО: REDIRECT для старых реферальных ссылок ПЕРЕД webhook
+app.get('/webhook', (req, res) => {
+  // Проверяем, это браузерный запрос (старая реферальная ссылка) или Telegram webhook
+  const userAgent = req.headers['user-agent'] || '';
+  const hasParams = Object.keys(req.query).length > 0;
+  
+  // Если это браузер с параметрами - это старая реферальная ссылка
+  if (userAgent.includes('Mozilla') && hasParams) {
+    console.log('🔄 REDIRECT: Старая реферальная ссылка обнаружена');
+    console.log('📋 Query params:', req.query);
+    
+    // Извлекаем реферальный параметр
+    const referralParam = req.query.tgWebAppStartParam || req.query.startapp || req.query.start;
+    
+    // Формируем правильную ссылку на frontend
+    let redirectUrl = 'https://cosmoclick-frontend.vercel.app';
+    if (referralParam) {
+      redirectUrl += `?tgWebAppStartParam=${referralParam}`;
+      console.log(`🎯 Реферальный параметр: ${referralParam}`);
+    }
+    
+    console.log('🎯 Redirect на frontend:', redirectUrl);
+    return res.redirect(redirectUrl);
+  }
+  
+  // Если это не браузерный запрос - пропускаем дальше к Telegram webhook
+  console.log('📡 Telegram webhook запрос');
+  next();
+});
+
+// --- >>> ВЕБХУК TELEGRAM (после redirect) <<< ---
 app.use(bot.webhookCallback('/webhook'));
 
 // Обработка тестовых команд бота (для проверки, что бот работает)
@@ -117,6 +145,8 @@ app.get('/', (req, res) => {
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
     </ul>
     <p><strong>Время сервера:</strong> ${new Date().toISOString()}</p>
+    <h3>🔧 Redirect система:</h3>
+    <p>Старые реферальные ссылки автоматически перенаправляются на frontend</p>
   `);
 });
 
@@ -193,7 +223,6 @@ app.use((req, res) => {
   });
 });
 
-
 // 🔥 ЗАПУСК СЕРВЕРА с диагностикой (ваш оригинальный код)
 app.listen(PORT, async () => {
   console.log(`\n🚀 ============================================`);
@@ -206,6 +235,7 @@ app.listen(PORT, async () => {
   console.log(`🛒 Shop API: /api/shop/*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
+  console.log(`🔄 Redirect: /webhook -> frontend`);
   console.log(`🚀 ============================================\n`);
 
   // 🔥 Проверяем что TON маршруты загружены (ваш оригинальный код)
