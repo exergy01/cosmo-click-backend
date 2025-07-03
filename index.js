@@ -42,15 +42,19 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // 🔥 КРИТИЧЕСКИ ВАЖНО: REDIRECT для старых реферальных ссылок ПЕРЕД webhook
-app.get('/webhook', (req, res) => {
+app.get('/webhook', (req, res, next) => {
   // Проверяем, это браузерный запрос (старая реферальная ссылка) или Telegram webhook
   const userAgent = req.headers['user-agent'] || '';
   const hasParams = Object.keys(req.query).length > 0;
   
+  console.log('🔍 Запрос на /webhook');
+  console.log('🔍 User-Agent:', userAgent);
+  console.log('🔍 Query params:', req.query);
+  console.log('🔍 Has params:', hasParams);
+  
   // Если это браузер с параметрами - это старая реферальная ссылка
   if (userAgent.includes('Mozilla') && hasParams) {
     console.log('🔄 REDIRECT: Старая реферальная ссылка обнаружена');
-    console.log('📋 Query params:', req.query);
     
     // Извлекаем реферальный параметр
     const referralParam = req.query.tgWebAppStartParam || req.query.startapp || req.query.start;
@@ -67,7 +71,7 @@ app.get('/webhook', (req, res) => {
   }
   
   // Если это не браузерный запрос - пропускаем дальше к Telegram webhook
-  console.log('📡 Telegram webhook запрос');
+  console.log('📡 Передаем к Telegram webhook');
   next();
 });
 
