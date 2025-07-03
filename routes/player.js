@@ -6,11 +6,15 @@ const { getPlayerStatistics } = require('./shared/logger');
 const router = express.Router();
 
 // POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С РЕФЕРАЛЬНОЙ ЛОГИКОЙ
+// Исправленный endpoint POST /api/player/create в routes/player.js
+// Добавить этот код в ваш файл routes/player.js
+
+// POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА С ПРАВИЛЬНОЙ РЕФЕРАЛЬНОЙ ЛОГИКОЙ
 router.post('/create', async (req, res) => {
   const { telegramId, referralData } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
 
-  console.log(`🆕 Создание нового игрока: ${telegramId}`);
+  console.log(`🎯 Создание нового игрока: ${telegramId}`);
   console.log(`🔗 Данные реферала:`, referralData);
 
   const client = await pool.connect();
@@ -25,36 +29,45 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ error: 'Player already exists' });
     }
 
-    // 🎯 ИЗВЛЕКАЕМ РЕФЕРЕРА ИЗ РАЗНЫХ ИСТОЧНИКОВ
+    // 🔥 ИСПРАВЛЕНО: Правильное извлечение реферера
     let referrerId = '1222791281'; // дефолтный рефер
 
-    // Приоритет 1: Из переданных данных (start_param из Telegram)
-    if (referralData?.start_param) {
-      referrerId = referralData.start_param;
-      console.log(`🔗 Реферер из start_param: ${referrerId}`);
+    // Приоритет 1: Из переданного извлеченного реферера (фронтенд уже все проверил)
+    if (referralData?.extractedReferrer) {
+      referrerId = referralData.extractedReferrer;
+      console.log(`🎯 Используем извлеченного реферера: ${referrerId}`);
     }
-    // Приоритет 2: Из initData
+    // Приоритет 2: Из start_param (для Mini Apps)
+    else if (referralData?.start_param) {
+      referrerId = referralData.start_param;
+      console.log(`🎯 Реферер из start_param: ${referrerId}`);
+    }
+    // Приоритет 3: Парсинг initData
     else if (referralData?.initData) {
-      const urlParams = new URLSearchParams(referralData.initData);
-      const startParam = urlParams.get('start');
-      if (startParam) {
-        referrerId = startParam;
-        console.log(`🔗 Реферер из initData: ${referrerId}`);
+      try {
+        const urlParams = new URLSearchParams(referralData.initData);
+        const startParam = urlParams.get('start_param');
+        if (startParam) {
+          referrerId = startParam;
+          console.log(`🎯 Реферер из initData: ${referrerId}`);
+        }
+      } catch (err) {
+        console.error('❌ Ошибка парсинга initData:', err);
       }
     }
-    // Приоритет 3: Из прямой ссылки
+    // Приоритет 4: Парсинг URL
     else if (referralData?.url) {
       const referrerFromUrl = extractReferrerFromUrl(referralData.url);
       if (referrerFromUrl) {
         referrerId = referrerFromUrl;
-        console.log(`🔗 Реферер из URL: ${referrerId}`);
+        console.log(`🎯 Реферер из URL: ${referrerId}`);
       }
     }
 
     console.log(`🎯 Финальный реферер: ${referrerId}`);
 
-    // Создаем игрока (используем существующую логику из getPlayer)
-    const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
+    // Создаем игрока
+    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`; // 🔥 ИСПРАВЛЕНО: startapp вместо start
     
     const initialCollectedBySystem = JSON.stringify({
       "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
@@ -89,9 +102,9 @@ router.post('/create', async (req, res) => {
         collected_by_system, cargo_levels, drones, asteroids, 
         last_collection_time, language, unlocked_systems, current_system,
         mining_speed_data, asteroid_total_data, max_cargo_capacity_data,
-        referrer_id, referrals_count
+        referrer_id, referrals_count, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW())
       RETURNING *;
     `;
     
@@ -125,37 +138,39 @@ router.post('/create', async (req, res) => {
     console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
 
     // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА
-    try {
-      // Проверяем, что рефер существует и это не сам игрок
-      if (referrerId !== telegramId) {
+    if (referrerId && referrerId !== telegramId) {
+      try {
+        // Проверяем, что рефер существует
         const referrerCheck = await client.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
         if (referrerCheck.rows.length > 0) {
           // Увеличиваем счетчик рефералов у реферера
           await client.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
           
-          // Записываем в таблицу рефералов
+          // Записываем в таблицу рефералов (БЕЗ НАГРАД)
           await client.query(
             'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', 
             [referrerId, telegramId, 0, 0]
           );
           
-          console.log(`✅ Статистика реферера ${referrerId} обновлена`);
+          console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
         } else {
           console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
         }
+      } catch (referralErr) {
+        console.error('❌ Ошибка обновления статистики реферера:', referralErr);
+        // НЕ откатываем транзакцию - игрок уже создан
       }
-    } catch (referralErr) {
-      console.error('❌ Ошибка обновления статистики реферера:', referralErr);
-      // НЕ откатываем транзакцию - игрок уже создан
     }
 
     await client.query('COMMIT');
     
-    // Получаем полные данные игрока через getPlayer
+    // Получаем полные данные игрока
     const { getPlayer } = require('./shared/getPlayer');
     const fullPlayer = await getPlayer(telegramId);
     
     console.log(`✅ Игрок ${telegramId} создан успешно с реферером ${referrerId}`);
+    console.log(`📊 Проверка: referrer_id в БД = ${fullPlayer?.referrer_id}`);
+    
     res.json(fullPlayer);
 
   } catch (err) {
@@ -170,19 +185,19 @@ router.post('/create', async (req, res) => {
 // 🔧 ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Извлечение реферера из URL
 function extractReferrerFromUrl(url) {
   try {
-    // Ищем паттерны: start=123456, startApp=123456, и т.д.
     const patterns = [
       /[?&]start=([^&]+)/,
-      /[?&]startApp=([^&]+)/,
       /[?&]startapp=([^&]+)/,
+      /[?&]startApp=([^&]+)/,
       /[?&]ref=([^&]+)/,
-      /[?&]referrer=([^&]+)/
+      /[?&]referrer=([^&]+)/,
+      /[?&]tgWebAppStartParam=([^&]+)/
     ];
     
     for (const pattern of patterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
-        console.log(`🔗 Найден реферер в URL: ${match[1]} (паттерн: ${pattern})`);
+        console.log(`🔗 Найден реферер в URL: ${match[1]}`);
         return match[1];
       }
     }

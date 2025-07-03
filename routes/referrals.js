@@ -109,32 +109,100 @@ router.get('/honor-board', async (req, res) => {
 });
 
 // POST /api/referrals/create
+// Исправления в routes/referrals.js
+
+// POST /api/referrals/create - ИСПРАВЛЕНО: правильная генерация реферальных ссылок
 router.post('/create', async (req, res) => {
   const { telegramId } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
-  const player = await getPlayer(telegramId);
-  if (!player) return res.status(404).json({ error: 'Player not found' });
-  if (player.referral_link) return res.json({ referral_link: player.referral_link });
   
-  const referralLink = `https://t.me/CosmoClickBot?start=${telegramId}`;
-  await pool.query('UPDATE players SET referral_link = $1 WHERE telegram_id = $2', [referralLink, telegramId]);
+  try {
+    const player = await getPlayer(telegramId);
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+    
+    if (player.referral_link) {
+      // Если ссылка уже есть, но она старого формата - обновляем
+      if (player.referral_link.includes('?start=')) {
+        const newReferralLink = player.referral_link.replace('?start=', '?startapp=');
+        await pool.query('UPDATE players SET referral_link = $1 WHERE telegram_id = $2', [newReferralLink, telegramId]);
+        
+        console.log(`🔄 Обновлена реферальная ссылка для ${telegramId}: ${newReferralLink}`);
+        
+        const updatedPlayer = await getPlayer(telegramId);
+        return res.json({ referral_link: updatedPlayer.referral_link });
+      }
+      
+      return res.json({ referral_link: player.referral_link });
+    }
+    
+    // 🔥 ИСПРАВЛЕНО: Используем startapp вместо start для Mini Apps
+    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
+    await pool.query('UPDATE players SET referral_link = $1 WHERE telegram_id = $2', [referralLink, telegramId]);
 
-  // 📝 ЛОГИРОВАНИЕ СОЗДАНИЯ РЕФЕРАЛЬНОЙ ССЫЛКИ
-  await logPlayerAction(
-    telegramId, 
-    'create_referral_link', 
-    0, 
-    null, 
-    null, 
-    {
-      referralLink: referralLink,
-      action: 'generated_referral_link'
-    }, 
-    req
-  );
+    console.log(`✅ Создана реферальная ссылка для ${telegramId}: ${referralLink}`);
 
-  const updatedPlayer = await getPlayer(telegramId);
-  res.json({ referral_link: updatedPlayer.referral_link });
+    // Логирование создания реферальной ссылки
+    await logPlayerAction(
+      telegramId, 
+      'create_referral_link', 
+      0, 
+      null, 
+      null, 
+      {
+        referralLink: referralLink,
+        action: 'generated_referral_link',
+        linkType: 'startapp' // указываем тип ссылки
+      }, 
+      req
+    );
+
+    const updatedPlayer = await getPlayer(telegramId);
+    res.json({ referral_link: updatedPlayer.referral_link });
+  } catch (err) {
+    console.error('Error creating referral link:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🔧 ДОПОЛНИТЕЛЬНО: Endpoint для массового обновления старых реферальных ссылок
+router.post('/update-links', async (req, res) => {
+  try {
+    console.log('🔄 Начинаем массовое обновление реферальных ссылок...');
+    
+    // Находим все ссылки старого формата
+    const oldLinksResult = await pool.query(
+      "SELECT telegram_id, referral_link FROM players WHERE referral_link LIKE '%?start=%'"
+    );
+    
+    const oldLinks = oldLinksResult.rows;
+    console.log(`📊 Найдено ${oldLinks.length} ссылок для обновления`);
+    
+    let updated = 0;
+    for (const player of oldLinks) {
+      try {
+        const newLink = player.referral_link.replace('?start=', '?startapp=');
+        await pool.query(
+          'UPDATE players SET referral_link = $1 WHERE telegram_id = $2',
+          [newLink, player.telegram_id]
+        );
+        updated++;
+        console.log(`✅ Обновлено: ${player.telegram_id} -> ${newLink}`);
+      } catch (err) {
+        console.error(`❌ Ошибка обновления для ${player.telegram_id}:`, err);
+      }
+    }
+    
+    console.log(`✅ Обновлено ${updated} из ${oldLinks.length} ссылок`);
+    
+    res.json({
+      message: `Обновлено ${updated} реферальных ссылок`,
+      total: oldLinks.length,
+      updated: updated
+    });
+  } catch (err) {
+    console.error('Error updating referral links:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;
