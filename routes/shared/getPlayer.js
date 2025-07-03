@@ -9,7 +9,7 @@ async function getPlayer(telegramId) {
     
     // 🔥 ИСПРАВЛЕНО: Получаем данные из Telegram
 // Получаем данные из Telegram (если доступны)
-const telegramUser = req.body?.telegramData || null; // Это будет позже
+const telegramUser = null; // Данные Telegram будут получены на фронтенде
 let username = telegramUser?.username || `user_${telegramId}`;
 let first_name = telegramUser?.first_name || `User${telegramId.slice(-4)}`;
     
