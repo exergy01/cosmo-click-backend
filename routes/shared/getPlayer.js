@@ -76,6 +76,36 @@ let first_name = `User${telegramId.slice(-4)}`;
     
     const newPlayerResult = await pool.query(insertQuery, insertValues);
     player = newPlayerResult.rows[0];
+    // 🎯 РЕФЕРАЛЬНАЯ ЛОГИКА ПРИ СОЗДАНИИ ИГРОКА
+try {
+  const referrerId = '1222791281'; // всегда дефолтный рефер пока
+  
+  console.log(`🎯 Регистрируем нового игрока ${telegramId} под рефером ${referrerId}`);
+  
+  // Обновляем игрока с реферером
+  await pool.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, telegramId]);
+  
+  // Проверяем, что рефер существует
+  const referrerCheck = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
+  if (referrerCheck.rows.length > 0) {
+    // Увеличиваем счетчик рефералов у реферера
+    await pool.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
+    
+    // Записываем в таблицу рефералов
+    await pool.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, 0, 0]);
+    
+    console.log(`✅ Реферальная регистрация успешна: ${telegramId} → ${referrerId}`);
+  } else {
+    console.log(`❌ Рефер ${referrerId} не найден в базе данных`);
+  }
+  
+  // Обновляем объект player с referrer_id
+  player.referrer_id = referrerId;
+  
+} catch (referralErr) {
+  console.error('❌ Ошибка реферальной регистрации:', referralErr);
+  // НЕ падаем если реферальная регистрация не удалась
+}
   }
 
   // 🎯 РЕФЕРАЛЬНАЯ ЛОГИКА ПРИ СОЗДАНИИ ИГРОКА
