@@ -5,6 +5,33 @@ const { getPlayerStatistics } = require('./shared/logger');
 
 const router = express.Router();
 
+// POST /api/player/create - СОЗДАНИЕ НОВОГО ИГРОКА
+router.post('/create', async (req, res) => {
+  const { telegramId } = req.body;
+  if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
+
+  console.log(`🆕 Создание нового игрока: ${telegramId}`);
+
+  try {
+    // Проверяем, что игрок не существует
+    const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
+    if (existingPlayer.rows.length > 0) {
+      console.log(`❌ Игрок ${telegramId} уже существует`);
+      return res.status(400).json({ error: 'Player already exists' });
+    }
+
+    // Создаем игрока через getPlayer (там уже есть вся логика)
+    const newPlayer = await getPlayer(telegramId);
+    
+    console.log(`✅ Игрок ${telegramId} создан успешно`);
+    res.json(newPlayer);
+
+  } catch (err) {
+    console.error('Error creating player:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/player/language
 // POST /api/player/language
 router.post('/language', async (req, res) => {
