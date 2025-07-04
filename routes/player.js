@@ -5,10 +5,6 @@ const { getPlayerStatistics } = require('./shared/logger');
 
 const router = express.Router();
 
-// Добавьте этот код в ваш routes/player.js В САМОМ НАЧАЛЕ (после require)
-
-// POST /api/player/create-with-referrer - СОЗДАНИЕ ИГРОКА С РЕФЕРАЛЬНЫМИ ДАННЫМИ
-// Замените этот блок кода в вашем player.js:
 // POST /api/player/create-with-referrer - СОЗДАНИЕ ИГРОКА С РЕФЕРАЛЬНЫМИ ДАННЫМИ
 router.post('/create-with-referrer', async (req, res) => {
   console.log('🎯🎯🎯 НОВЫЙ ENDPOINT ВЫЗВАН! 🎯🎯🎯');
@@ -52,64 +48,117 @@ router.post('/create-with-referrer', async (req, res) => {
 
     console.log(`🎯 ФИНАЛЬНЫЙ РЕФЕРЕР: ${referrerId}`);
 
-// Проверяем, что игрок не существует
-const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
-if (existingPlayer.rows.length > 0) {
-  console.log(`❌ Игрок ${telegramId} уже существует`);
-  const player = await getPlayer(telegramId);
-  return res.json(player);
-}
+    // Проверяем, что игрок не существует
+    const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
+    if (existingPlayer.rows.length > 0) {
+      console.log(`❌ Игрок ${telegramId} уже существует`);
+      const player = await getPlayer(telegramId);
+      return res.json(player);
+    }
 
-// Создаем нового игрока напрямую в БД
-console.log('🔧 Создаем нового игрока в базе данных...');
-// [здесь код создания игрока из старого getPlayer.js]
-
-    console.log(`🔧 Текущий реферер игрока: ${player.referrer_id}`);
+    // 🔥 СОЗДАЕМ НОВОГО ИГРОКА В БД
+    console.log('🔧 Создаем нового игрока в базе данных...');
     
-    // Если реферер отличается от дефолтного - обновляем
+    const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
+    
+    const initialCollectedBySystem = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+    
+    const initialLastCollectionTime = JSON.stringify({
+      "1": new Date().toISOString(),
+      "2": new Date().toISOString(), 
+      "3": new Date().toISOString(),
+      "4": new Date().toISOString(),
+      "5": new Date().toISOString(),
+      "6": new Date().toISOString(),
+      "7": new Date().toISOString()
+    });
+
+    const initialMiningSpeedData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    const initialAsteroidTotalData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    const initialMaxCargoCapacityData = JSON.stringify({
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0
+    });
+
+    // 🔥 СОЗДАЕМ ИГРОКА СРАЗУ С ПРАВИЛЬНЫМ РЕФЕРЕРОМ
+    const insertQuery = `
+      INSERT INTO players (
+        telegram_id, username, first_name, ccc, cs, ton, referral_link, color, 
+        collected_by_system, cargo_levels, drones, asteroids, 
+        last_collection_time, language, unlocked_systems, current_system,
+        mining_speed_data, asteroid_total_data, max_cargo_capacity_data,
+        referrer_id, referrals_count, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW())
+      RETURNING *;
+    `;
+    
+    const insertValues = [
+      telegramId,
+      `user_${telegramId}`,
+      `User${telegramId.slice(-4)}`,
+      0, // ccc
+      0, // cs  
+      0, // ton
+      referralLink,
+      '#61dafb',
+      initialCollectedBySystem,
+      JSON.stringify([]),
+      JSON.stringify([]),
+      JSON.stringify([]),
+      initialLastCollectionTime,
+      null, // language
+      JSON.stringify([1]),
+      1,
+      initialMiningSpeedData,
+      initialAsteroidTotalData,
+      initialMaxCargoCapacityData,
+      referrerId, // 🎯 ПРАВИЛЬНЫЙ РЕФЕРЕР!
+      0 // referrals_count
+    ];
+    
+    const newPlayerResult = await pool.query(insertQuery, insertValues);
+    const player = newPlayerResult.rows[0];
+
+    console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
+
+    // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА (если не дефолтный)
     if (referrerId !== '1222791281' && referrerId !== telegramId) {
-      console.log(`🔄 НАЧИНАЕМ ОБНОВЛЕНИЕ РЕФЕРЕРА с ${player.referrer_id} на ${referrerId}`);
-      
       try {
-        // Обновляем реферера у игрока
-        console.log('🔧 Обновляем поле referrer_id в таблице players...');
-        await pool.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, telegramId]);
-        
-        // Проверяем что новый рефер существует
-        console.log(`🔧 Проверяем существование реферера ${referrerId}...`);
+        // Проверяем, что рефер существует
         const referrerCheck = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
         if (referrerCheck.rows.length > 0) {
-          console.log(`✅ Новый рефер ${referrerId} найден в БД`);
-          
-          // Убираем +1 у старого реферера
-          console.log('🔧 Убираем +1 у старого реферера...');
-          await pool.query('UPDATE players SET referrals_count = referrals_count - 1 WHERE telegram_id = $1', ['1222791281']);
-          
-          // Добавляем +1 к новому рефереру
-          console.log('🔧 Добавляем +1 к новому рефереру...');
+          // Увеличиваем счетчик рефералов у реферера
           await pool.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
           
-          // Обновляем запись в referrals
-          console.log('🔧 Обновляем запись в таблице referrals...');
-          await pool.query('UPDATE referrals SET referrer_id = $1 WHERE referred_id = $2', [referrerId, telegramId]);
+          // Записываем в таблицу рефералов
+          await pool.query(
+            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())', 
+            [referrerId, telegramId, 0, 0]
+          );
           
-          console.log(`✅✅ РЕФЕРЕР УСПЕШНО ОБНОВЛЕН: ${telegramId} → ${referrerId} ✅✅`);
+          console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
         } else {
-          console.log(`❌ Новый рефер ${referrerId} НЕ НАЙДЕН в БД, оставляем дефолтного`);
+          console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
         }
-        
-        // Обновляем объект игрока
-        player.referrer_id = referrerId;
-        
-      } catch (updateErr) {
-        console.error('❌ Ошибка обновления реферера:', updateErr);
+      } catch (referralErr) {
+        console.error('❌ Ошибка обновления статистики реферера:', referralErr);
+        // НЕ падаем - игрок уже создан
       }
-    } else {
-      console.log('ℹ️ Реферер не изменился, равен дефолтному или равен самому игроку');
     }
     
-    console.log(`✅ ОТВЕТ: Игрок готов с реферером: ${player.referrer_id}`);
-    res.json(player);
+    // Получаем полные данные игрока через getPlayer
+    const fullPlayer = await getPlayer(telegramId);
+    
+    console.log(`✅ ОТВЕТ: Игрок готов с реферером: ${fullPlayer.referrer_id}`);
+    res.json(fullPlayer);
 
   } catch (err) {
     console.error('❌ Критическая ошибка в create-with-referrer:', err);
@@ -256,7 +305,7 @@ router.post('/create', async (req, res) => {
           
           // Записываем в таблицу рефералов (БЕЗ НАГРАД)
           await client.query(
-            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', 
+            'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())', 
             [referrerId, telegramId, 0, 0]
           );
           
@@ -370,7 +419,6 @@ router.post('/color', async (req, res) => {
   }
 });
 
-// GET /api/player/:telegramId
 // GET /api/player/:telegramId
 router.get('/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
