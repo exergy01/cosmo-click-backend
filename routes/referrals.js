@@ -82,6 +82,39 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// GET /api/debug/count-referrals/:telegramId - ОТЛАДОЧНЫЙ ENDPOINT
+router.get('/debug/count-referrals/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  try {
+    console.log(`🔍 DEBUG: Считаем рефералов для ${telegramId}`);
+    
+    // Считаем напрямую из таблицы players где referrer_id = наш ID
+    const countResult = await pool.query(
+      'SELECT COUNT(*) as count FROM players WHERE referrer_id = $1', 
+      [telegramId]
+    );
+    
+    // Получаем всех кто имеет этого реферера
+    const listResult = await pool.query(
+      'SELECT telegram_id, username, first_name, referrer_id FROM players WHERE referrer_id = $1', 
+      [telegramId]
+    );
+    
+    const result = {
+      telegramId,
+      countFromPlayersTable: parseInt(countResult.rows[0].count),
+      playersWithThisReferrer: listResult.rows,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔍 DEBUG результат:', result);
+    res.json(result);
+  } catch (err) {
+    console.error('❌ DEBUG ошибка:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/referrals/list/:telegramId - ИСПРАВЛЕННЫЙ
 router.get('/list/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
