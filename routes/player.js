@@ -129,9 +129,9 @@ router.post('/create-with-referrer', async (req, res) => {
 
     console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
 
-    // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА (если не дефолтный)
-    if (referrerId !== '1222791281' && referrerId !== telegramId) {
-      try {
+// 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА (все игроки под реферером)
+if (referrerId !== telegramId) {
+        try {
         // Проверяем, что рефер существует
         const referrerCheck = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [referrerId]);
         if (referrerCheck.rows.length > 0) {
