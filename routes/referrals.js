@@ -36,8 +36,8 @@ router.post('/register', async (req, res) => {
     await client.query('UPDATE players SET referrer_id = $1 WHERE telegram_id = $2', [referrerId, telegramId]);
     await client.query('UPDATE players SET referrals_count = referrals_count + 1 WHERE telegram_id = $1', [referrerId]);
     
-    // 🔥 ИСПРАВЛЕНО: Записываем в таблицу рефералов БЕЗ НАГРАДЫ (0, 0)
-    await client.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, 0, 0]);
+    // 🔥 ИСПРАВЛЕНО: Записываем в таблицу рефералов БЕЗ НАГРАДЫ (0, 0) - ИСПОЛЬЗУЕМ created_at
+    await client.query('INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())', [referrerId, telegramId, 0, 0]);
 
     // 📝 ЛОГИРОВАНИЕ РЕГИСТРАЦИИ РЕФЕРАЛА ДЛЯ НОВОГО ИГРОКА
     await logPlayerAction(
@@ -82,39 +82,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// GET /api/debug/count-referrals/:telegramId - ОТЛАДОЧНЫЙ ENDPOINT
-router.get('/debug/count-referrals/:telegramId', async (req, res) => {
-  const { telegramId } = req.params;
-  try {
-    console.log(`🔍 DEBUG: Считаем рефералов для ${telegramId}`);
-    
-    // Считаем напрямую из таблицы players где referrer_id = наш ID
-    const countResult = await pool.query(
-      'SELECT COUNT(*) as count FROM players WHERE referrer_id = $1', 
-      [telegramId]
-    );
-    
-    // Получаем всех кто имеет этого реферера
-    const listResult = await pool.query(
-      'SELECT telegram_id, username, first_name, referrer_id FROM players WHERE referrer_id = $1', 
-      [telegramId]
-    );
-    
-    const result = {
-      telegramId,
-      countFromPlayersTable: parseInt(countResult.rows[0].count),
-      playersWithThisReferrer: listResult.rows,
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('🔍 DEBUG результат:', result);
-    res.json(result);
-  } catch (err) {
-    console.error('❌ DEBUG ошибка:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /api/referrals/list/:telegramId - ИСПРАВЛЕННЫЙ
 router.get('/list/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
@@ -147,11 +114,35 @@ router.get('/list/:telegramId', async (req, res) => {
   }
 });
 
-// GET /api/referrals/honor-board
+// GET /api/referrals/honor-board - ИСПРАВЛЕННЫЙ (считаем из players.referrer_id)
 router.get('/honor-board', async (req, res) => {
   try {
-    const honorBoardResult = await pool.query('SELECT telegram_id, username, referrals_count FROM players ORDER BY referrals_count DESC LIMIT 10');
-    res.json(honorBoardResult.rows);
+    console.log('🏆 Загружаем доску почета...');
+    
+    // 🔥 ПРАВИЛЬНЫЙ ПОДСЧЕТ: считаем сколько раз каждый ID встречается в поле referrer_id
+    const honorBoardResult = await pool.query(`
+      SELECT 
+        p.telegram_id,
+        p.username,
+        p.first_name,
+        COUNT(ref.referrer_id) as actual_referrals_count
+      FROM players p
+      LEFT JOIN players ref ON ref.referrer_id = p.telegram_id
+      GROUP BY p.telegram_id, p.username, p.first_name
+      HAVING COUNT(ref.referrer_id) > 0
+      ORDER BY actual_referrals_count DESC
+      LIMIT 10
+    `);
+    
+    // Формируем результат с правильным полем
+    const result = honorBoardResult.rows.map(row => ({
+      telegram_id: row.telegram_id,
+      username: row.username || row.first_name,
+      referrals_count: parseInt(row.actual_referrals_count)
+    }));
+    
+    console.log('🏆 Доска почета:', result);
+    res.json(result);
   } catch (err) {
     console.error('Error fetching honor board:', err);
     res.status(500).json({ error: 'Internal server error' });

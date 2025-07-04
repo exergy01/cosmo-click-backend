@@ -95,6 +95,40 @@ bot.catch((err, ctx) => {
     console.error(`❌ Ошибка Telegraf для ${ctx.updateType}:`, err);
 });
 
+// 🔥 ОТЛАДОЧНЫЙ МАРШРУТ - добавляем ПЕРЕД остальными маршрутами
+app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  try {
+    const pool = require('./db');
+    console.log(`🔍 DEBUG: Считаем рефералов для ${telegramId}`);
+    
+    // Считаем напрямую из таблицы players где referrer_id = наш ID
+    const countResult = await pool.query(
+      'SELECT COUNT(*) as count FROM players WHERE referrer_id = $1', 
+      [telegramId]
+    );
+    
+    // Получаем всех кто имеет этого реферера
+    const listResult = await pool.query(
+      'SELECT telegram_id, username, first_name, referrer_id FROM players WHERE referrer_id = $1', 
+      [telegramId]
+    );
+    
+    const result = {
+      telegramId,
+      countFromPlayersTable: parseInt(countResult.rows[0].count),
+      playersWithThisReferrer: listResult.rows,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔍 DEBUG результат:', result);
+    res.json(result);
+  } catch (err) {
+    console.error('❌ DEBUG ошибка:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 🔥 КРИТИЧЕСКИ ВАЖНО: TON API ПЕРВЫМ! (ваш оригинальный код)
 console.log('🔥 Подключаем TON маршруты...');
 try {
@@ -149,6 +183,7 @@ app.get('/', (req, res) => {
       <li>GET /api/ton/calculate/15 - расчет стейкинга</li>
       <li>POST /api/ton/stake - создание стейка</li>
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
+      <li>GET /api/debug/count-referrals/:telegramId - отладка рефералов</li>
     </ul>
     <p><strong>Время сервера:</strong> ${new Date().toISOString()}</p>
     <h3>🔧 Redirect система:</h3>
@@ -213,6 +248,7 @@ app.use((req, res) => {
       'GET /',
       'GET /api/health',
       'GET /api/time',
+      'GET /api/debug/count-referrals/:telegramId',
       'GET /api/ton/calculate/:amount',
       'POST /api/ton/stake ⭐ ГЛАВНЫЙ',
       'GET /api/ton/stakes/:telegramId',
@@ -241,6 +277,7 @@ app.listen(PORT, async () => {
   console.log(`🛒 Shop API: /api/shop/*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
+  console.log(`🔍 Debug: /api/debug/*`);
   console.log(`🔄 Redirect: /webhook -> frontend`);
   console.log(`🚀 ============================================\n`);
 
