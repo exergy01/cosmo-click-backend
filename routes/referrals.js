@@ -82,16 +82,34 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// GET /api/referrals/list/:telegramId
+// GET /api/referrals/list/:telegramId - ИСПРАВЛЕННЫЙ
 router.get('/list/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   try {
-    const referrals = await pool.query(
-      'SELECT referred_telegram_id, referrer_telegram_id FROM referrals WHERE referrer_telegram_id = $1',
-      [telegramId]
-    );
+    console.log(`🔍 Загружаем рефералов для: ${telegramId}`);
+    
+    // 🔥 ИСПРАВЛЕННЫЙ ЗАПРОС: правильные поля + JOIN для получения username
+    const referrals = await pool.query(`
+      SELECT 
+        r.referred_id,
+        r.referrer_id,
+        r.cs_earned,
+        r.ton_earned,
+        r.created_at,
+        p.username,
+        p.first_name
+      FROM referrals r
+      LEFT JOIN players p ON r.referred_id = p.telegram_id
+      WHERE r.referrer_id = $1
+      ORDER BY r.created_at DESC
+    `, [telegramId]);
+    
+    console.log(`✅ Найдено рефералов: ${referrals.rows.length}`);
+    console.log('📋 Данные рефералов:', referrals.rows);
+    
     res.json(referrals.rows);
   } catch (err) {
+    console.error('❌ Ошибка загрузки рефералов:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -14,6 +14,27 @@ async function getPlayer(telegramId) {
 
   console.log(`✅ getPlayer: игрок ${telegramId} найден, referrer_id = ${player.referrer_id}`);
 
+  // 🔥 ИСПРАВЛЕНО: Пересчитываем точный счетчик рефералов из таблицы referrals
+  try {
+    const referralsCountResult = await pool.query(
+      'SELECT COUNT(*) as count FROM referrals WHERE referrer_id = $1', 
+      [telegramId]
+    );
+    const actualCount = parseInt(referralsCountResult.rows[0].count);
+    
+    // Если счетчик в players отличается - обновляем
+    if (player.referrals_count !== actualCount) {
+      console.log(`🔄 Обновляем счетчик рефералов: ${player.referrals_count} → ${actualCount}`);
+      await pool.query(
+        'UPDATE players SET referrals_count = $1 WHERE telegram_id = $2', 
+        [actualCount, telegramId]
+      );
+      player.referrals_count = actualCount;
+    }
+  } catch (err) {
+    console.error('❌ Ошибка пересчета рефералов:', err);
+  }
+
   // Убеждаемся что все нужные поля существуют
   player.asteroids = player.asteroids || [];
   player.drones = player.drones || [];
@@ -67,6 +88,7 @@ async function getPlayer(telegramId) {
   });
 
   console.log('🔧 getPlayer: финальные max_cargo_capacity_data =', maxCargoCapacityData);
+  console.log(`🔧 getPlayer: точный счетчик рефералов = ${player.referrals_count}`);
 
   return {
     ...player,
