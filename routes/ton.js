@@ -194,9 +194,6 @@ router.post('/stake', async (req, res) => {
       [newTonBalance, telegramId]
     );
     
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА
-    await processReferralReward(client, telegramId, stakeAmountNum, 'ton');
-    
     // Разблокируем систему 5 навсегда
     if (!player.unlocked_systems.includes(systemId)) {
       const updatedUnlockedSystems = [...player.unlocked_systems, systemId];
@@ -223,6 +220,9 @@ router.post('/stake', async (req, res) => {
     
     const createdStake = stakeResult.rows[0];
     console.log(`✅ СТЕЙК СОЗДАН В БД: ID ${createdStake.id}`);
+    
+    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА - ДО КОММИТА!
+    await processReferralReward(client, telegramId, stakeAmountNum, 'ton');
     
     await client.query('COMMIT');
     
