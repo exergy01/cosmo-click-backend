@@ -29,8 +29,6 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
     console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON (НЕ зачисляется сразу!)`);
 
     // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS - НИКАКОГО ЗАЧИСЛЕНИЯ НА БАЛАНС!
-    
-    // 🔥 ЗАПИСЫВАЕМ В ТАБЛИЦУ РЕФЕРАЛОВ
     await client.query(`
       INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) 
       VALUES ($1, $2, $3, $4, NOW())
