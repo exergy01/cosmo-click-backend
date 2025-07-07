@@ -192,7 +192,7 @@ router.post('/create', async (req, res) => {
   res.json({ referral_link: updatedPlayer.referral_link });
 });
 
-// POST /api/referrals/collect-rewards - СБОР РЕФЕРАЛЬНЫХ НАГРАД
+// POST /api/referrals/collect-rewards - СБОР РЕФЕРАЛЬНЫХ НАГРАД - ИСПРАВЛЕНО!
 router.post('/collect-rewards', async (req, res) => {
   const { telegramId } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
@@ -234,7 +234,15 @@ router.post('/collect-rewards', async (req, res) => {
     );
     
     await client.query('COMMIT');
-    res.json({ success: true, collected: { cs: totalCS, ton: totalTON } });
+    
+    // 🔥 ИСПРАВЛЕНО: Получаем и возвращаем обновленные данные игрока
+    const updatedPlayer = await getPlayer(telegramId);
+    
+    res.json({ 
+      success: true, 
+      collected: { cs: totalCS, ton: totalTON },
+      player: updatedPlayer  // <-- ВОТ ЭТО ДОБАВЛЕНО!
+    });
     
   } catch (err) {
     await client.query('ROLLBACK');
