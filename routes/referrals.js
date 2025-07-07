@@ -192,4 +192,57 @@ router.post('/create', async (req, res) => {
   res.json({ referral_link: updatedPlayer.referral_link });
 });
 
+// POST /api/referrals/collect-rewards - СБОР РЕФЕРАЛЬНЫХ НАГРАД
+router.post('/collect-rewards', async (req, res) => {
+  const { telegramId } = req.body;
+  if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Получаем все несобранные награды
+    const referrals = await client.query(
+      'SELECT cs_earned, ton_earned FROM referrals WHERE referrer_id = $1',
+      [telegramId]
+    );
+    
+    if (referrals.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.json({ success: false, message: 'Нет наград для сбора' });
+    }
+    
+    // Подсчитываем общую сумму
+    const totalCS = referrals.rows.reduce((sum, row) => sum + parseFloat(row.cs_earned || 0), 0);
+    const totalTON = referrals.rows.reduce((sum, row) => sum + parseFloat(row.ton_earned || 0), 0);
+    
+    if (totalCS <= 0 && totalTON <= 0) {
+      await client.query('ROLLBACK');
+      return res.json({ success: false, message: 'Нет наград для сбора' });
+    }
+    
+    // Добавляем к балансу игрока
+    await client.query(
+      'UPDATE players SET cs = cs + $1, ton = ton + $2 WHERE telegram_id = $3',
+      [totalCS, totalTON, telegramId]
+    );
+    
+    // Обнуляем собранные награды
+    await client.query(
+      'UPDATE referrals SET cs_earned = 0, ton_earned = 0 WHERE referrer_id = $1',
+      [telegramId]
+    );
+    
+    await client.query('COMMIT');
+    res.json({ success: true, collected: { cs: totalCS, ton: totalTON } });
+    
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error collecting rewards:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
