@@ -32,19 +32,24 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       [rewardAmount, player.referrer_id]
     );
     
-    // Записываем в таблицу рефералов
+    // 🔥 ИСПРАВЛЕНО: UPSERT вместо INSERT - обновляем существующую запись или создаем новую
     const csEarned = currency === 'cs' ? rewardAmount : 0;
     const tonEarned = currency === 'ton' ? rewardAmount : 0;
     
-    await client.query(
-      'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())',
-      [player.referrer_id, telegramId, csEarned, tonEarned]
-    );
+    await client.query(`
+      INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) 
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (referrer_id, referred_id) 
+      DO UPDATE SET 
+        cs_earned = referrals.cs_earned + $3,
+        ton_earned = referrals.ton_earned + $4
+    `, [player.referrer_id, telegramId, csEarned, tonEarned]);
 
     console.log(`✅ Реферальная награда начислена: ${rewardAmount} ${currency.toUpperCase()} рефереру ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды:', err);
+    // НЕ бросаем ошибку - пусть покупка продолжается
   }
 };
 
