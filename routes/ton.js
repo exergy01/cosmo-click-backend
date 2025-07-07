@@ -8,7 +8,7 @@ const router = express.Router();
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = false;
 
-// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ДЛЯ TON СТЕЙКИНГА - ИСПРАВЛЕНО!
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ДЛЯ TON СТЕЙКИНГА - ПОЛНОСТЬЮ ИСПРАВЛЕНО!
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -26,11 +26,9 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON`);
+    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON (НЕ зачисляется сразу!)`);
 
-    // 🔥 ИСПРАВЛЕНО: НЕ ЗАЧИСЛЯЕМ НА БАЛАНС! Только записываем в таблицу referrals
-    // Убрали эту строку:
-    // await client.query('UPDATE players SET ton = ton + $1 WHERE telegram_id = $2', [rewardAmount, player.referrer_id]);
+    // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS - НИКАКОГО ЗАЧИСЛЕНИЯ НА БАЛАНС!
     
     // 🔥 ЗАПИСЫВАЕМ В ТАБЛИЦУ РЕФЕРАЛОВ
     await client.query(`
@@ -41,7 +39,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, 0, rewardAmount]);
 
-    console.log(`✅ Реферальная награда TON накоплена в таблице: ${rewardAmount} TON для реферера ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда TON ТОЛЬКО накоплена в таблице: ${rewardAmount} TON для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды TON:', err);

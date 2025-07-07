@@ -6,7 +6,7 @@ const shopData = require('../shopData.js');
 
 const router = express.Router();
 
-// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ - ИСПРАВЛЕНО!
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ - ПОЛНОСТЬЮ ИСПРАВЛЕНО!
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -15,7 +15,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    // 🔥 ИСПРАВЛЕНО: Правильные проценты для всех валют
+    // 🔥 Правильные проценты для всех валют
     let rewardPercentage, rewardCurrency;
     
     if (currency === 'ton') {
@@ -37,13 +37,9 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} накапливается ${rewardAmount} ${rewardCurrency.toUpperCase()}`);
+    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} накапливается ${rewardAmount} ${rewardCurrency.toUpperCase()} (НЕ зачисляется сразу!)`);
 
-    // 🔥 ИСПРАВЛЕНО: НЕ ЗАЧИСЛЯЕМ НА БАЛАНС! Только записываем в таблицу referrals
-    // Убрали эту строку:
-    // await client.query(`UPDATE players SET ${rewardCurrency} = ${rewardCurrency} + $1 WHERE telegram_id = $2`, [rewardAmount, player.referrer_id]);
-    
-    // 🔥 ИСПРАВЛЕНО: Записываем в правильные поля
+    // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS - НИКАКОГО ЗАЧИСЛЕНИЯ НА БАЛАНС!
     const csEarned = rewardCurrency === 'cs' ? rewardAmount : 0;
     const tonEarned = rewardCurrency === 'ton' ? rewardAmount : 0;
     
@@ -56,7 +52,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, csEarned, tonEarned]);
 
-    console.log(`✅ Реферальная награда накоплена в таблице: ${rewardAmount} ${rewardCurrency.toUpperCase()} для реферера ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда ТОЛЬКО накоплена в таблице: ${rewardAmount} ${rewardCurrency.toUpperCase()} для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды:', err);
