@@ -6,9 +6,7 @@ const shopData = require('../shopData.js');
 
 const router = express.Router();
 
-// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ
-// В функции processReferralReward исправь:
-
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ - ИСПРАВЛЕНО!
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -39,13 +37,11 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} начисляется ${rewardAmount} ${rewardCurrency.toUpperCase()}`);
+    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} накапливается ${rewardAmount} ${rewardCurrency.toUpperCase()}`);
 
-    // Начисляем награду рефереру в правильной валюте
-    await client.query(
-      `UPDATE players SET ${rewardCurrency} = ${rewardCurrency} + $1 WHERE telegram_id = $2`,
-      [rewardAmount, player.referrer_id]
-    );
+    // 🔥 ИСПРАВЛЕНО: НЕ ЗАЧИСЛЯЕМ НА БАЛАНС! Только записываем в таблицу referrals
+    // Убрали эту строку:
+    // await client.query(`UPDATE players SET ${rewardCurrency} = ${rewardCurrency} + $1 WHERE telegram_id = $2`, [rewardAmount, player.referrer_id]);
     
     // 🔥 ИСПРАВЛЕНО: Записываем в правильные поля
     const csEarned = rewardCurrency === 'cs' ? rewardAmount : 0;
@@ -60,7 +56,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, csEarned, tonEarned]);
 
-    console.log(`✅ Реферальная награда начислена: ${rewardAmount} ${rewardCurrency.toUpperCase()} рефереру ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда накоплена в таблице: ${rewardAmount} ${rewardCurrency.toUpperCase()} для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды:', err);
@@ -392,7 +388,7 @@ router.post('/buy', async (req, res) => {
       [updatedBalanceAfterPurchase, telegramId]
     );
 
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ
+    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ (КОПИТСЯ В БАЗЕ!)
     await processReferralReward(client, telegramId, price, currencyToUse);
 
     console.log('🔍 Пересчитываем данные...');
@@ -471,7 +467,7 @@ router.post('/buy-system', async (req, res) => {
       [updatedCs, updatedTon, JSON.stringify(updatedUnlockedSystems), updatedCollectedBySystem, newLastCollectionTime, telegramId]
     );
 
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ СИСТЕМЫ
+    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ СИСТЕМЫ (КОПИТСЯ В БАЗЕ!)
     await processReferralReward(client, telegramId, priceToCheck, systemToBuy.currency);
 
     await recalculatePlayerData(client, telegramId);

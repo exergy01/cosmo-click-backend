@@ -8,7 +8,7 @@ const router = express.Router();
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = false;
 
-// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ДЛЯ TON СТЕЙКИНГА
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ДЛЯ TON СТЕЙКИНГА - ИСПРАВЛЕНО!
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -26,13 +26,11 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} начисляется ${rewardAmount} TON`);
+    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON`);
 
-    // Начисляем награду рефереру в TON
-    await client.query(
-      'UPDATE players SET ton = ton + $1 WHERE telegram_id = $2',
-      [rewardAmount, player.referrer_id]
-    );
+    // 🔥 ИСПРАВЛЕНО: НЕ ЗАЧИСЛЯЕМ НА БАЛАНС! Только записываем в таблицу referrals
+    // Убрали эту строку:
+    // await client.query('UPDATE players SET ton = ton + $1 WHERE telegram_id = $2', [rewardAmount, player.referrer_id]);
     
     // 🔥 ЗАПИСЫВАЕМ В ТАБЛИЦУ РЕФЕРАЛОВ
     await client.query(`
@@ -43,7 +41,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, 0, rewardAmount]);
 
-    console.log(`✅ Реферальная награда TON начислена: ${rewardAmount} TON рефереру ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда TON накоплена в таблице: ${rewardAmount} TON для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды TON:', err);
@@ -221,7 +219,7 @@ router.post('/stake', async (req, res) => {
     const createdStake = stakeResult.rows[0];
     console.log(`✅ СТЕЙК СОЗДАН В БД: ID ${createdStake.id}`);
     
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА - ДО КОММИТА!
+    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА - ДО КОММИТА! (КОПИТСЯ В БАЗЕ!)
     await processReferralReward(client, telegramId, stakeAmountNum, 'ton');
     
     await client.query('COMMIT');
