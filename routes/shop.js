@@ -37,7 +37,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
     const tonEarned = currency === 'ton' ? rewardAmount : 0;
     
     await client.query(
-      'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, timestamp) VALUES ($1, $2, $3, $4, NOW())',
+      'INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) VALUES ($1, $2, $3, $4, NOW())',
       [player.referrer_id, telegramId, csEarned, tonEarned]
     );
 
