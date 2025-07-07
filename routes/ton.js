@@ -1,4 +1,4 @@
-// ===== routes/ton.js ===== СЕРВЕРНЫЕ РАСЧЕТЫ ВРЕМЕНИ (ИСПРАВЛЕННЫЙ)
+// ===== routes/ton.js ===== СЕРВЕРНЫЕ РАСЧЕТЫ ВРЕМЕНИ (ИСПРАВЛЕННЫЙ) + РЕФЕРАЛЬНЫЕ НАГРАДЫ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -7,6 +7,49 @@ const router = express.Router();
 
 // 🔥 ТЕСТОВЫЙ РЕЖИМ: true = 2/4 минуты, false = 20/40 дней
 const TEST_MODE = false;
+
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ДЛЯ TON СТЕЙКИНГА
+const processReferralReward = async (client, telegramId, spentAmount, currency) => {
+  try {
+    const player = await getPlayer(telegramId);
+    if (!player?.referrer_id) {
+      console.log(`💸 Реферальная награда: игрок ${telegramId} не имеет реферера`);
+      return;
+    }
+
+    // 🔥 ПРОЦЕНТНЫЕ СТАВКИ: 0.1% для TON
+    const rewardPercentage = 0.001; // 0.1% для TON
+    const rewardAmount = parseFloat((spentAmount * rewardPercentage).toFixed(8));
+
+    if (rewardAmount <= 0) {
+      console.log(`💸 Реферальная награда: слишком маленькая сумма (${rewardAmount})`);
+      return;
+    }
+
+    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} начисляется ${rewardAmount} TON`);
+
+    // Начисляем награду рефереру в TON
+    await client.query(
+      'UPDATE players SET ton = ton + $1 WHERE telegram_id = $2',
+      [rewardAmount, player.referrer_id]
+    );
+    
+    // 🔥 ЗАПИСЫВАЕМ В ТАБЛИЦУ РЕФЕРАЛОВ
+    await client.query(`
+      INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) 
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (referrer_id, referred_id) 
+      DO UPDATE SET 
+        ton_earned = referrals.ton_earned + $4
+    `, [player.referrer_id, telegramId, 0, rewardAmount]);
+
+    console.log(`✅ Реферальная награда TON начислена: ${rewardAmount} TON рефереру ${player.referrer_id}`);
+    
+  } catch (err) {
+    console.error('❌ Ошибка начисления реферальной награды TON:', err);
+    // НЕ бросаем ошибку - пусть стейкинг продолжается
+  }
+};
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
@@ -51,7 +94,8 @@ router.get('/calculate/:amount', (req, res) => {
     test_mode: TEST_MODE
   });
 });
-// 🔥 СОЗДАНИЕ СТЕЙКА
+
+// 🔥 СОЗДАНИЕ СТЕЙКА С РЕФЕРАЛЬНЫМИ НАГРАДАМИ
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
   
@@ -150,6 +194,9 @@ router.post('/stake', async (req, res) => {
       [newTonBalance, telegramId]
     );
     
+    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА
+    await processReferralReward(client, telegramId, stakeAmountNum, 'ton');
+    
     // Разблокируем систему 5 навсегда
     if (!player.unlocked_systems.includes(systemId)) {
       const updatedUnlockedSystems = [...player.unlocked_systems, systemId];
@@ -212,6 +259,7 @@ router.post('/stake', async (req, res) => {
     client.release();
   }
 });
+
 // 📋 ПОЛУЧЕНИЕ СПИСКА СТЕЙКОВ - 🔥 ВСЕ РАСЧЕТЫ НА СЕРВЕРЕ
 router.get('/stakes/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
@@ -304,6 +352,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 // 💸 ВЫВОД ЗАВЕРШЕННОГО СТЕЙКА
 router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
@@ -434,6 +483,7 @@ router.post('/withdraw', async (req, res) => {
     client.release();
   }
 });
+
 // 💸 ОТМЕНА СТЕЙКА СО ШТРАФОМ 10%
 router.post('/cancel', async (req, res) => {
   const { telegramId, stakeId } = req.body;
