@@ -7,6 +7,8 @@ const shopData = require('../shopData.js');
 const router = express.Router();
 
 // 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ
+// В функции processReferralReward исправь:
+
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -15,8 +17,21 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    // 🔥 ПРОЦЕНТНЫЕ СТАВКИ: 1% для CS, 0.1% для TON
-    const rewardPercentage = currency === 'ton' ? 0.001 : 0.01; // 0.1% для TON, 1% для CS
+    // 🔥 ИСПРАВЛЕНО: Правильные проценты для всех валют
+    let rewardPercentage, rewardCurrency;
+    
+    if (currency === 'ton') {
+      rewardPercentage = 0.001; // 0.1% для TON
+      rewardCurrency = 'ton';   // начисляем в TON
+    } else if (currency === 'cs') {
+      rewardPercentage = 0.01;  // 1% для CS
+      rewardCurrency = 'cs';    // начисляем в CS
+    } else {
+      // Для CCC начисляем в CS
+      rewardPercentage = 0.01;  // 1%
+      rewardCurrency = 'cs';    // начисляем в CS
+    }
+
     const rewardAmount = parseFloat((spentAmount * rewardPercentage).toFixed(8));
 
     if (rewardAmount <= 0) {
@@ -24,17 +39,17 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} начисляется ${rewardAmount} ${currency.toUpperCase()}`);
+    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} начисляется ${rewardAmount} ${rewardCurrency.toUpperCase()}`);
 
-    // Начисляем награду рефереру
+    // Начисляем награду рефереру в правильной валюте
     await client.query(
-      `UPDATE players SET ${currency} = ${currency} + $1 WHERE telegram_id = $2`,
+      `UPDATE players SET ${rewardCurrency} = ${rewardCurrency} + $1 WHERE telegram_id = $2`,
       [rewardAmount, player.referrer_id]
     );
     
-    // 🔥 ИСПРАВЛЕНО: UPSERT вместо INSERT - обновляем существующую запись или создаем новую
-    const csEarned = currency === 'cs' ? rewardAmount : 0;
-    const tonEarned = currency === 'ton' ? rewardAmount : 0;
+    // 🔥 ИСПРАВЛЕНО: Записываем в правильные поля
+    const csEarned = rewardCurrency === 'cs' ? rewardAmount : 0;
+    const tonEarned = rewardCurrency === 'ton' ? rewardAmount : 0;
     
     await client.query(`
       INSERT INTO referrals (referrer_id, referred_id, cs_earned, ton_earned, created_at) 
@@ -45,7 +60,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, csEarned, tonEarned]);
 
-    console.log(`✅ Реферальная награда начислена: ${rewardAmount} ${currency.toUpperCase()} рефереру ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда начислена: ${rewardAmount} ${rewardCurrency.toUpperCase()} рефереру ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды:', err);
