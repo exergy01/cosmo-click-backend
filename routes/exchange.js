@@ -137,18 +137,39 @@ router.post('/buy', async (req, res) => {
   }
 });
 
-// POST /api/exchange/convert
+// POST /api/exchange/convert - ИСПРАВЛЕННАЯ ВЕРСИЯ
 router.post('/convert', async (req, res) => {
+  console.log('🔄 ПОЛУЧЕН ЗАПРОС НА ОБМЕН:', req.body); // ⬅️ ПЕРВЫЙ ЛОГ
+  
   const { telegramId, fromCurrency, toCurrency, amount } = req.body;
-  if (!telegramId || !fromCurrency || !toCurrency || amount === undefined || amount <= 0) return res.status(400).json({ error: 'Missing required fields or invalid amount' });
+  
+  console.log('📋 ИЗВЛЕЧЕННЫЕ ПАРАМЕТРЫ:', { telegramId, fromCurrency, toCurrency, amount });
+  
+  if (!telegramId || !fromCurrency || !toCurrency || amount === undefined || amount <= 0) {
+    console.log('❌ ВАЛИДАЦИЯ НЕ ПРОШЛА');
+    return res.status(400).json({ error: 'Missing required fields or invalid amount' });
+  }
+  
+  console.log('✅ ВАЛИДАЦИЯ ПРОШЛА, ПОДКЛЮЧАЕМСЯ К БД...');
+  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    console.log('✅ ТРАНЗАКЦИЯ НАЧАТА');
+    
     const player = await getPlayer(telegramId);
     if (!player) {
+      console.log('❌ ИГРОК НЕ НАЙДЕН');
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
+    
+    console.log('✅ ИГРОК НАЙДЕН:', { 
+      ccc: player.ccc, 
+      cs: player.cs, 
+      ton: player.ton, 
+      verified: player.verified 
+    });
 
     // 🛡️ ПРОВЕРКА НА ПОДОЗРИТЕЛЬНУЮ АКТИВНОСТЬ
     const suspicious = await detectSuspiciousActivity(telegramId, 'currency_convert', amount, null);
@@ -166,58 +187,122 @@ router.post('/convert', async (req, res) => {
     let updatedCcc = parseFloat(player.ccc);
     let updatedCs = parseFloat(player.cs);
     let updatedTon = parseFloat(player.ton);
-    const rates = { ccc_to_cs: 0.001, cs_to_ton: 0.0001, ton_to_cs: 10000, cs_to_ccc: 1000, ton_to_ccc: 1000 * 10000 };
+    
+    // 🎯 ПРАВИЛЬНЫЕ КУРСЫ ОБМЕНА
+    const rates = {
+      ccc_to_cs: 1/200,      // 200 CCC = 1 CS -> 0.005
+      cs_to_ccc: 200,        // 1 CS = 200 CCC
+      cs_to_ton: 1/100,      // 100 CS = 1 TON -> 0.01
+      ton_to_cs: 100         // 1 TON = 100 CS
+    };
+    
     let convertedAmount = 0;
     let conversionPair = `${fromCurrency}_to_${toCurrency}`;
+    const isVerified = player.verified || false;
 
+    console.log('💱 НАЧИНАЕМ РАСЧЕТ ОБМЕНА:', { conversionPair, isVerified });
+
+    // 🔄 ЛОГИКА ОБМЕНА С ПРАВИЛЬНЫМИ КУРСАМИ
     if (fromCurrency === 'ccc' && toCurrency === 'cs') {
+      // 200 CCC = 1 CS
+      console.log('🔄 CCC → CS');
       if (updatedCcc < amount) { 
+        console.log('❌ НЕДОСТАТОЧНО CCC');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough CCC' }); 
       }
-      convertedAmount = amount * rates.ccc_to_cs;
+      convertedAmount = amount * rates.ccc_to_cs; // amount / 200
       updatedCcc -= amount;
       updatedCs += convertedAmount;
-    } else if (fromCurrency === 'cs' && toCurrency === 'ton') {
+      console.log(`✅ ${amount} CCC → ${convertedAmount} CS`);
+      
+    } else if (fromCurrency === 'cs' && toCurrency === 'ccc') {
+      // 1 CS = 200 CCC
+      console.log('🔄 CS → CCC');
       if (updatedCs < amount) { 
+        console.log('❌ НЕДОСТАТОЧНО CS');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough CS' }); 
       }
-      convertedAmount = amount * rates.cs_to_ton;
+      convertedAmount = amount * rates.cs_to_ccc; // amount * 200
+      updatedCs -= amount;
+      updatedCcc += convertedAmount;
+      console.log(`✅ ${amount} CS → ${convertedAmount} CCC`);
+      
+    } else if (fromCurrency === 'cs' && toCurrency === 'ton') {
+      // 100 CS = 1 TON + комиссия 2% если не верифицирован
+      console.log('🔄 CS → TON');
+      if (updatedCs < amount) { 
+        console.log('❌ НЕДОСТАТОЧНО CS');
+        await client.query('ROLLBACK'); 
+        return res.status(400).json({ error: 'Not enough CS' }); 
+      }
+      convertedAmount = amount * rates.cs_to_ton; // amount / 100
+      
+      // Применяем комиссию 2% если не верифицирован
+      if (!isVerified) {
+        console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
+        convertedAmount = convertedAmount * 0.98; // -2%
+      }
+      
       updatedCs -= amount;
       updatedTon += convertedAmount;
+      console.log(`✅ ${amount} CS → ${convertedAmount} TON (комиссия: ${!isVerified ? '2%' : '0%'})`);
+      
     } else if (fromCurrency === 'ton' && toCurrency === 'cs') {
+      // 1 TON = 100 CS + комиссия 2% если не верифицирован
+      console.log('🔄 TON → CS');
       if (updatedTon < amount) { 
+        console.log('❌ НЕДОСТАТОЧНО TON');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough TON' }); 
       }
-      convertedAmount = amount * rates.ton_to_cs;
+      convertedAmount = amount * rates.ton_to_cs; // amount * 100
+      
+      // Применяем комиссию 2% если не верифицирован
+      if (!isVerified) {
+        console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
+        convertedAmount = convertedAmount * 0.98; // -2%
+      }
+      
       updatedTon -= amount;
       updatedCs += convertedAmount;
-    } else if (fromCurrency === 'cs' && toCurrency === 'ccc') {
-      if (updatedCs < amount) { 
-        await client.query('ROLLBACK'); 
-        return res.status(400).json({ error: 'Not enough CS' }); 
-      }
-      convertedAmount = amount * rates.cs_to_ccc;
-      updatedCs -= amount;
-      updatedCcc += convertedAmount;
-    } else if (fromCurrency === 'ton' && toCurrency === 'ccc') {
-      if (updatedTon < amount) { 
-        await client.query('ROLLBACK'); 
-        return res.status(400).json({ error: 'Not enough TON' }); 
-      }
-      convertedAmount = amount * rates.ton_to_ccc;
-      updatedTon -= amount;
-      updatedCcc += convertedAmount;
+      console.log(`✅ ${amount} TON → ${convertedAmount} CS (комиссия: ${!isVerified ? '2%' : '0%'})`);
+      
     } else {
+      console.log('❌ НЕДОПУСТИМАЯ ВАЛЮТНАЯ ПАРА');
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid conversion pair' });
     }
 
-    await client.query('UPDATE players SET ccc = $1, cs = $2, ton = $3 WHERE telegram_id = $4', [updatedCcc, updatedCs, updatedTon, telegramId]);
+    console.log('💾 ОБНОВЛЯЕМ БАЛАНС В БД...');
+    console.log('📊 НОВЫЕ БАЛАНСЫ:', { 
+      ccc: updatedCcc, 
+      cs: updatedCs, 
+      ton: updatedTon 
+    });
 
-    // 📝 ЛОГИРОВАНИЕ КОНВЕРТАЦИИ
+    // Обновляем баланс игрока с таймаутом
+    try {
+      await Promise.race([
+        client.query(
+          'UPDATE players SET ccc = $1, cs = $2, ton = $3 WHERE telegram_id = $4', 
+          [updatedCcc, updatedCs, updatedTon, telegramId]
+        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
+        )
+      ]);
+      console.log('✅ БАЛАНС ОБНОВЛЕН В БД');
+    } catch (queryError) {
+      console.error('❌ ОШИБКА ОБНОВЛЕНИЯ БАЛАНСА:', queryError.message);
+      await client.query('ROLLBACK');
+      return res.status(500).json({ error: 'Database timeout or error' });
+    }
+
+    // 📝 ВРЕМЕННО ОТКЛЮЧАЕМ ЛОГИРОВАНИЕ
+    console.log('📝 ПРОПУСКАЕМ ЛОГИРОВАНИЕ (временно)...');
+    /*
     const actionId = await logPlayerAction(
       telegramId, 
       'currency_convert', 
@@ -230,7 +315,9 @@ router.post('/convert', async (req, res) => {
         inputAmount: amount,
         outputAmount: convertedAmount,
         conversionPair,
-        rate: rates[conversionPair] || 0
+        rate: rates[conversionPair] || 0,
+        commission: !isVerified && (fromCurrency === 'cs' || fromCurrency === 'ton') ? 2 : 0,
+        verified: isVerified
       }, 
       req
     );
@@ -248,16 +335,41 @@ router.post('/convert', async (req, res) => {
 
     // 📊 ОБНОВЛЯЕМ СТАТИСТИКУ
     await updateLifetimeStats(telegramId, 'currency_convert', 1);
+    */
 
+    console.log('✅ КОММИТИМ ТРАНЗАКЦИЮ...');
     await client.query('COMMIT');
+    console.log('✅ ТРАНЗАКЦИЯ ЗАВЕРШЕНА');
+    
+    // Возвращаем обновленные данные игрока
+    console.log('🔄 ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ДАННЫЕ ИГРОКА...');
     const updatedPlayer = await getPlayer(telegramId);
-    res.json(updatedPlayer);
+    
+    console.log(`🎉 ОБМЕН УСПЕШНО ВЫПОЛНЕН: ${amount} ${fromCurrency} → ${convertedAmount.toFixed(8)} ${toCurrency} (игрок: ${telegramId})`);
+    
+    const response = {
+      success: true,
+      player: updatedPlayer,
+      exchange: {
+        from: fromCurrency,
+        to: toCurrency,
+        inputAmount: amount,
+        outputAmount: convertedAmount,
+        commission: !isVerified && (fromCurrency === 'cs' || fromCurrency === 'ton') ? 2 : 0
+      }
+    };
+    
+    console.log('📤 ОТПРАВЛЯЕМ ОТВЕТ КЛИЕНТУ:', { success: true, exchange: response.exchange });
+    res.json(response);
+    console.log('✅ ОТВЕТ ОТПРАВЛЕН!');
+    
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error converting currency:', err);
+    console.error('❌ ОШИБКА ПРИ ОБМЕНЕ:', err);
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+    console.log('🔒 СОЕДИНЕНИЕ С БД ЗАКРЫТО');
   }
 });
 

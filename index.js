@@ -149,6 +149,16 @@ try {
   console.error('❌ Ошибка подключения игровых маршрутов:', err);
 }
 
+// 🎮 ПОДКЛЮЧАЕМ МИНИИГРЫ - ДОБАВЛЕНО ЗДЕСЬ!
+console.log('🎮 Подключаем маршруты миниигр...');
+try {
+  const miniGamesRoutes = require('./routes/games');
+  app.use('/api/games', miniGamesRoutes);
+  console.log('✅ Маршруты миниигр подключены успешно');
+} catch (err) {
+  console.error('❌ Ошибка подключения маршрутов миниигр:', err);
+}
+
 // 🔥 БАЗОВЫЕ МАРШРУТЫ (ваш оригинальный код)
 app.get('/api/time', (req, res) => {
   console.log('⏰ Запрос времени сервера');
@@ -166,7 +176,8 @@ app.get('/api/health', (req, res) => {
     routes: {
       ton: 'активен',
       player: 'активен',
-      shop: 'активен'
+      shop: 'активен',
+      games: 'активен'
     }
   });
 });
@@ -184,6 +195,9 @@ app.get('/', (req, res) => {
       <li>POST /api/ton/stake - создание стейка</li>
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
       <li>GET /api/debug/count-referrals/:telegramId - отладка рефералов</li>
+      <li><strong>GET /api/games/stats/:telegramId - статистика игр</strong></li>
+      <li><strong>GET /api/games/tapper/status/:telegramId - статус тапалки</strong></li>
+      <li><strong>POST /api/games/tapper/tap/:telegramId - тап по астероиду</strong></li>
     </ul>
     <p><strong>Время сервера:</strong> ${new Date().toISOString()}</p>
     <h3>🔧 Redirect система:</h3>
@@ -196,6 +210,14 @@ app.use('/api/ton/*', (req, res, next) => {
   console.log(`💰 TON API запрос: ${req.method} ${req.originalUrl}`);
   console.log(`📋 TON Headers:`, req.headers);
   console.log(`📦 TON Body:`, req.body);
+  next();
+});
+
+// 🎮 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики ИГРОВЫХ запросов
+app.use('/api/games/*', (req, res, next) => {
+  console.log(`🎮 GAMES API запрос: ${req.method} ${req.originalUrl}`);
+  console.log(`📋 GAMES Headers:`, req.headers);
+  console.log(`📦 GAMES Body:`, req.body);
   next();
 });
 
@@ -237,6 +259,16 @@ app.use((req, res) => {
     console.log('💰💥 - POST /api/ton/cancel');
   }
 
+  // 🎮 СПЕЦИАЛЬНО ДЛЯ ИГРОВЫХ ЗАПРОСОВ
+  if (req.path.startsWith('/api/games')) {
+    console.log('🎮💥 GAMES API ЗАПРОС УПАЛ В 404!');
+    console.log('🎮💥 Доступные GAMES маршруты должны быть:');
+    console.log('🎮💥 - GET /api/games/stats/:telegramId');
+    console.log('🎮💥 - GET /api/games/tapper/status/:telegramId');
+    console.log('🎮💥 - POST /api/games/tapper/tap/:telegramId');
+    console.log('🎮💥 - POST /api/games/tapper/watch-ad/:telegramId');
+  }
+
   res.status(404).json({
     error: 'Route not found',
     method: req.method,
@@ -260,7 +292,11 @@ app.use((req, res) => {
       'POST /api/player/language',
       'GET /api/shop/asteroids',
       'POST /api/shop/buy',
-      'GET /api/debug/player/:telegramId'
+      'GET /api/debug/player/:telegramId',
+      '🎮 GET /api/games/stats/:telegramId - статистика игр',
+      '🎮 GET /api/games/tapper/status/:telegramId - статус тапалки',
+      '🎮 POST /api/games/tapper/tap/:telegramId - тап по астероиду',
+      '🎮 POST /api/games/tapper/watch-ad/:telegramId - реклама за энергию'
     ]
   });
 });
@@ -275,15 +311,17 @@ app.listen(PORT, async () => {
   console.log(`💰 TON API: /api/ton/*`);
   console.log(`🎮 Player API: /api/player/*`);
   console.log(`🛒 Shop API: /api/shop/*`);
+  console.log(`🎯 Games API: /api/games/*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
   console.log(`🔍 Debug: /api/debug/*`);
   console.log(`🔄 Redirect: /webhook -> frontend`);
   console.log(`🚀 ============================================\n`);
 
-  // 🔥 Проверяем что TON маршруты загружены (ваш оригинальный код)
+  // 🔥 Проверяем что все маршруты загружены
   console.log('🔍 Проверяем загруженные маршруты...');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
+  console.log('Games routes loaded:', app._router ? 'да' : 'нет');
 
   // --- >>> ВАЖНОЕ: Установка вебхука Telegram при запуске сервера <<< ---
   const webhookUrl = `https://cosmoclick-backend.onrender.com/webhook`;
@@ -294,5 +332,4 @@ app.listen(PORT, async () => {
     console.error('❌ Ошибка установки вебхука Telegram:', error.message);
     console.error('Убедитесь, что вебхук установлен правильно через BotFather или PUBLIC_URL настроен.');
   }
-
 });
