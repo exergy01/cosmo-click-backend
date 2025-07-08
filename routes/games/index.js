@@ -1,9 +1,9 @@
- 
 const express = require('express');
 const router = express.Router();
 
 // Подключаем маршруты отдельных игр
 router.use('/tapper', require('./tapper'));
+router.use('/cosmic-shells', require('./cosmic_shells')); // ← ДОБАВИТЬ ЭТУ СТРОКУ
 router.use('/', require('./stats')); // Статистика доступна напрямую
 
 // Middleware для проверки пользователя
