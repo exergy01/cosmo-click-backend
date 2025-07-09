@@ -9,6 +9,7 @@ const MAX_BET = 100000;
 const WIN_MULTIPLIER = 2;
 const DAILY_GAME_LIMIT = 5;
 const MAX_AD_GAMES = 20;
+const JACKPOT_CONTRIBUTION = 0.001; // 0.1%
 
 // Утилита для создания безопасной игры
 function createSecureGame(betAmount) {
@@ -48,6 +49,7 @@ function createSecureGame(betAmount) {
 // Получить статус игры (лимиты, статистика)
 router.get('/status/:telegramId', async (req, res) => {
     try {
+        console.log('🛸 Cosmic shells status request for:', req.params.telegramId);
         const { telegramId } = req.params;
         
         // Проверяем лимиты игр на сегодня
@@ -111,6 +113,12 @@ router.get('/status/:telegramId', async (req, res) => {
 
         const balance = balanceResult.rows[0]?.ccc || 0;
 
+        console.log('🛸 Cosmic shells status response:', { 
+            balance: parseFloat(balance), 
+            dailyGames, 
+            gamesLeft: Math.max(0, DAILY_GAME_LIMIT - dailyGames) 
+        });
+
         res.json({
             success: true,
             balance: parseFloat(balance),
@@ -127,7 +135,7 @@ router.get('/status/:telegramId', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Cosmic shells status error:', error);
+        console.error('🛸❌ Cosmic shells status error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
@@ -135,11 +143,13 @@ router.get('/status/:telegramId', async (req, res) => {
 // Начать новую игру
 router.post('/start-game/:telegramId', async (req, res) => {
     try {
+        console.log('🛸 Starting new cosmic shells game for:', req.params.telegramId, 'Bet:', req.body.betAmount);
         const { telegramId } = req.params;
         const { betAmount } = req.body;
 
         // Валидация ставки
         if (!betAmount || betAmount < MIN_BET || betAmount > MAX_BET) {
+            console.log('🛸❌ Invalid bet amount:', betAmount);
             return res.status(400).json({
                 success: false,
                 error: `Ставка должна быть от ${MIN_BET} до ${MAX_BET} CCC`
@@ -164,6 +174,8 @@ router.post('/start-game/:telegramId', async (req, res) => {
             }
 
             const currentBalance = parseFloat(balanceResult.rows[0].ccc);
+            console.log('🛸 Player balance:', currentBalance, 'Bet:', betAmount);
+            
             if (currentBalance < betAmount) {
                 await pool.query('ROLLBACK');
                 return res.status(400).json({
@@ -195,6 +207,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
 
             // Создаем безопасную игру
             const game = createSecureGame(betAmount);
+            console.log('🛸 Created game:', { gameId: game.gameId, winningPosition: game.winningPosition, positions: game.positions });
 
             // Сохраняем игру в базе
             await pool.query(`
@@ -210,6 +223,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
 
             await pool.query('COMMIT');
 
+            console.log('🛸✅ Game started successfully:', game.gameId);
             res.json({
                 success: true,
                 gameId: game.gameId,
@@ -222,46 +236,51 @@ router.post('/start-game/:telegramId', async (req, res) => {
         }
 
     } catch (error) {
-        console.error('Start cosmic shells game error:', error);
+        console.error('🛸❌ Start cosmic shells game error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
 
-// Сделать выбор тарелки (ИСПРАВЛЕНО)
+// Сделать выбор тарелки
 router.post('/make-choice/:telegramId', async (req, res) => {
     try {
+        console.log('🛸 Making choice for:', req.params.telegramId, 'Body:', req.body);
         const { telegramId } = req.params;
         const { gameId, chosenPosition } = req.body;
 
         // Валидация выбора
         if (chosenPosition < 0 || chosenPosition > 2) {
+            console.log('🛸❌ Invalid position:', chosenPosition);
             return res.status(400).json({
                 success: false,
                 error: 'Неверная позиция тарелки'
             });
         }
 
-        // ИСПРАВЛЕНО: Находим игру в истории правильно
+        // Находим игру в истории
+        console.log('🛸 Looking for game:', gameId);
         const gameResult = await pool.query(`
-            SELECT id, bet_amount, game_result, win_amount FROM minigames_history 
+            SELECT * FROM minigames_history 
             WHERE telegram_id = $1 AND game_result->>'gameId' = $2 
-            AND game_type = 'cosmic_shells'
             ORDER BY created_at DESC LIMIT 1
         `, [telegramId, gameId]);
 
         if (gameResult.rows.length === 0) {
+            console.log('🛸❌ Game not found:', gameId);
             return res.status(400).json({
                 success: false,
                 error: 'Игра не найдена'
             });
         }
 
-        const gameRow = gameResult.rows[0];
-        const gameData = JSON.parse(gameRow.game_result);
-        const betAmount = gameRow.bet_amount;
+        // ИСПРАВЛЕНО: убираем JSON.parse, так как PostgreSQL JSONB возвращает объект
+        const gameData = gameResult.rows[0].game_result;
+        const betAmount = gameResult.rows[0].bet_amount;
+        console.log('🛸 Found game data:', gameData);
 
         // Проверяем что игра еще не завершена
         if (gameData.status !== 'started') {
+            console.log('🛸❌ Game already completed:', gameData.status);
             return res.status(400).json({
                 success: false,
                 error: 'Игра уже завершена'
@@ -273,6 +292,14 @@ router.post('/make-choice/:telegramId', async (req, res) => {
         const winAmount = isWin ? betAmount * WIN_MULTIPLIER : 0;
         const profit = winAmount - betAmount;
 
+        console.log('🛸 Game result:', { 
+            chosenPosition, 
+            winningPosition: gameData.winningPosition, 
+            isWin, 
+            winAmount, 
+            profit 
+        });
+
         await pool.query('BEGIN');
 
         try {
@@ -283,8 +310,29 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                     'UPDATE players SET ccc = ccc + $1 WHERE telegram_id = $2',
                     [winAmount, telegramId]
                 );
+                console.log('🛸✅ Win! Added to balance:', winAmount);
+            } else {
+                console.log('🛸💀 Loss! No money returned');
             }
-            // При проигрыше ничего не возвращаем (ставка уже списана при старте)
+
+            // ИСПРАВЛЕНО: Обновляем джекпот при проигрыше
+            let jackpotContribution = 0;
+            if (!isWin) {
+                jackpotContribution = Math.floor(betAmount * JACKPOT_CONTRIBUTION);
+                
+                // Обновляем джекпот
+                await pool.query(`
+                    UPDATE jackpot 
+                    SET current_amount = current_amount + $1, 
+                        total_contributed = total_contributed + $1, 
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = 1
+                `, [jackpotContribution]);
+                
+                console.log('🛸💰 Added to jackpot:', jackpotContribution, 'from bet:', betAmount);
+            } else {
+                console.log('🛸🎉 Win! No jackpot contribution');
+            }
 
             // Обновляем историю игры
             const finalGameData = {
@@ -299,9 +347,9 @@ router.post('/make-choice/:telegramId', async (req, res) => {
 
             await pool.query(`
                 UPDATE minigames_history 
-                SET win_amount = $1, game_result = $2
-                WHERE id = $3
-            `, [winAmount, JSON.stringify(finalGameData), gameRow.id]);
+                SET win_amount = $1, game_result = $2, jackpot_contribution = $3
+                WHERE id = $4
+            `, [winAmount, JSON.stringify(finalGameData), jackpotContribution, gameResult.rows[0].id]);
 
             // Обновляем статистику игрока
             await pool.query(`
@@ -324,19 +372,9 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                 WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
             `, [telegramId]);
 
-            // Добавляем к джекпоту
-            if (!isWin) {
-                const jackpotContribution = Math.floor(betAmount * 0.001); // 0.1%
-                if (jackpotContribution > 0) {
-                    await pool.query(
-                        'UPDATE jackpot SET current_amount = current_amount + $1, updated_at = CURRENT_TIMESTAMP',
-                        [jackpotContribution]
-                    );
-                }
-            }
-
             await pool.query('COMMIT');
 
+            console.log('🛸✅ Choice processed successfully');
             res.json({
                 success: true,
                 result: {
@@ -356,7 +394,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
         }
 
     } catch (error) {
-        console.error('Make choice cosmic shells error:', error);
+        console.error('🛸❌ Make choice cosmic shells error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
@@ -364,42 +402,68 @@ router.post('/make-choice/:telegramId', async (req, res) => {
 // Получить историю игр
 router.get('/history/:telegramId', async (req, res) => {
     try {
+        console.log('🛸 Getting game history for:', req.params.telegramId);
         const { telegramId } = req.params;
-        const { limit = 10 } = req.query;
+        const { limit = 20, offset = 0 } = req.query;
 
-        const result = await pool.query(`
+        // Получаем историю игр
+        const historyResult = await pool.query(`
             SELECT 
+                id,
                 bet_amount,
                 win_amount,
                 game_result,
-                created_at
+                jackpot_contribution,
+                created_at,
+                CASE 
+                    WHEN win_amount > 0 THEN 'win'
+                    ELSE 'loss'
+                END as result_type
             FROM minigames_history 
             WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
-            AND game_result->>'status' = 'completed'
             ORDER BY created_at DESC 
-            LIMIT $2
-        `, [telegramId, parseInt(limit.toString())]);
+            LIMIT $2 OFFSET $3
+        `, [telegramId, limit, offset]);
 
-        const history = result.rows.map(row => {
-            const gameData = JSON.parse(row.game_result);
+        // Форматируем данные для фронтенда
+        const formattedHistory = historyResult.rows.map(game => {
+            const gameData = game.game_result;
             return {
-                betAmount: row.bet_amount,
-                winAmount: row.win_amount,
-                isWin: gameData.isWin,
-                profit: row.win_amount - row.bet_amount,
-                chosenPosition: gameData.chosenPosition,
-                winningPosition: gameData.winningPosition,
-                createdAt: row.created_at
+                id: game.id,
+                date: game.created_at,
+                betAmount: parseInt(game.bet_amount),
+                winAmount: parseInt(game.win_amount || 0),
+                profit: parseInt(game.win_amount || 0) - parseInt(game.bet_amount),
+                result: game.result_type,
+                chosenPosition: gameData.chosenPosition || null,
+                winningPosition: gameData.winningPosition || null,
+                positions: gameData.positions || [],
+                jackpotContribution: parseInt(game.jackpot_contribution || 0),
+                isCompleted: gameData.status === 'completed'
             };
+        });
+
+        // Получаем общую статистику
+        const totalResult = await pool.query(`
+            SELECT COUNT(*) as total_games
+            FROM minigames_history 
+            WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
+        `, [telegramId]);
+
+        console.log('🛸 Game history response:', { 
+            total: parseInt(totalResult.rows[0].total_games),
+            games: formattedHistory.length 
         });
 
         res.json({
             success: true,
-            history
+            history: formattedHistory,
+            total: parseInt(totalResult.rows[0].total_games),
+            hasMore: (parseInt(offset) + formattedHistory.length) < parseInt(totalResult.rows[0].total_games)
         });
 
     } catch (error) {
-        console.error('Get cosmic shells history error:', error);
+        console.error('🛸❌ Game history error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
@@ -407,6 +471,7 @@ router.get('/history/:telegramId', async (req, res) => {
 // Посмотреть рекламу за дополнительную игру
 router.post('/watch-ad/:telegramId', async (req, res) => {
     try {
+        console.log('🛸 Watch ad request for:', req.params.telegramId);
         const { telegramId } = req.params;
 
         // Проверяем лимит рекламы
@@ -431,6 +496,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
             WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
         `, [telegramId]);
 
+        console.log('🛸✅ Ad watched, games unlocked');
         res.json({
             success: true,
             adsRemaining: MAX_AD_GAMES - dailyAds - 1,
@@ -438,7 +504,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Watch ad cosmic shells error:', error);
+        console.error('🛸❌ Watch ad cosmic shells error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
