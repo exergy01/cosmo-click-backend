@@ -46,47 +46,60 @@ function createSecureGame(betAmount) {
     };
 }
 
+// ИСПРАВЛЕНО: Функция для сброса дневных лимитов (защита от изменения времени)
+async function checkAndResetLimits(telegramId) {
+    // Используем серверное время UTC для проверки
+    const serverTime = new Date();
+    const today = serverTime.toISOString().split('T')[0]; // YYYY-MM-DD формат
+
+    let limitsResult = await pool.query(`
+        SELECT daily_games, daily_ads_watched, last_reset_date 
+        FROM player_game_limits 
+        WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
+    `, [telegramId]);
+
+    let dailyGames = 0;
+    let dailyAds = 0;
+
+    if (limitsResult.rows.length === 0) {
+        // Создаем запись для нового игрока
+        await pool.query(`
+            INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
+            VALUES ($1, 'cosmic_shells', 0, 0, CURRENT_DATE)
+        `, [telegramId]);
+        console.log('🛸 Created new limits record for player:', telegramId);
+    } else {
+        const limits = limitsResult.rows[0];
+        const lastResetDate = limits.last_reset_date;
+        const lastResetString = lastResetDate ? new Date(lastResetDate).toISOString().split('T')[0] : null;
+        
+        // Сброс лимитов если новый день (по серверному времени)
+        if (lastResetString !== today) {
+            await pool.query(`
+                UPDATE player_game_limits 
+                SET daily_games = 0, daily_ads_watched = 0, last_reset_date = CURRENT_DATE
+                WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
+            `, [telegramId]);
+            dailyGames = 0;
+            dailyAds = 0;
+            console.log('🛸 Reset limits for new day:', telegramId, 'from', lastResetString, 'to', today);
+        } else {
+            dailyGames = limits.daily_games;
+            dailyAds = limits.daily_ads_watched;
+        }
+    }
+
+    return { dailyGames, dailyAds };
+}
+
 // Получить статус игры (лимиты, статистика)
 router.get('/status/:telegramId', async (req, res) => {
     try {
         console.log('🛸 Cosmic shells status request for:', req.params.telegramId);
         const { telegramId } = req.params;
         
-        // Проверяем лимиты игр на сегодня
-        const today = new Date().toDateString();
-        let limitsResult = await pool.query(`
-            SELECT daily_games, daily_ads_watched, last_reset_date 
-            FROM player_game_limits 
-            WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
-        `, [telegramId]);
-
-        let dailyGames = 0;
-        let dailyAds = 0;
-
-        if (limitsResult.rows.length === 0) {
-            // Создаем запись для нового игрока
-            await pool.query(`
-                INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
-                VALUES ($1, 'cosmic_shells', 0, 0, CURRENT_DATE)
-            `, [telegramId]);
-        } else {
-            const limits = limitsResult.rows[0];
-            const lastReset = new Date(limits.last_reset_date).toDateString();
-            
-            // Сброс лимитов если новый день
-            if (lastReset !== today) {
-                await pool.query(`
-                    UPDATE player_game_limits 
-                    SET daily_games = 0, daily_ads_watched = 0, last_reset_date = CURRENT_DATE
-                    WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
-                `, [telegramId]);
-                dailyGames = 0;
-                dailyAds = 0;
-            } else {
-                dailyGames = limits.daily_games;
-                dailyAds = limits.daily_ads_watched;
-            }
-        }
+        // ИСПРАВЛЕНО: Используем защищенную функцию сброса лимитов
+        const { dailyGames, dailyAds } = await checkAndResetLimits(telegramId);
 
         // Получаем статистику игрока
         const statsResult = await pool.query(`
@@ -116,7 +129,11 @@ router.get('/status/:telegramId', async (req, res) => {
         console.log('🛸 Cosmic shells status response:', { 
             balance: parseFloat(balance), 
             dailyGames, 
-            gamesLeft: Math.max(0, DAILY_GAME_LIMIT - dailyGames) 
+            dailyAds,
+            gamesLeft: Math.max(0, DAILY_GAME_LIMIT - dailyGames),
+            canPlayFree: dailyGames < DAILY_GAME_LIMIT,
+            canWatchAd: dailyAds < MAX_AD_GAMES,
+            actualCalculation: `${DAILY_GAME_LIMIT} - ${dailyGames} = ${DAILY_GAME_LIMIT - dailyGames}`
         });
 
         res.json({
@@ -184,19 +201,8 @@ router.post('/start-game/:telegramId', async (req, res) => {
                 });
             }
 
-            // Списываем ставку сразу
-            await pool.query(
-                'UPDATE players SET ccc = ccc - $1 WHERE telegram_id = $2',
-                [betAmount, telegramId]
-            );
-
-            // Проверка лимитов игр
-            const limitsResult = await pool.query(`
-                SELECT daily_games FROM player_game_limits 
-                WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
-            `, [telegramId]);
-
-            const dailyGames = limitsResult.rows[0]?.daily_games || 0;
+            // ИСПРАВЛЕНО: Проверяем лимиты с защитой
+            const { dailyGames } = await checkAndResetLimits(telegramId);
             if (dailyGames >= DAILY_GAME_LIMIT) {
                 await pool.query('ROLLBACK');
                 return res.status(400).json({
@@ -204,6 +210,12 @@ router.post('/start-game/:telegramId', async (req, res) => {
                     error: 'Дневной лимит игр исчерпан'
                 });
             }
+
+            // Списываем ставку сразу
+            await pool.query(
+                'UPDATE players SET ccc = ccc - $1 WHERE telegram_id = $2',
+                [betAmount, telegramId]
+            );
 
             // Создаем безопасную игру
             const game = createSecureGame(betAmount);
@@ -365,7 +377,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                     updated_at = CURRENT_TIMESTAMP
             `, [telegramId, isWin ? 1 : 0, isWin ? 0 : 1, betAmount, winAmount]);
 
-            // Обновляем лимиты игр
+            // ИСПРАВЛЕНО: Обновляем лимиты игр с проверкой
             await pool.query(`
                 UPDATE player_game_limits 
                 SET daily_games = daily_games + 1
@@ -468,19 +480,14 @@ router.get('/history/:telegramId', async (req, res) => {
     }
 });
 
-// Посмотреть рекламу за дополнительную игру
+// ИСПРАВЛЕНО: Посмотреть рекламу за дополнительную игру
 router.post('/watch-ad/:telegramId', async (req, res) => {
     try {
         console.log('🛸 Watch ad request for:', req.params.telegramId);
         const { telegramId } = req.params;
 
-        // Проверяем лимит рекламы
-        const limitsResult = await pool.query(`
-            SELECT daily_ads_watched FROM player_game_limits 
-            WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
-        `, [telegramId]);
-
-        const dailyAds = limitsResult.rows[0]?.daily_ads_watched || 0;
+        // ИСПРАВЛЕНО: Проверяем лимиты с защитой
+        const { dailyAds } = await checkAndResetLimits(telegramId);
         
         if (dailyAds >= MAX_AD_GAMES) {
             return res.status(400).json({
@@ -496,7 +503,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
             WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
         `, [telegramId]);
 
-        console.log('🛸✅ Ad watched, games unlocked');
+        console.log('🛸✅ Ad watched, extra game unlocked! Ads watched:', dailyAds + 1);
         res.json({
             success: true,
             adsRemaining: MAX_AD_GAMES - dailyAds - 1,

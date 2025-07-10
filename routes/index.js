@@ -312,4 +312,68 @@ router.get('/api/recalculate/:telegramId', async (req, res) => {
   }
 });
 
+// ДОБАВЬТЕ В ФАЙЛ routes/index.js (найдите существующий роут /api/games/stats/:telegramId и замените):
+
+router.get('/api/games/stats/:telegramId', async (req, res) => {
+  try {
+      console.log('🎮 Getting game stats for:', req.params.telegramId);
+      const { telegramId } = req.params;
+
+      // Получаем статистику всех миниигр
+      const statsResult = await pool.query(`
+          SELECT 
+              COALESCE(SUM(total_games), 0) as total_games,
+              COALESCE(SUM(total_wins), 0) as total_wins,
+              COALESCE(SUM(total_losses), 0) as total_losses,
+              COALESCE(SUM(total_bet), 0) as total_bet,
+              COALESCE(SUM(total_won), 0) as total_won
+          FROM minigames_stats 
+          WHERE telegram_id = $1
+      `, [telegramId]);
+
+      // ИСПРАВЛЕНО: Получаем джекпот
+      const jackpotResult = await pool.query(`
+          SELECT current_amount FROM jackpot WHERE id = 1
+      `);
+
+      const stats = statsResult.rows[0] || {
+          total_games: 0,
+          total_wins: 0,
+          total_losses: 0,
+          total_bet: 0,
+          total_won: 0
+      };
+
+      const jackpotAmount = jackpotResult.rows[0]?.current_amount || 0;
+
+      console.log('🎮 Game stats response:', {
+          totalGames: parseInt(stats.total_games),
+          totalWins: parseInt(stats.total_wins),
+          totalLosses: parseInt(stats.total_losses),
+          jackpotAmount: parseInt(jackpotAmount)
+      });
+
+      res.json({
+          totalGames: parseInt(stats.total_games),
+          totalWins: parseInt(stats.total_wins),
+          totalLosses: parseInt(stats.total_losses),
+          totalBet: parseInt(stats.total_bet),
+          totalWon: parseInt(stats.total_won),
+          jackpotAmount: parseInt(jackpotAmount)
+      });
+
+  } catch (error) {
+      console.error('🎮❌ Game stats error:', error);
+      res.status(500).json({ 
+          totalGames: 0,
+          totalWins: 0,
+          totalLosses: 0,
+          totalBet: 0,
+          totalWon: 0,
+          jackpotAmount: 0,
+          error: 'Server error'
+      });
+  }
+});
+
 module.exports = router;

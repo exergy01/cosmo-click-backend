@@ -308,7 +308,12 @@ app.use((req, res) => {
       '🎮 GET /api/games/stats/:telegramId - статистика игр',
       '🎮 GET /api/games/tapper/status/:telegramId - статус тапалки',
       '🎮 POST /api/games/tapper/tap/:telegramId - тап по астероиду',
-      '🎮 POST /api/games/tapper/watch-ad/:telegramId - реклама за энергию'
+      '🎮 POST /api/games/tapper/watch-ad/:telegramId - реклама за энергию',
+      '🛸 GET /api/games/cosmic-shells/status/:telegramId - статус космических напёрстков',
+      '🛸 POST /api/games/cosmic-shells/start-game/:telegramId - начать игру',
+      '🛸 POST /api/games/cosmic-shells/make-choice/:telegramId - сделать выбор',
+      '🛸 POST /api/games/cosmic-shells/watch-ad/:telegramId - реклама за игру',
+      '🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр'
     ]
   });
 });
