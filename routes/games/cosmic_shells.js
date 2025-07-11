@@ -46,7 +46,7 @@ function createSecureGame(betAmount) {
     };
 }
 
-// ИСПРАВЛЕНО: Функция получения лимитов с правильной логикой дат
+// ИСПРАВЛЕНО: Функция получения лимитов с ПРАВИЛЬНОЙ логикой дат
 async function getGameLimits(telegramId) {
     console.log('🛸 Getting game limits for:', telegramId);
     
@@ -69,20 +69,25 @@ async function getGameLimits(telegramId) {
     const limits = limitsResult.rows[0];
     const lastResetDate = limits.last_reset_date;
     
-    // ИСПРАВЛЕНО: Используем PostgreSQL функции для сравнения дат
+    // ИСПРАВЛЕНО: Проверяем СТРОГО меньше (вчерашняя дата)
     const needsReset = await pool.query(`
-        SELECT CASE 
-            WHEN $1::date < CURRENT_DATE THEN true 
-            ELSE false 
-        END as needs_reset
+        SELECT 
+            $1::date as last_reset,
+            CURRENT_DATE as current_date,
+            CASE 
+                WHEN $1::date < CURRENT_DATE THEN true 
+                ELSE false 
+            END as needs_reset
     `, [lastResetDate]);
     
-    const shouldReset = needsReset.rows[0].needs_reset;
+    const resetInfo = needsReset.rows[0];
+    const shouldReset = resetInfo.needs_reset;
     
-    console.log('🛸 Date check:', {
-        lastResetDate: lastResetDate ? lastResetDate.toISOString().split('T')[0] : 'NULL',
-        currentDate: 'CURRENT_DATE (server)',
-        shouldReset,
+    console.log('🛸 DETAILED Date check:', {
+        lastResetDate: resetInfo.last_reset,
+        currentDate: resetInfo.current_date,
+        shouldReset: shouldReset,
+        comparison: resetInfo.last_reset + ' < ' + resetInfo.current_date + ' = ' + shouldReset,
         currentLimits: { dailyGames: limits.daily_games, dailyAds: limits.daily_ads_watched }
     });
     
