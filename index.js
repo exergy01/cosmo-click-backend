@@ -171,6 +171,16 @@ try {
   console.error('❌ Ошибка подключения маршрутов космических напёрстков:', err);
 }
 
+// 🎯 ПОДКЛЮЧАЕМ ADSGRAM - ДОБАВЛЕНО ДЛЯ РЕКЛАМЫ!
+console.log('🎯 Подключаем маршруты Adsgram...');
+try {
+  const adsgramRoutes = require('./routes/adsgram');
+  app.use('/api/adsgram', adsgramRoutes);
+  console.log('✅ Маршруты Adsgram подключены успешно');
+} catch (err) {
+  console.error('❌ Ошибка подключения маршрутов Adsgram:', err);
+}
+
 // 🔥 БАЗОВЫЕ МАРШРУТЫ (ваш оригинальный код)
 app.get('/api/time', (req, res) => {
   console.log('⏰ Запрос времени сервера');
@@ -189,7 +199,8 @@ app.get('/api/health', (req, res) => {
       ton: 'активен',
       player: 'активен',
       shop: 'активен',
-      games: 'активен'
+      games: 'активен',
+      adsgram: 'активен'
     }
   });
 });
@@ -210,6 +221,8 @@ app.get('/', (req, res) => {
       <li><strong>GET /api/games/stats/:telegramId - статистика игр</strong></li>
       <li><strong>GET /api/games/tapper/status/:telegramId - статус тапалки</strong></li>
       <li><strong>POST /api/games/tapper/tap/:telegramId - тап по астероиду</strong></li>
+      <li><strong>🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды</strong></li>
+      <li><strong>🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram</strong></li>
     </ul>
     <p><strong>Время сервера:</strong> ${new Date().toISOString()}</p>
     <h3>🔧 Redirect система:</h3>
@@ -230,6 +243,14 @@ app.use('/api/games/*', (req, res, next) => {
   console.log(`🎮 GAMES API запрос: ${req.method} ${req.originalUrl}`);
   console.log(`📋 GAMES Headers:`, req.headers);
   console.log(`📦 GAMES Body:`, req.body);
+  next();
+});
+
+// 🎯 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики ADSGRAM запросов
+app.use('/api/adsgram/*', (req, res, next) => {
+  console.log(`🎯 ADSGRAM API запрос: ${req.method} ${req.originalUrl}`);
+  console.log(`📋 ADSGRAM Headers:`, req.headers);
+  console.log(`📦 ADSGRAM Body:`, req.body);
   next();
 });
 
@@ -281,6 +302,14 @@ app.use((req, res) => {
     console.log('🎮💥 - POST /api/games/tapper/watch-ad/:telegramId');
   }
 
+  // 🎯 СПЕЦИАЛЬНО ДЛЯ ADSGRAM ЗАПРОСОВ
+  if (req.path.startsWith('/api/adsgram')) {
+    console.log('🎯💥 ADSGRAM API ЗАПРОС УПАЛ В 404!');
+    console.log('🎯💥 Доступные ADSGRAM маршруты должны быть:');
+    console.log('🎯💥 - GET /api/adsgram/reward?userid=[userId]');
+    console.log('🎯💥 - GET /api/adsgram/stats/:telegramId');
+  }
+
   res.status(404).json({
     error: 'Route not found',
     method: req.method,
@@ -313,7 +342,9 @@ app.use((req, res) => {
       '🛸 POST /api/games/cosmic-shells/start-game/:telegramId - начать игру',
       '🛸 POST /api/games/cosmic-shells/make-choice/:telegramId - сделать выбор',
       '🛸 POST /api/games/cosmic-shells/watch-ad/:telegramId - реклама за игру',
-      '🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр'
+      '🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр',
+      '🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды',
+      '🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram'
     ]
   });
 });
@@ -329,6 +360,7 @@ app.listen(PORT, async () => {
   console.log(`🎮 Player API: /api/player/*`);
   console.log(`🛒 Shop API: /api/shop/*`);
   console.log(`🎯 Games API: /api/games/*`);
+  console.log(`🎯 Adsgram API: /api/adsgram/*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
   console.log(`🔍 Debug: /api/debug/*`);
@@ -339,6 +371,7 @@ app.listen(PORT, async () => {
   console.log('🔍 Проверяем загруженные маршруты...');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
   console.log('Games routes loaded:', app._router ? 'да' : 'нет');
+  console.log('Adsgram routes loaded:', app._router ? 'да' : 'нет');
 
   // --- >>> ВАЖНОЕ: Установка вебхука Telegram при запуске сервера <<< ---
   const webhookUrl = `https://cosmoclick-backend.onrender.com/webhook`;
