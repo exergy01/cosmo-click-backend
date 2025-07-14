@@ -1,3 +1,5 @@
+// cosmo-click-backend\routes
+ 
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');

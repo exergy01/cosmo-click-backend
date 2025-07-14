@@ -150,7 +150,6 @@ try {
 }
 
 // 🎮 ПОДКЛЮЧАЕМ МИНИИГРЫ - ДОБАВЛЕНО ЗДЕСЬ!
-// 🎮 ПОДКЛЮЧАЕМ МИНИИГРЫ - ДОБАВЛЕНО ЗДЕСЬ!
 console.log('🎮 Подключаем маршруты миниигр...');
 try {
   const miniGamesRoutes = require('./routes/games');
@@ -160,7 +159,6 @@ try {
   console.error('❌ Ошибка подключения маршрутов миниигр:', err);
 }
 
-// 🔥 ДОБАВИТЬ СРАЗУ ПОСЛЕ БЛОКА ВЫШЕ:
 // 🎮 ПОДКЛЮЧАЕМ КОСМИЧЕСКИЕ НАПЁРСТКИ - КРИТИЧЕСКИ ВАЖНО!
 console.log('🎮 Подключаем маршруты космических напёрстков...');
 try {
@@ -169,6 +167,16 @@ try {
   console.log('✅ Маршруты космических напёрстков подключены успешно');
 } catch (err) {
   console.error('❌ Ошибка подключения маршрутов космических напёрстков:', err);
+}
+
+// 🎰 ПОДКЛЮЧАЕМ ГАЛАКТИЧЕСКИЕ СЛОТЫ - НОВОЕ!
+console.log('🎰 Подключаем маршруты галактических слотов...');
+try {
+  const galacticSlotsRoutes = require('./routes/games/galactic_slots');
+  app.use('/api/games/galactic-slots', galacticSlotsRoutes);
+  console.log('✅ Маршруты галактических слотов подключены успешно');
+} catch (err) {
+  console.error('❌ Ошибка подключения маршрутов галактических слотов:', err);
 }
 
 // 🎯 ПОДКЛЮЧАЕМ ADSGRAM - ДОБАВЛЕНО ДЛЯ РЕКЛАМЫ!
@@ -200,6 +208,8 @@ app.get('/api/health', (req, res) => {
       player: 'активен',
       shop: 'активен',
       games: 'активен',
+      cosmic_shells: 'активен',
+      galactic_slots: 'активен',
       adsgram: 'активен'
     }
   });
@@ -221,6 +231,15 @@ app.get('/', (req, res) => {
       <li><strong>GET /api/games/stats/:telegramId - статистика игр</strong></li>
       <li><strong>GET /api/games/tapper/status/:telegramId - статус тапалки</strong></li>
       <li><strong>POST /api/games/tapper/tap/:telegramId - тап по астероиду</strong></li>
+      <li><strong>🛸 GET /api/games/cosmic-shells/status/:telegramId - статус космических напёрстков</strong></li>
+      <li><strong>🛸 POST /api/games/cosmic-shells/start-game/:telegramId - начать игру</strong></li>
+      <li><strong>🛸 POST /api/games/cosmic-shells/make-choice/:telegramId - сделать выбор</strong></li>
+      <li><strong>🛸 POST /api/games/cosmic-shells/watch-ad/:telegramId - реклама за игру</strong></li>
+      <li><strong>🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр</strong></li>
+      <li><strong>🎰 GET /api/games/galactic-slots/status/:telegramId - статус галактических слотов</strong></li>
+      <li><strong>🎰 POST /api/games/galactic-slots/spin/:telegramId - крутить слоты</strong></li>
+      <li><strong>🎰 POST /api/games/galactic-slots/watch-ad/:telegramId - реклама за игру</strong></li>
+      <li><strong>🎰 GET /api/games/galactic-slots/history/:telegramId - история слотов</strong></li>
       <li><strong>🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды</strong></li>
       <li><strong>🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram</strong></li>
     </ul>
@@ -300,6 +319,15 @@ app.use((req, res) => {
     console.log('🎮💥 - GET /api/games/tapper/status/:telegramId');
     console.log('🎮💥 - POST /api/games/tapper/tap/:telegramId');
     console.log('🎮💥 - POST /api/games/tapper/watch-ad/:telegramId');
+    console.log('🎮💥 - GET /api/games/cosmic-shells/status/:telegramId');
+    console.log('🎮💥 - POST /api/games/cosmic-shells/start-game/:telegramId');
+    console.log('🎮💥 - POST /api/games/cosmic-shells/make-choice/:telegramId');
+    console.log('🎮💥 - POST /api/games/cosmic-shells/watch-ad/:telegramId');
+    console.log('🎮💥 - GET /api/games/cosmic-shells/history/:telegramId');
+    console.log('🎮💥 - GET /api/games/galactic-slots/status/:telegramId');
+    console.log('🎮💥 - POST /api/games/galactic-slots/spin/:telegramId');
+    console.log('🎮💥 - POST /api/games/galactic-slots/watch-ad/:telegramId');
+    console.log('🎮💥 - GET /api/games/galactic-slots/history/:telegramId');
   }
 
   // 🎯 СПЕЦИАЛЬНО ДЛЯ ADSGRAM ЗАПРОСОВ
@@ -343,6 +371,10 @@ app.use((req, res) => {
       '🛸 POST /api/games/cosmic-shells/make-choice/:telegramId - сделать выбор',
       '🛸 POST /api/games/cosmic-shells/watch-ad/:telegramId - реклама за игру',
       '🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр',
+      '🎰 GET /api/games/galactic-slots/status/:telegramId - статус галактических слотов',
+      '🎰 POST /api/games/galactic-slots/spin/:telegramId - крутить слоты',
+      '🎰 POST /api/games/galactic-slots/watch-ad/:telegramId - реклама за игру',
+      '🎰 GET /api/games/galactic-slots/history/:telegramId - история слотов',
       '🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды',
       '🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram'
     ]
@@ -360,6 +392,8 @@ app.listen(PORT, async () => {
   console.log(`🎮 Player API: /api/player/*`);
   console.log(`🛒 Shop API: /api/shop/*`);
   console.log(`🎯 Games API: /api/games/*`);
+  console.log(`🛸 Cosmic Shells: /api/games/cosmic-shells/*`);
+  console.log(`🎰 Galactic Slots: /api/games/galactic-slots/*`);
   console.log(`🎯 Adsgram API: /api/adsgram/*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
@@ -371,6 +405,8 @@ app.listen(PORT, async () => {
   console.log('🔍 Проверяем загруженные маршруты...');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
   console.log('Games routes loaded:', app._router ? 'да' : 'нет');
+  console.log('Cosmic Shells routes loaded:', app._router ? 'да' : 'нет');
+  console.log('Galactic Slots routes loaded:', app._router ? 'да' : 'нет');
   console.log('Adsgram routes loaded:', app._router ? 'да' : 'нет');
 
   // --- >>> ВАЖНОЕ: Установка вебхука Telegram при запуске сервера <<< ---
