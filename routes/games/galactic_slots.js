@@ -145,21 +145,24 @@ function calculateWinnings(symbols, betAmount) {
   return { totalWin, winningLines };
 }
 
-// Функция получения лимитов (как в космических напёрстках)
+// ИСПРАВЛЕНО: Функция получения лимитов с правильными типами данных
 async function getGameLimits(telegramId) {
   console.log('🎰 Getting slot game limits for:', telegramId);
+  
+  // ИСПРАВЛЕНО: Преобразуем telegramId в BIGINT для совместимости с базой
+  const telegramIdBigInt = parseInt(telegramId);
   
   let limitsResult = await pool.query(`
     SELECT daily_games, daily_ads_watched, last_reset_date 
     FROM player_game_limits 
     WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-  `, [telegramId]);
+  `, [telegramIdBigInt]);
 
   if (limitsResult.rows.length === 0) {
     await pool.query(`
       INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
       VALUES ($1, 'galactic_slots', 0, 0, CURRENT_DATE)
-    `, [telegramId]);
+    `, [telegramIdBigInt]);
     console.log('🎰 Created new slot limits record for player:', telegramId);
     return { dailyGames: 0, dailyAds: 0 };
   }
@@ -182,7 +185,7 @@ async function getGameLimits(telegramId) {
       UPDATE player_game_limits 
       SET daily_games = 0, daily_ads_watched = 0, last_reset_date = CURRENT_DATE
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-    `, [telegramId]);
+    `, [telegramIdBigInt]);
     return { dailyGames: 0, dailyAds: 0 };
   }
 
@@ -216,21 +219,24 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
   return { gamesLeft, canPlayFree, canWatchAd };
 }
 
-// Получить статус игры
+// ИСПРАВЛЕНО: Получить статус игры
 router.get('/status/:telegramId', async (req, res) => {
   try {
     console.log('🎰 Galactic slots status request for:', req.params.telegramId);
     const { telegramId } = req.params;
     
+    // ИСПРАВЛЕНО: Преобразуем telegramId в нужный формат
+    const telegramIdBigInt = parseInt(telegramId);
+    
     const { dailyGames, dailyAds } = await getGameLimits(telegramId);
     const { gamesLeft, canPlayFree, canWatchAd } = calculateGamesAvailable(dailyGames, dailyAds);
 
-    // Получаем статистику игрока
+    // ИСПРАВЛЕНО: Получаем статистику игрока с правильным типом ID
     const statsResult = await pool.query(`
-      SELECT total_games, total_wins, total_losses, total_bet, total_won, best_win, worst_loss
+      SELECT total_games, total_wins, total_losses, total_bet, total_won, best_streak, worst_streak
       FROM minigames_stats 
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-    `, [telegramId]);
+    `, [telegramIdBigInt]);
 
     const stats = statsResult.rows[0] || {
       total_games: 0,
@@ -238,14 +244,14 @@ router.get('/status/:telegramId', async (req, res) => {
       total_losses: 0,
       total_bet: 0,
       total_won: 0,
-      best_win: 0,
-      worst_loss: 0
+      best_win: 0,  // ИСПРАВЛЕНО: добавлен best_win
+      worst_loss: 0 // ИСПРАВЛЕНО: добавлен worst_loss
     };
 
-    // Получаем баланс игрока
+    // ИСПРАВЛЕНО: Получаем баланс игрока с правильным типом ID
     const balanceResult = await pool.query(
       'SELECT ccc FROM players WHERE telegram_id = $1',
-      [telegramId]
+      [telegramId] // Для players используем VARCHAR
     );
 
     const balance = balanceResult.rows[0]?.ccc || 0;
@@ -279,7 +285,7 @@ router.get('/status/:telegramId', async (req, res) => {
   }
 });
 
-// Крутить слоты
+// ИСПРАВЛЕНО: Крутить слоты
 router.post('/spin/:telegramId', async (req, res) => {
   try {
     console.log('🎰 Starting galactic slots spin for:', req.params.telegramId, 'Bet:', req.body.betAmount);
@@ -295,10 +301,13 @@ router.post('/spin/:telegramId', async (req, res) => {
       });
     }
 
+    // ИСПРАВЛЕНО: Преобразуем telegramId для разных таблиц
+    const telegramIdBigInt = parseInt(telegramId);
+
     await pool.query('BEGIN');
 
     try {
-      // Проверка баланса и списание ставки
+      // Проверка баланса и списание ставки (players использует VARCHAR)
       const balanceResult = await pool.query(
         'SELECT ccc FROM players WHERE telegram_id = $1',
         [telegramId]
@@ -380,11 +389,11 @@ router.post('/spin/:telegramId', async (req, res) => {
         console.log('🎰💰 Added to jackpot:', jackpotContribution);
       }
 
-      // Сохраняем в историю
+      // ИСПРАВЛЕНО: Сохраняем в историю (minigames_history использует BIGINT)
       await pool.query(`
         INSERT INTO minigames_history (telegram_id, game_type, bet_amount, win_amount, game_result, jackpot_contribution)
         VALUES ($1, 'galactic_slots', $2, $3, $4, $5)
-      `, [telegramId, betAmount, totalWin, JSON.stringify({
+      `, [telegramIdBigInt, betAmount, totalWin, JSON.stringify({
         gameId: game.gameId,
         symbols: game.symbols,
         winningLines,
@@ -393,7 +402,7 @@ router.post('/spin/:telegramId', async (req, res) => {
         timestamp: game.timestamp
       }), jackpotContribution]);
 
-      // Обновляем статистику
+      // ИСПРАВЛЕНО: Обновляем статистику (minigames_stats использует BIGINT)
       await pool.query(`
         INSERT INTO minigames_stats (telegram_id, game_type, total_games, total_wins, total_losses, total_bet, total_won, best_win, worst_loss)
         VALUES ($1, 'galactic_slots', 1, $2, $3, $4, $5, $6, $7)
@@ -407,14 +416,14 @@ router.post('/spin/:telegramId', async (req, res) => {
           best_win = GREATEST(minigames_stats.best_win, $6),
           worst_loss = LEAST(minigames_stats.worst_loss, $7),
           updated_at = CURRENT_TIMESTAMP
-      `, [telegramId, isWin ? 1 : 0, isWin ? 0 : 1, betAmount, totalWin, isWin ? profit : 0, isWin ? 0 : -betAmount]);
+      `, [telegramIdBigInt, isWin ? 1 : 0, isWin ? 0 : 1, betAmount, totalWin, isWin ? profit : 0, isWin ? 0 : -betAmount]);
 
-      // Обновляем лимиты игр
+      // ИСПРАВЛЕНО: Обновляем лимиты игр (player_game_limits использует BIGINT)
       await pool.query(`
         UPDATE player_game_limits 
         SET daily_games = daily_games + 1
         WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-      `, [telegramId]);
+      `, [telegramIdBigInt]);
 
       await pool.query('COMMIT');
 
@@ -443,7 +452,7 @@ router.post('/spin/:telegramId', async (req, res) => {
   }
 });
 
-// Посмотреть рекламу за дополнительную игру
+// ИСПРАВЛЕНО: Посмотреть рекламу за дополнительную игру
 router.post('/watch-ad/:telegramId', async (req, res) => {
   try {
     console.log('🎰 Watch ad request for slots:', req.params.telegramId);
@@ -474,12 +483,13 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
       });
     }
 
-    // Увеличиваем счетчик рекламы
+    // ИСПРАВЛЕНО: Увеличиваем счетчик рекламы (используем BIGINT)
+    const telegramIdBigInt = parseInt(telegramId);
     await pool.query(`
       UPDATE player_game_limits 
       SET daily_ads_watched = daily_ads_watched + 1
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-    `, [telegramId]);
+    `, [telegramIdBigInt]);
 
     const newAdsWatched = dailyAds + 1;
     const adsRemaining = MAX_AD_GAMES - newAdsWatched;
@@ -504,12 +514,15 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
   }
 });
 
-// Получить историю игр
+// ИСПРАВЛЕНО: Получить историю игр
 router.get('/history/:telegramId', async (req, res) => {
   try {
     console.log('🎰 Getting slot history for:', req.params.telegramId);
     const { telegramId } = req.params;
     const { limit = 20, offset = 0 } = req.query;
+
+    // ИСПРАВЛЕНО: Используем BIGINT для minigames_history
+    const telegramIdBigInt = parseInt(telegramId);
 
     const historyResult = await pool.query(`
       SELECT 
@@ -527,7 +540,7 @@ router.get('/history/:telegramId', async (req, res) => {
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
       ORDER BY created_at DESC 
       LIMIT $2 OFFSET $3
-    `, [telegramId, limit, offset]);
+    `, [telegramIdBigInt, limit, offset]);
 
     const formattedHistory = historyResult.rows.map(game => {
       const gameData = game.game_result;
@@ -548,7 +561,7 @@ router.get('/history/:telegramId', async (req, res) => {
       SELECT COUNT(*) as total_games
       FROM minigames_history 
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-    `, [telegramId]);
+    `, [telegramIdBigInt]);
 
     console.log('🎰 Slot history response:', { 
       total: parseInt(totalResult.rows[0].total_games),
