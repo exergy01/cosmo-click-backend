@@ -42,7 +42,7 @@ const SYMBOLS = {
   '⭐': { id: 'star', multipliers: [0.1, 0.25, 0.6] },                 // Звезда - увеличено
   '🌍': { id: 'planet', multipliers: [0.08, 0.2, 0.4] },              // Планета - увеличено
   '☄️': { id: 'asteroid', multipliers: [0.05, 0.15, 0.25] },          // Астероид - увеличено
-  '💀': { id: 'void', multipliers: [0, 0, 0], isDead: true }           // МЕРТВЫЙ
+  '🛸': { id: 'void', multipliers: [0, 0, 0], isDead: true }           // МЕРТВЫЙ
 };
 
 const SYMBOL_KEYS = Object.keys(SYMBOLS);
@@ -153,8 +153,8 @@ function generateSmartField(betAmount) {
     while (!placed && attempts < 20) {
       const randomPos = Math.floor(Math.random() * 15);
       // НЕ размещаем на выигрышных позициях
-      if (!plannedWins.some(win => win.positions.includes(randomPos)) && field[randomPos] !== '💀') {
-        field[randomPos] = '💀';
+      if (!plannedWins.some(win => win.positions.includes(randomPos)) && field[randomPos] !== '🛸') {
+        field[randomPos] = '🛸';
         console.log('🎰 Placed dead symbol at position:', randomPos);
         placed = true;
       }
