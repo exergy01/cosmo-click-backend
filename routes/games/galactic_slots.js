@@ -6,7 +6,7 @@ const crypto = require('crypto');
 // Константы игры
 const MIN_BET = 100;
 const MAX_BET = 5000;
-const DAILY_GAME_LIMIT = 50; // ИСПРАВЛЕНО: 50 базовых игр
+const DAILY_GAME_LIMIT = 500; // ИСПРАВЛЕНО: 50 базовых игр
 const MAX_AD_GAMES = 200; // 200 дополнительных игр за рекламу
 const JACKPOT_CONTRIBUTION = 0.001; // 0.1%
 
@@ -49,11 +49,11 @@ const SYMBOL_KEYS = Object.keys(SYMBOLS);
 const ALIVE_SYMBOLS = SYMBOL_KEYS.filter(s => !SYMBOLS[s].isDead);
 
 // ✅ ИСПРАВЛЕНО: Снижен шанс выигрыша с 60% до 25%
-const WIN_PROBABILITY = 0.25; // 25% шанс что будет ХОТЬ КАКОЙ-ТО выигрыш
+const WIN_PROBABILITY = 0.2; // 20% шанс что будет ХОТЬ КАКОЙ-ТО выигрыш
 
 // ✅ ИСПРАВЛЕНО: Определение будет ли выигрыш
 function willHaveWin() {
-  return Math.random() < WIN_PROBABILITY; // 25% шанс на ЛЮБОЙ выигрыш
+  return Math.random() < WIN_PROBABILITY; // 20% шанс на ЛЮБОЙ выигрыш
 }
 
 // ✅ ИСПРАВЛЕНО: Выбор количества выигрышных линий (больше акцент на 1 линию)

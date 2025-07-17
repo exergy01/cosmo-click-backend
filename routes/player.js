@@ -612,22 +612,41 @@ router.get('/stats/:telegramId', async (req, res) => {
   }
 });
 
+// ЗАМЕНИТЕ ЭТОТ МАРШРУТ В ФАЙЛЕ player.js
+
 // POST /api/player/connect-wallet - ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
 router.post('/connect-wallet', async (req, res) => {
+  // 🔥 ШАГ 1: Логируем тело запроса, чтобы убедиться, что ID приходит
+  console.log('--- Endpoint /connect-wallet вызван ---');
+  console.log('Получено тело запроса:', JSON.stringify(req.body));
+  
   const { telegram_id } = req.body;
-  if (!telegram_id) return res.status(400).json({ error: 'Telegram ID is required' });
+  if (!telegram_id) {
+    console.log('ОШИБКА: telegram_id отсутствует в теле запроса.');
+    return res.status(400).json({ error: 'Telegram ID is required' });
+  }
 
-  console.log(`🔗 Подключение кошелька для игрока: ${telegram_id}`);
+  console.log(`🔗 Начинаем подключение кошелька для игрока: ${telegram_id}`);
+  console.log(`Тип данных telegram_id: ${typeof telegram_id}`);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const player = await getPlayer(telegram_id);
+
+    // 🔥 ШАГ 2: Логируем прямо перед вызовом getPlayer
+    console.log(`Вызываем getPlayer с ID: ${telegram_id}`);
+    const player = await getPlayer(telegram_id); // Функция getPlayer ищет игрока
+
+    // 🔥 ШАГ 3: Проверяем результат от getPlayer
     if (!player) {
+      console.log(`ОШИБКА: getPlayer не нашел игрока с ID ${telegram_id}. Возвращаем 404.`);
       await client.query('ROLLBACK');
+      // Этот блок кода и возвращает вашу ошибку
       return res.status(404).json({ error: 'Player not found' });
     }
 
+    console.log(`Игрок ${telegram_id} успешно найден. Продолжаем...`);
+    
     // Логика генерации или получения Telegram Wallet (замените на реальную)
     const walletAddress = `telegram_wallet_${telegram_id}_${Date.now()}`; // Пример, замените реальным адресом
     await client.query(
@@ -640,8 +659,8 @@ router.post('/connect-wallet', async (req, res) => {
     console.log(`✅ Кошелек подключен для ${telegram_id}: ${walletAddress}`);
     res.json(updatedPlayer);
   } catch (err) {
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА в /connect-wallet:', err);
     await client.query('ROLLBACK');
-    console.error('❌ Ошибка подключения кошелька:', err);
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
