@@ -1,24 +1,29 @@
 const pool = require('../../db');
 
 async function getPlayer(telegramId) {
-  console.log(`🔍 getPlayer вызван для игрока: ${telegramId}`);
+  console.log(`🔍 getPlayer вызван для игрока: ${telegramId}, тип: ${typeof telegramId}`);
   
-  const playerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
+  // Приводим telegramId к строке для совместимости
+  const safeTelegramId = String(telegramId);
+  console.log(`🔍 Используем safeTelegramId: ${safeTelegramId}`);
+  
+  const playerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [safeTelegramId]);
   let player = playerResult.rows[0];
 
   if (!player) {
-    console.log(`❌ getPlayer: игрок ${telegramId} НЕ НАЙДЕН - возвращаем null`);
+    console.log(`❌ getPlayer: игрок ${safeTelegramId} НЕ НАЙДЕН - возвращаем null`);
+    console.log(`ℹ️ Проверяем напрямую: ${JSON.stringify(playerResult.rows)}`);
     console.log(`ℹ️ Создание игроков теперь происходит через endpoint create-with-referrer`);
     return null; // 🔥 НЕ СОЗДАЕМ ИГРОКА - возвращаем null
   }
 
-  console.log(`✅ getPlayer: игрок ${telegramId} найден, referrer_id = ${player.referrer_id}`);
+  console.log(`✅ getPlayer: игрок ${safeTelegramId} найден, referrer_id = ${player.referrer_id}`);
 
   // 🔥 ИСПРАВЛЕНО: Пересчитываем точный счетчик рефералов из таблицы referrals
   try {
     const referralsCountResult = await pool.query(
       'SELECT COUNT(*) as count FROM referrals WHERE referrer_id = $1', 
-      [telegramId]
+      [safeTelegramId]
     );
     const actualCount = parseInt(referralsCountResult.rows[0].count);
     
@@ -27,7 +32,7 @@ async function getPlayer(telegramId) {
       console.log(`🔄 Обновляем счетчик рефералов: ${player.referrals_count} → ${actualCount}`);
       await pool.query(
         'UPDATE players SET referrals_count = $1 WHERE telegram_id = $2', 
-        [actualCount, telegramId]
+        [actualCount, safeTelegramId]
       );
       player.referrals_count = actualCount;
     }
