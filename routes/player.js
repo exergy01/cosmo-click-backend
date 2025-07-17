@@ -626,13 +626,13 @@ router.post('/connect-wallet', async (req, res) => {
   }
 
   console.log(`🔗 Начинаем подключение кошелька для игрока: ${telegram_id}`);
-  console.log(`Тип данных telegram_id: ${typeof telegram_id}`);
+  console.log(`Тип данных telegram_id перед вызовом: ${typeof telegram_id}, значение: ${telegram_id}`);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Явно передаем telegram_id
+    // Проверка перед вызовом getPlayer
     console.log(`Вызываем getPlayer с ID: ${telegram_id}`);
     const player = await getPlayer(telegram_id);
     console.log(`Результат getPlayer: ${player ? 'Найден' : 'Не найден'}, данные: ${JSON.stringify(player)}`);
