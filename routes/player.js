@@ -632,8 +632,9 @@ router.post('/connect-wallet', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    console.log(`Вызываем getPlayer с ID: ${telegram_id}`); // Проверка перед вызовом
-    const player = await getPlayer(telegram_id); // Передаем telegram_id напрямую
+    // Явно передаем telegram_id
+    console.log(`Вызываем getPlayer с ID: ${telegram_id}`);
+    const player = await getPlayer(telegram_id);
     console.log(`Результат getPlayer: ${player ? 'Найден' : 'Не найден'}, данные: ${JSON.stringify(player)}`);
 
     if (!player) {
