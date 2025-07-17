@@ -616,7 +616,6 @@ router.get('/stats/:telegramId', async (req, res) => {
 
 // POST /api/player/connect-wallet - ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
 router.post('/connect-wallet', async (req, res) => {
-  // 🔥 ШАГ 1: Логируем тело запроса, чтобы убедиться, что ID приходит
   console.log('--- Endpoint /connect-wallet вызван ---');
   console.log('Получено тело запроса:', JSON.stringify(req.body));
   
@@ -633,22 +632,19 @@ router.post('/connect-wallet', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 🔥 ШАГ 2: Логируем прямо перед вызовом getPlayer
     console.log(`Вызываем getPlayer с ID: ${telegram_id}`);
-    const player = await getPlayer(telegram_id); // Функция getPlayer ищет игрока
+    const player = await getPlayer(telegram_id);
+    console.log(`Результат getPlayer: ${player ? 'Найден' : 'Не найден'}, данные: ${JSON.stringify(player)}`);
 
-    // 🔥 ШАГ 3: Проверяем результат от getPlayer
     if (!player) {
-      console.log(`ОШИБКА: getPlayer не нашел игрока с ID ${telegram_id}. Возвращаем 404.`);
+      console.log(`ОШИБКА: getPlayer не нашел игрока с ID ${telegram_id}.`);
       await client.query('ROLLBACK');
-      // Этот блок кода и возвращает вашу ошибку
       return res.status(404).json({ error: 'Player not found' });
     }
 
     console.log(`Игрок ${telegram_id} успешно найден. Продолжаем...`);
     
-    // Логика генерации или получения Telegram Wallet (замените на реальную)
-    const walletAddress = `telegram_wallet_${telegram_id}_${Date.now()}`; // Пример, замените реальным адресом
+    const walletAddress = `telegram_wallet_${telegram_id}_${Date.now()}`;
     await client.query(
       'UPDATE players SET telegram_wallet = $1 WHERE telegram_id = $2',
       [walletAddress, telegram_id]
