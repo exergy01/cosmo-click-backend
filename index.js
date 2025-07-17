@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 // Инициализируем бота
 const bot = new Telegraf(BOT_TOKEN);
 
-// Middleware CORS - ДОЛЖЕН БЫТЬ ОЧЕНЬ РАННО
+// Middleware CORS
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -17,13 +17,15 @@ app.use(cors({
   credentials: false
 }));
 
-// Дополнительные CORS заголовки (ваш оригинальный код)
+// JSON Body Parser
+app.use(express.json());
+
+// Дополнительные CORS заголовки
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With', 'Content-Type', 'Accept', 'Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
 
-  // Детальное логирование (ваш оригинальный код)
   console.log(`🌐 ${new Date().toISOString()} - ${req.method} ${req.path}`);
   console.log(`📋 Headers:`, req.headers);
   if (req.body && Object.keys(req.body).length > 0) {
@@ -38,12 +40,8 @@ app.use((req, res, next) => {
   }
 });
 
-// JSON Body Parser - ДОЛЖЕН БЫТЬ ПЕРЕД ВЕБХУКОМ TELEGRAM
-app.use(express.json());
-
 // 🔥 КРИТИЧЕСКИ ВАЖНО: REDIRECT для старых реферальных ссылок ПЕРЕД webhook
 app.get('/webhook', (req, res, next) => {
-  // Проверяем, это браузерный запрос (старая реферальная ссылка) или Telegram webhook
   const userAgent = req.headers['user-agent'] || '';
   const hasParams = Object.keys(req.query).length > 0;
   
@@ -52,14 +50,11 @@ app.get('/webhook', (req, res, next) => {
   console.log('🔍 Query params:', req.query);
   console.log('🔍 Has params:', hasParams);
   
-  // Если это браузерный запрос - redirect на frontend
   if (userAgent.includes('Mozilla')) {
     console.log('🔄 REDIRECT: Браузерный запрос обнаружен');
     
-    // Извлекаем реферальный параметр
     const referralParam = req.query.tgWebAppStartParam || req.query.startapp || req.query.start;
     
-    // Формируем правильную ссылку на frontend
     let redirectUrl = 'https://cosmoclick-frontend.vercel.app';
     if (referralParam) {
       redirectUrl += `?tgWebAppStartParam=${referralParam}`;
@@ -72,7 +67,6 @@ app.get('/webhook', (req, res, next) => {
     return res.redirect(redirectUrl);
   }
   
-  // Если это не браузерный запрос - пропускаем дальше к Telegram webhook
   console.log('📡 Передаем к Telegram webhook');
   next();
 });
@@ -80,7 +74,7 @@ app.get('/webhook', (req, res, next) => {
 // --- >>> ВЕБХУК TELEGRAM (после redirect) <<< ---
 app.use(bot.webhookCallback('/webhook'));
 
-// Обработка тестовых команд бота (для проверки, что бот работает)
+// Обработка тестовых команд бота
 bot.start((ctx) => {
   console.log('Bot /start command received.');
   ctx.reply('Привет! Бот запущен и готов к работе. Запускай игру через Web App!');
@@ -90,25 +84,22 @@ bot.help((ctx) => {
   ctx.reply('Я бот для CosmoClick Game.');
 });
 
-// Обработка ошибок бота
 bot.catch((err, ctx) => {
-    console.error(`❌ Ошибка Telegraf для ${ctx.updateType}:`, err);
+  console.error(`❌ Ошибка Telegraf для ${ctx.updateType}:`, err);
 });
 
-// 🔥 ОТЛАДОЧНЫЙ МАРШРУТ - добавляем ПЕРЕД остальными маршрутами
+// 🔥 ОТЛАДОЧНЫЙ МАРШРУТ
 app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   try {
     const pool = require('./db');
     console.log(`🔍 DEBUG: Считаем рефералов для ${telegramId}`);
     
-    // Считаем напрямую из таблицы players где referrer_id = наш ID
     const countResult = await pool.query(
       'SELECT COUNT(*) as count FROM players WHERE referrer_id = $1', 
       [telegramId]
     );
     
-    // Получаем всех кто имеет этого реферера
     const listResult = await pool.query(
       'SELECT telegram_id, username, first_name, referrer_id FROM players WHERE referrer_id = $1', 
       [telegramId]
@@ -129,7 +120,7 @@ app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
   }
 });
 
-// 🔥 КРИТИЧЕСКИ ВАЖНО: TON API ПЕРВЫМ! (ваш оригинальный код)
+// 🔥 КРИТИЧЕСКИ ВАЖНО: TON API ПЕРВЫМ!
 console.log('🔥 Подключаем TON маршруты...');
 try {
   const tonRoutes = require('./routes/ton');
@@ -139,17 +130,17 @@ try {
   console.error('❌ Ошибка подключения TON маршрутов:', err);
 }
 
-// 🔥 ВАЖНЫЕ ИГРОВЫЕ МАРШРУТЫ из routes/index.js (содержит /api/collect, /api/safe/collect и др.) (ваш оригинальный код)
+// 🔥 ВАЖНЫЕ ИГРОВЫЕ МАРШРУТЫ
 console.log('🔥 Подключаем игровые маршруты из routes/index.js...');
 try {
-  const gameRoutes = require('./routes/index'); // Это тот файл, который вы ранее давали
-  app.use('/', gameRoutes); // Подключаем ваш router из routes/index.js
+  const gameRoutes = require('./routes/index');
+  app.use('/', gameRoutes);
   console.log('✅ Игровые маршруты подключены успешно');
 } catch (err) {
   console.error('❌ Ошибка подключения игровых маршрутов:', err);
 }
 
-// 🎮 ПОДКЛЮЧАЕМ МИНИИГРЫ - ДОБАВЛЕНО ЗДЕСЬ!
+// 🎮 ПОДКЛЮЧАЕМ МИНИИГРЫ
 console.log('🎮 Подключаем маршруты миниигр...');
 try {
   const miniGamesRoutes = require('./routes/games');
@@ -159,7 +150,7 @@ try {
   console.error('❌ Ошибка подключения маршрутов миниигр:', err);
 }
 
-// 🎮 ПОДКЛЮЧАЕМ КОСМИЧЕСКИЕ НАПЁРСТКИ - КРИТИЧЕСКИ ВАЖНО!
+// 🎮 ПОДКЛЮЧАЕМ КОСМИЧЕСКИЕ НАПЁРСТКИ
 console.log('🎮 Подключаем маршруты космических напёрстков...');
 try {
   const cosmicShellsRoutes = require('./routes/games/cosmic_shells');
@@ -169,7 +160,7 @@ try {
   console.error('❌ Ошибка подключения маршрутов космических напёрстков:', err);
 }
 
-// 🎰 ПОДКЛЮЧАЕМ ГАЛАКТИЧЕСКИЕ СЛОТЫ - НОВОЕ!
+// 🎰 ПОДКЛЮЧАЕМ ГАЛАКТИЧЕСКИЕ СЛОТЫ
 console.log('🎰 Подключаем маршруты галактических слотов...');
 try {
   const galacticSlotsRoutes = require('./routes/games/galactic_slots');
@@ -179,7 +170,7 @@ try {
   console.error('❌ Ошибка подключения маршрутов галактических слотов:', err);
 }
 
-// 🎯 ПОДКЛЮЧАЕМ ADSGRAM - ДОБАВЛЕНО ДЛЯ РЕКЛАМЫ!
+// 🎯 ПОДКЛЮЧАЕМ ADSGRAM
 console.log('🎯 Подключаем маршруты Adsgram...');
 try {
   const adsgramRoutes = require('./routes/adsgram');
@@ -189,7 +180,7 @@ try {
   console.error('❌ Ошибка подключения маршрутов Adsgram:', err);
 }
 
-// 🔥 БАЗОВЫЕ МАРШРУТЫ (ваш оригинальный код)
+// 🔥 БАЗОВЫЕ МАРШРУТЫ
 app.get('/api/time', (req, res) => {
   console.log('⏰ Запрос времени сервера');
   res.json({
@@ -249,7 +240,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// 🔥 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики TON запросов (ваш оригинальный код)
+// 🔥 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики TON запросов
 app.use('/api/ton/*', (req, res, next) => {
   console.log(`💰 TON API запрос: ${req.method} ${req.originalUrl}`);
   console.log(`📋 TON Headers:`, req.headers);
@@ -273,7 +264,7 @@ app.use('/api/adsgram/*', (req, res, next) => {
   next();
 });
 
-// 🔥 Обработчик ошибок с диагностикой (ваш оригинальный код)
+// 🔥 Обработчик ошибок с диагностикой
 app.use((err, req, res, next) => {
   console.error('🚨 КРИТИЧЕСКАЯ ОШИБКА СЕРВЕРА:', err);
   console.error('🚨 Stack trace:', err.stack);
@@ -293,14 +284,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 🔥 Улучшенный обработчик 404 с диагностикой (ваш оригинальный код)
+// 🔥 Улучшенный обработчик 404 с диагностикой
 app.use((req, res) => {
   console.log(`❌ 404 NOT FOUND: ${req.method} ${req.path}`);
   console.log(`❌ 404 Headers:`, req.headers);
   console.log(`❌ 404 Body:`, req.body);
   console.log(`❌ 404 Query:`, req.query);
 
-  // 🔥 СПЕЦИАЛЬНО ДЛЯ TON ЗАПРОСОВ
   if (req.path.startsWith('/api/ton')) {
     console.log('💰💥 TON API ЗАПРОС УПАЛ В 404!');
     console.log('💰💥 Доступные TON маршруты должны быть:');
@@ -311,7 +301,6 @@ app.use((req, res) => {
     console.log('💰💥 - POST /api/ton/cancel');
   }
 
-  // 🎮 СПЕЦИАЛЬНО ДЛЯ ИГРОВЫХ ЗАПРОСОВ
   if (req.path.startsWith('/api/games')) {
     console.log('🎮💥 GAMES API ЗАПРОС УПАЛ В 404!');
     console.log('🎮💥 Доступные GAMES маршруты должны быть:');
@@ -330,7 +319,6 @@ app.use((req, res) => {
     console.log('🎮💥 - GET /api/games/galactic-slots/history/:telegramId');
   }
 
-  // 🎯 СПЕЦИАЛЬНО ДЛЯ ADSGRAM ЗАПРОСОВ
   if (req.path.startsWith('/api/adsgram')) {
     console.log('🎯💥 ADSGRAM API ЗАПРОС УПАЛ В 404!');
     console.log('🎯💥 Доступные ADSGRAM маршруты должны быть:');
@@ -381,7 +369,7 @@ app.use((req, res) => {
   });
 });
 
-// 🔥 ЗАПУСК СЕРВЕРА с диагностикой (ваш оригинальный код)
+// 🔥 ЗАПУСК СЕРВЕРА с диагностикой
 app.listen(PORT, async () => {
   console.log(`\n🚀 ============================================`);
   console.log(`🚀 CosmoClick Backend запущен успешно!`);
@@ -401,7 +389,6 @@ app.listen(PORT, async () => {
   console.log(`🔄 Redirect: /webhook -> frontend`);
   console.log(`🚀 ============================================\n`);
 
-  // 🔥 Проверяем что все маршруты загружены
   console.log('🔍 Проверяем загруженные маршруты...');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
   console.log('Games routes loaded:', app._router ? 'да' : 'нет');
@@ -409,7 +396,6 @@ app.listen(PORT, async () => {
   console.log('Galactic Slots routes loaded:', app._router ? 'да' : 'нет');
   console.log('Adsgram routes loaded:', app._router ? 'да' : 'нет');
 
-  // --- >>> ВАЖНОЕ: Установка вебхука Telegram при запуске сервера <<< ---
   const webhookUrl = `https://cosmoclick-backend.onrender.com/webhook`;
   try {
     const success = await bot.telegram.setWebhook(webhookUrl);
