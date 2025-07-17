@@ -612,4 +612,40 @@ router.get('/stats/:telegramId', async (req, res) => {
   }
 });
 
+// POST /api/player/connect-wallet - ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
+router.post('/connect-wallet', async (req, res) => {
+  const { telegram_id } = req.body;
+  if (!telegram_id) return res.status(400).json({ error: 'Telegram ID is required' });
+
+  console.log(`🔗 Подключение кошелька для игрока: ${telegram_id}`);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const player = await getPlayer(telegram_id);
+    if (!player) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    // Логика генерации или получения Telegram Wallet (замените на реальную)
+    const walletAddress = `telegram_wallet_${telegram_id}_${Date.now()}`; // Пример, замените реальным адресом
+    await client.query(
+      'UPDATE players SET telegram_wallet = $1 WHERE telegram_id = $2',
+      [walletAddress, telegram_id]
+    );
+
+    await client.query('COMMIT');
+    const updatedPlayer = await getPlayer(telegram_id);
+    console.log(`✅ Кошелек подключен для ${telegram_id}: ${walletAddress}`);
+    res.json(updatedPlayer);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Ошибка подключения кошелька:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
