@@ -3,12 +3,13 @@ const router = express.Router();
 const pool = require('../../db');
 const crypto = require('crypto');
 
-// Константы игры
+// ✅ ИСПРАВЛЕНО: Константы игры как в слотах
 const MIN_BET = 100;
-const MAX_BET = 100000;
+const MAX_BET = 5000; // ✅ ИСПРАВЛЕНО: Как в слотах (было 100000)
 const WIN_MULTIPLIER = 2;
-const DAILY_GAME_LIMIT = 5;
-const MAX_AD_GAMES = 20;
+const DAILY_GAME_LIMIT = 25; // ✅ ИСПРАВЛЕНО: 25 базовых игр как в слотах (было 5)
+const MAX_AD_GAMES = 10; // ✅ ИСПРАВЛЕНО: 10 реклам как в слотах (было 20)
+const GAMES_PER_AD = 20; // ✅ ИСПРАВЛЕНО: 20 игр за рекламу как в слотах (было 1)
 const JACKPOT_CONTRIBUTION = 0.001; // 0.1%
 
 // Утилита для создания безопасной игры
@@ -46,7 +47,7 @@ function createSecureGame(betAmount) {
     };
 }
 
-// ИСПРАВЛЕНО: Функция получения лимитов с ПРАВИЛЬНОЙ логикой дат
+// Функция получения лимитов с правильной логикой дат
 async function getGameLimits(telegramId) {
     console.log('🛸 Getting game limits for:', telegramId);
     
@@ -69,7 +70,7 @@ async function getGameLimits(telegramId) {
     const limits = limitsResult.rows[0];
     const lastResetDate = limits.last_reset_date;
     
-    // ИСПРАВЛЕНО: Проверяем СТРОГО меньше (вчерашняя дата)
+    // Проверяем СТРОГО меньше (вчерашняя дата)
     const needsReset = await pool.query(`
         SELECT 
             $1::date as last_reset,
@@ -103,7 +104,7 @@ async function getGameLimits(telegramId) {
         return { dailyGames: 0, dailyAds: 0 };
     }
 
-    // ИСПРАВЛЕНО: Тот же день - используем существующие значения
+    // Тот же день - используем существующие значения
     console.log('🛸 SAME DAY - using existing limits:', { 
         dailyGames: limits.daily_games, 
         dailyAds: limits.daily_ads_watched 
@@ -115,32 +116,21 @@ async function getGameLimits(telegramId) {
     };
 }
 
-// ИСПРАВЛЕНО: Функция расчета доступных игр с правильными лимитами
+// ✅ ИСПРАВЛЕНО: Функция расчета доступных игр как в слотах (25 + 10*20 = 250)
 function calculateGamesAvailable(dailyGames, dailyAds) {
-    // Базовые игры: 5 в день
-    const baseGamesRemaining = Math.max(0, DAILY_GAME_LIMIT - dailyGames);
-    
-    // ИСПРАВЛЕНО: Дополнительные игры = только непросмотренная реклама
-    const extraGamesFromAds = Math.max(0, dailyAds - Math.max(0, dailyGames - DAILY_GAME_LIMIT));
-    
-    // ИСПРАВЛЕНО: Общий лимит = базовые игры + доступная реклама
-    const totalGamesAvailable = DAILY_GAME_LIMIT + Math.min(dailyAds, MAX_AD_GAMES);
+    const totalGamesAvailable = DAILY_GAME_LIMIT + (dailyAds * GAMES_PER_AD);
     const gamesLeft = Math.max(0, totalGamesAvailable - dailyGames);
-    
-    // ИСПРАВЛЕНО: Можно смотреть рекламу только если игры закончились И реклам < 20
     const canPlayFree = gamesLeft > 0;
     const canWatchAd = dailyAds < MAX_AD_GAMES && gamesLeft === 0;
     
-    console.log('🛸🎮 Games calculation:', {
+    console.log('🛸 ИСПРАВЛЕННЫЙ расчет игр (25 + 10*20 = 250 MAX):', {
         dailyGames,
         dailyAds,
-        baseGamesRemaining,
-        extraGamesFromAds,
         totalGamesAvailable,
         gamesLeft,
         canPlayFree,
         canWatchAd,
-        maxAdGames: MAX_AD_GAMES
+        maxTotalGames: DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD)
     });
     
     return { gamesLeft, canPlayFree, canWatchAd };
@@ -152,10 +142,7 @@ router.get('/status/:telegramId', async (req, res) => {
         console.log('🛸 Cosmic shells status request for:', req.params.telegramId);
         const { telegramId } = req.params;
         
-        // ИСПРАВЛЕНО: Используем правильную функцию получения лимитов
         const { dailyGames, dailyAds } = await getGameLimits(telegramId);
-
-        // ИСПРАВЛЕНО: Используем новую логику расчета игр
         const { gamesLeft, canPlayFree, canWatchAd } = calculateGamesAvailable(dailyGames, dailyAds);
 
         // Получаем статистику игрока
@@ -257,7 +244,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
                 });
             }
 
-            // ИСПРАВЛЕНО: Проверяем лимиты с новой логикой
+            // Проверяем лимиты с новой логикой
             const { dailyGames, dailyAds } = await getGameLimits(telegramId);
             const { canPlayFree } = calculateGamesAvailable(dailyGames, dailyAds);
             
@@ -343,7 +330,6 @@ router.post('/make-choice/:telegramId', async (req, res) => {
             });
         }
 
-        // ИСПРАВЛЕНО: убираем JSON.parse, так как PostgreSQL JSONB возвращает объект
         const gameData = gameResult.rows[0].game_result;
         const betAmount = gameResult.rows[0].bet_amount;
         console.log('🛸 Found game data:', gameData);
@@ -385,7 +371,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                 console.log('🛸💀 Loss! No money returned');
             }
 
-            // ИСПРАВЛЕНО: Обновляем джекпот при проигрыше
+            // Обновляем джекпот при проигрыше
             let jackpotContribution = 0;
             if (!isWin) {
                 jackpotContribution = Math.floor(betAmount * JACKPOT_CONTRIBUTION);
@@ -435,7 +421,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                     updated_at = CURRENT_TIMESTAMP
             `, [telegramId, isWin ? 1 : 0, isWin ? 0 : 1, betAmount, winAmount]);
 
-            // ИСПРАВЛЕНО: Обновляем лимиты игр ТОЛЬКО ЗДЕСЬ
+            // Обновляем лимиты игр ТОЛЬКО ЗДЕСЬ
             await pool.query(`
                 UPDATE player_game_limits 
                 SET daily_games = daily_games + 1
@@ -540,41 +526,38 @@ router.get('/history/:telegramId', async (req, res) => {
     }
 });
 
-// ИСПРАВЛЕНО: Посмотреть рекламу за дополнительную игру
+// ✅ ИСПРАВЛЕНО: Реклама дает 20 игр за раз (как в слотах)
 router.post('/watch-ad/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Watch ad request for:', req.params.telegramId);
+        console.log('🛸 Watch ad request for shells:', req.params.telegramId);
         const { telegramId } = req.params;
 
-        // ИСПРАВЛЕНО: Получаем актуальные лимиты
         const { dailyGames, dailyAds } = await getGameLimits(telegramId);
         
-        console.log('🛸 Current limits before ad:', { dailyGames, dailyAds });
+        console.log('🛸 Current shell limits before ad:', { dailyGames, dailyAds });
         
-        // ИСПРАВЛЕНО: Проверяем лимит рекламы (не больше 20 в день)
         if (dailyAds >= MAX_AD_GAMES) {
-            console.log('🛸❌ Ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
+            console.log('🛸❌ Shell ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
             return res.status(400).json({
                 success: false,
-                error: 'Дневной лимит рекламы исчерпан (20/20)',
+                error: `Дневной лимит рекламы исчерпан (${MAX_AD_GAMES}/${MAX_AD_GAMES})`,
                 adsRemaining: 0
             });
         }
         
-        // ИСПРАВЛЕНО: Проверяем общий лимит игр (базовые + реклама)
         const totalGamesPlayed = dailyGames;
-        const maxTotalGames = DAILY_GAME_LIMIT + MAX_AD_GAMES; // 5 + 20 = 25
+        const maxTotalGames = DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD);
         
         if (totalGamesPlayed >= maxTotalGames) {
-            console.log('🛸❌ Total games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
+            console.log('🛸❌ Total shell games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
             return res.status(400).json({
                 success: false,
-                error: 'Максимальный дневной лимит игр исчерпан (25 игр)',
+                error: `Максимальный дневной лимит игр исчерпан (${maxTotalGames} игр)`,
                 adsRemaining: 0
             });
         }
 
-        // Увеличиваем счетчик рекламы
+        // Увеличиваем счетчик рекламы на 1
         await pool.query(`
             UPDATE player_game_limits 
             SET daily_ads_watched = daily_ads_watched + 1
@@ -584,10 +567,11 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
         const newAdsWatched = dailyAds + 1;
         const adsRemaining = MAX_AD_GAMES - newAdsWatched;
 
-        console.log('🛸✅ Ad watched successfully! New stats:', {
+        console.log('🛸✅ Shell ad watched successfully! New stats:', {
             adsWatched: newAdsWatched,
             adsRemaining,
-            maxAds: MAX_AD_GAMES
+            maxAds: MAX_AD_GAMES,
+            gamesGranted: GAMES_PER_AD
         });
 
         res.json({
@@ -595,11 +579,11 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
             adsRemaining,
             adsWatched: newAdsWatched,
             maxAds: MAX_AD_GAMES,
-            message: `Получена дополнительная игра! (${newAdsWatched}/${MAX_AD_GAMES})`
+            message: `Получено ${GAMES_PER_AD} дополнительных игр в напёрстки! (${newAdsWatched}/${MAX_AD_GAMES})`
         });
 
     } catch (error) {
-        console.error('🛸❌ Watch ad cosmic shells error:', error);
+        console.error('🛸❌ Watch ad shells error:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
