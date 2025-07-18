@@ -640,12 +640,13 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
 });
 
 // Получить историю игр
+// galactic_slots.js (только роут истории)
+
 router.get('/history/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Getting slot history for:', req.params.telegramId);
+    console.log('🎰 Getting FULL slot history for:', req.params.telegramId);
     const { telegramId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
-
+    
     const historyResult = await pool.query(`
       SELECT 
         id,
@@ -660,24 +661,8 @@ router.get('/history/:telegramId', async (req, res) => {
         END as result_type
       FROM minigames_history 
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
-      ORDER BY created_at DESC 
-      LIMIT $2 OFFSET $3
-    `, [telegramId, limit, offset]);
-
-    const formattedHistory = historyResult.rows.map(game => {
-      const gameData = game.game_result;
-      return {
-        id: game.id,
-        date: game.created_at,
-        betAmount: parseInt(game.bet_amount),
-        winAmount: parseInt(game.win_amount || 0),
-        profit: parseInt(game.win_amount || 0) - parseInt(game.bet_amount),
-        result: game.result_type,
-        symbols: gameData.symbols || [],
-        winningLines: gameData.winningLines || [],
-        jackpotContribution: parseInt(game.jackpot_contribution || 0)
-      };
-    });
+      ORDER BY created_at DESC
+    `, [telegramId]);
 
     const totalResult = await pool.query(`
       SELECT COUNT(*) as total_games
@@ -685,20 +670,32 @@ router.get('/history/:telegramId', async (req, res) => {
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
     `, [telegramId]);
 
-    console.log('🎰 Slot history response:', { 
-      total: parseInt(totalResult.rows[0].total_games),
-      games: formattedHistory.length 
+    const totalGames = parseInt(totalResult.rows[0].total_games);
+    const history = historyResult.rows.map(game => ({
+      id: game.id,
+      date: game.created_at,
+      betAmount: parseInt(game.bet_amount),
+      winAmount: parseInt(game.win_amount || 0),
+      profit: parseInt(game.win_amount || 0) - parseInt(game.bet_amount),
+      result: game.result_type,
+      symbols: game.game_result?.symbols || [],
+      winningLines: game.game_result?.winningLines || [],
+      jackpotContribution: parseInt(game.jackpot_contribution || 0)
+    }));
+
+    console.log('🎰 FULL history loaded:', { 
+      totalGames,
+      loaded: history.length 
     });
 
     res.json({
       success: true,
-      history: formattedHistory,
-      total: parseInt(totalResult.rows[0].total_games),
-      hasMore: (parseInt(offset) + formattedHistory.length) < parseInt(totalResult.rows[0].total_games)
+      history,
+      total: totalGames
     });
 
   } catch (error) {
-    console.error('🎰❌ Slot history error:', error);
+    console.error('🎰❌ FULL history error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
