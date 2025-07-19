@@ -462,7 +462,7 @@ router.get('/history/:telegramId', async (req, res) => {
     try {
         console.log('🛸 Getting game history for:', req.params.telegramId);
         const { telegramId } = req.params;
-        const { limit = 20, offset = 0 } = req.query;
+        const { limit = 1000, offset = 0 } = req.query; // ✅ ИСПРАВЛЕНО: по умолчанию 1000 вместо 20
 
         // Получаем историю игр
         const historyResult = await pool.query(`
@@ -510,7 +510,9 @@ router.get('/history/:telegramId', async (req, res) => {
 
         console.log('🛸 Game history response:', { 
             total: parseInt(totalResult.rows[0].total_games),
-            games: formattedHistory.length 
+            games: formattedHistory.length,
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
 
         res.json({
