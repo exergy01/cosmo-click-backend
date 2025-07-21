@@ -9,6 +9,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 // Инициализируем бота
 const bot = new Telegraf(BOT_TOKEN);
 
+// Добавьте статические файлы (если их еще нет)
+app.use(express.static('public'));
+
 // Middleware CORS
 app.use(cors({
   origin: '*',
@@ -38,6 +41,17 @@ app.use((req, res, next) => {
   } else {
     next();
   }
+});
+
+// 🔥 TON Connect manifest.json
+app.get('/tonconnect-manifest.json', (req, res) => {
+  res.json({
+    "url": "https://t.me/CosmoClickBot/cosmoclick",
+    "name": "CosmoClick",
+    "iconUrl": `${req.protocol}://${req.get('host')}/logo-192.png`,
+    "termsOfUseUrl": `${req.protocol}://${req.get('host')}/terms`,
+    "privacyPolicyUrl": `${req.protocol}://${req.get('host')}/privacy`
+  });
 });
 
 // 🔥 КРИТИЧЕСКИ ВАЖНО: REDIRECT для старых реферальных ссылок ПЕРЕД webhook
@@ -120,7 +134,17 @@ app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
   }
 });
 
-// 🔥 КРИТИЧЕСКИ ВАЖНО: TON API ПЕРВЫМ!
+// 🔥 WALLET API - подключаем wallet маршруты ПЕРВЫМИ
+console.log('🔥 Подключаем WALLET маршруты...');
+try {
+  const walletRoutes = require('./routes/wallet');
+  app.use('/api/wallet', walletRoutes);
+  console.log('✅ WALLET маршруты подключены успешно');
+} catch (err) {
+  console.error('❌ Ошибка подключения WALLET маршрутов:', err);
+}
+
+// 🔥 КРИТИЧЕСКИ ВАЖНО: TON API
 console.log('🔥 Подключаем TON маршруты...');
 try {
   const tonRoutes = require('./routes/ton');
@@ -195,6 +219,7 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     routes: {
+      wallet: 'активен',
       ton: 'активен',
       player: 'активен',
       shop: 'активен',
@@ -215,6 +240,11 @@ app.get('/', (req, res) => {
     <ul>
       <li>GET /api/health - проверка работы</li>
       <li>GET /api/time - время сервера</li>
+      <li><strong>💳 POST /api/wallet/connect - подключение кошелька</strong></li>
+      <li><strong>💳 POST /api/wallet/disconnect - отключение кошелька</strong></li>
+      <li><strong>💳 POST /api/wallet/prepare-withdrawal - подготовка вывода</strong></li>
+      <li><strong>💳 POST /api/wallet/confirm-withdrawal - подтверждение вывода</strong></li>
+      <li><strong>💳 GET /api/wallet/history/:telegramId - история операций</strong></li>
       <li>GET /api/ton/calculate/15 - расчет стейкинга</li>
       <li>POST /api/ton/stake - создание стейка</li>
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
@@ -238,6 +268,14 @@ app.get('/', (req, res) => {
     <h3>🔧 Redirect система:</h3>
     <p>Старые реферальные ссылки автоматически перенаправляются на frontend</p>
   `);
+});
+
+// 💳 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики WALLET запросов
+app.use('/api/wallet/*', (req, res, next) => {
+  console.log(`💳 WALLET API запрос: ${req.method} ${req.originalUrl}`);
+  console.log(`📋 WALLET Headers:`, req.headers);
+  console.log(`📦 WALLET Body:`, req.body);
+  next();
 });
 
 // 🔥 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики TON запросов
@@ -291,6 +329,16 @@ app.use((req, res) => {
   console.log(`❌ 404 Body:`, req.body);
   console.log(`❌ 404 Query:`, req.query);
 
+  if (req.path.startsWith('/api/wallet')) {
+    console.log('💳💥 WALLET API ЗАПРОС УПАЛ В 404!');
+    console.log('💳💥 Доступные WALLET маршруты должны быть:');
+    console.log('💳💥 - POST /api/wallet/connect');
+    console.log('💳💥 - POST /api/wallet/disconnect');
+    console.log('💳💥 - POST /api/wallet/prepare-withdrawal');
+    console.log('💳💥 - POST /api/wallet/confirm-withdrawal');
+    console.log('💳💥 - GET /api/wallet/history/:telegramId');
+  }
+
   if (req.path.startsWith('/api/ton')) {
     console.log('💰💥 TON API ЗАПРОС УПАЛ В 404!');
     console.log('💰💥 Доступные TON маршруты должны быть:');
@@ -338,6 +386,11 @@ app.use((req, res) => {
       'GET /api/health',
       'GET /api/time',
       'GET /api/debug/count-referrals/:telegramId',
+      '💳 POST /api/wallet/connect - подключение кошелька',
+      '💳 POST /api/wallet/disconnect - отключение кошелька', 
+      '💳 POST /api/wallet/prepare-withdrawal - подготовка вывода',
+      '💳 POST /api/wallet/confirm-withdrawal - подтверждение вывода',
+      '💳 GET /api/wallet/history/:telegramId - история операций',
       'GET /api/ton/calculate/:amount',
       'POST /api/ton/stake ⭐ ГЛАВНЫЙ',
       'GET /api/ton/stakes/:telegramId',
@@ -376,6 +429,7 @@ app.listen(PORT, async () => {
   console.log(`🚀 ============================================`);
   console.log(`📡 Порт: ${PORT}`);
   console.log(`🌐 CORS: разрешены все домены`);
+  console.log(`💳 WALLET API: /api/wallet/*`);
   console.log(`💰 TON API: /api/ton/*`);
   console.log(`🎮 Player API: /api/player/*`);
   console.log(`🛒 Shop API: /api/shop/*`);
@@ -390,6 +444,7 @@ app.listen(PORT, async () => {
   console.log(`🚀 ============================================\n`);
 
   console.log('🔍 Проверяем загруженные маршруты...');
+  console.log('Wallet routes loaded:', app._router ? 'да' : 'нет');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
   console.log('Games routes loaded:', app._router ? 'да' : 'нет');
   console.log('Cosmic Shells routes loaded:', app._router ? 'да' : 'нет');
