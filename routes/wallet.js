@@ -261,4 +261,158 @@ router.get('/history/:telegramId', async (req, res) => {
   }
 });
 
+// Добавьте в routes/wallet.js ИЛИ создайте routes/stars.js
+
+// POST /api/wallet/create-stars-invoice - Создание счета на оплату Stars
+router.post('/create-stars-invoice', async (req, res) => {
+    const { telegram_id, amount, description } = req.body;
+    
+    if (!telegram_id || !amount) {
+      return res.status(400).json({ error: 'Telegram ID and amount are required' });
+    }
+  
+    if (amount < 1 || amount > 2500) {
+      return res.status(400).json({ error: 'Amount must be between 1 and 2500 stars' });
+    }
+  
+    try {
+      const bot = require('../index').bot; // Получаем экземпляр бота
+      
+      // Создаем счет на оплату Stars
+      const invoice = await bot.telegram.createInvoiceLink({
+        title: `Пополнение CosmoClick`,
+        description: description || `Пополнение баланса на ${amount} звезд`,
+        payload: JSON.stringify({ 
+          type: 'stars_deposit',
+          player_id: telegram_id,
+          amount: amount 
+        }),
+        provider_token: '', // Для Stars токен не нужен
+        currency: 'XTR', // Специальная валюта для Stars
+        prices: [{ label: `${amount} Stars`, amount: amount }],
+        photo_url: 'https://cosmoclick-backend.onrender.com/logo-192.png'
+      });
+  
+      console.log(`✅ Создан счет на ${amount} Stars для игрока ${telegram_id}`);
+      
+      res.json({
+        success: true,
+        invoice_url: invoice,
+        amount: amount
+      });
+      
+    } catch (err) {
+      console.error('❌ Ошибка создания счета Stars:', err);
+      res.status(500).json({ error: 'Failed to create Stars invoice' });
+    }
+  });
+  
+  // POST /api/wallet/webhook-stars - Webhook для обработки платежей Stars
+  router.post('/webhook-stars', async (req, res) => {
+    const { pre_checkout_query, successful_payment } = req.body;
+    
+    try {
+      const bot = require('../index').bot;
+      
+      // Обработка pre_checkout_query (подтверждение платежа)
+      if (pre_checkout_query) {
+        await bot.telegram.answerPreCheckoutQuery(pre_checkout_query.id, true);
+        console.log('✅ Pre-checkout подтвержден');
+        return res.json({ success: true });
+      }
+      
+      // Обработка successful_payment (успешный платеж)
+      if (successful_payment) {
+        const payload = JSON.parse(successful_payment.invoice_payload);
+        
+        if (payload.type === 'stars_deposit') {
+          const client = await pool.connect();
+          
+          try {
+            await client.query('BEGIN');
+            
+            // Добавляем Stars игроку
+            await client.query(
+              'UPDATE players SET telegram_stars = telegram_stars + $1 WHERE telegram_id = $2',
+              [payload.amount, payload.player_id]
+            );
+            
+            // Записываем транзакцию
+            await client.query(
+              `INSERT INTO star_transactions (
+                player_id, amount, transaction_type, description, 
+                telegram_payment_id, created_at
+              ) VALUES ($1, $2, 'deposit', $3, $4, NOW())`,
+              [
+                payload.player_id,
+                payload.amount,
+                `Пополнение ${payload.amount} Stars`,
+                successful_payment.telegram_payment_charge_id
+              ]
+            );
+            
+            await client.query('COMMIT');
+            
+            console.log(`✅ Начислено ${payload.amount} Stars игроку ${payload.player_id}`);
+            
+            // Отправляем уведомление игроку
+            await bot.telegram.sendMessage(
+              payload.player_id,
+              `🌟 Баланс пополнен на ${payload.amount} Stars!\n\nТеперь вы можете использовать их в игре CosmoClick.`,
+              {
+                reply_markup: {
+                  inline_keyboard: [[{
+                    text: '🎮 Открыть игру',
+                    web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
+                  }]]
+                }
+              }
+            );
+            
+          } catch (dbErr) {
+            await client.query('ROLLBACK');
+            throw dbErr;
+          } finally {
+            client.release();
+          }
+        }
+        
+        return res.json({ success: true });
+      }
+      
+      res.json({ success: true });
+      
+    } catch (err) {
+      console.error('❌ Ошибка обработки Stars webhook:', err);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  });
+  
+  // GET /api/wallet/stars-history/:telegramId - История транзакций Stars
+  router.get('/stars-history/:telegramId', async (req, res) => {
+    const { telegramId } = req.params;
+    
+    try {
+      const result = await pool.query(
+        `SELECT 
+          id, amount, transaction_type, description,
+          telegram_payment_id, status, created_at
+         FROM star_transactions 
+         WHERE player_id = $1 
+         ORDER BY created_at DESC 
+         LIMIT 50`,
+        [telegramId]
+      );
+  
+      res.json({
+        success: true,
+        transactions: result.rows
+      });
+  
+    } catch (err) {
+      console.error('❌ Ошибка получения истории Stars:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
 module.exports = router;
