@@ -101,7 +101,6 @@ bot.help((ctx) => {
 bot.catch((err, ctx) => {
   console.error(`❌ Ошибка Telegraf для ${ctx.updateType}:`, err);
 });
-
 // 🔥 ОТЛАДОЧНЫЙ МАРШРУТ
 app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
@@ -154,6 +153,16 @@ try {
   console.error('❌ Ошибка подключения TON маршрутов:', err);
 }
 
+// 🌟 ПОДКЛЮЧАЕМ STARS API
+console.log('🌟 Подключаем маршруты Stars...');
+try {
+  const starsRoutes = require('./routes/stars');
+  app.use('/api/stars', starsRoutes);
+  console.log('✅ Маршруты Stars подключены успешно');
+} catch (err) {
+  console.error('❌ Ошибка подключения маршрутов Stars:', err);
+}
+
 // 🔥 ВАЖНЫЕ ИГРОВЫЕ МАРШРУТЫ
 console.log('🔥 Подключаем игровые маршруты из routes/index.js...');
 try {
@@ -203,7 +212,6 @@ try {
 } catch (err) {
   console.error('❌ Ошибка подключения маршрутов Adsgram:', err);
 }
-
 // 🔥 БАЗОВЫЕ МАРШРУТЫ
 app.get('/api/time', (req, res) => {
   console.log('⏰ Запрос времени сервера');
@@ -221,6 +229,7 @@ app.get('/api/health', (req, res) => {
     routes: {
       wallet: 'активен',
       ton: 'активен',
+      stars: 'активен',
       player: 'активен',
       shop: 'активен',
       games: 'активен',
@@ -248,6 +257,10 @@ app.get('/', (req, res) => {
       <li>GET /api/ton/calculate/15 - расчет стейкинга</li>
       <li>POST /api/ton/stake - создание стейка</li>
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
+      <li><strong>🌟 GET /api/stars/rates - текущие курсы Stars</strong></li>
+      <li><strong>🌟 POST /api/stars/exchange - обмен Stars → CS</strong></li>
+      <li><strong>🌟 GET /api/stars/history/:telegramId - история обменов</strong></li>
+      <li><strong>🌟 POST /api/stars/update-ton-rate - обновить курс TON</strong></li>
       <li>GET /api/debug/count-referrals/:telegramId - отладка рефералов</li>
       <li><strong>GET /api/games/stats/:telegramId - статистика игр</strong></li>
       <li><strong>GET /api/games/tapper/status/:telegramId - статус тапалки</strong></li>
@@ -286,6 +299,14 @@ app.use('/api/ton/*', (req, res, next) => {
   next();
 });
 
+// 🌟 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики STARS запросов
+app.use('/api/stars/*', (req, res, next) => {
+  console.log(`🌟 STARS API запрос: ${req.method} ${req.originalUrl}`);
+  console.log(`📋 STARS Headers:`, req.headers);
+  console.log(`📦 STARS Body:`, req.body);
+  next();
+});
+
 // 🎮 СПЕЦИАЛЬНЫЙ MIDDLEWARE для диагностики ИГРОВЫХ запросов
 app.use('/api/games/*', (req, res, next) => {
   console.log(`🎮 GAMES API запрос: ${req.method} ${req.originalUrl}`);
@@ -301,7 +322,6 @@ app.use('/api/adsgram/*', (req, res, next) => {
   console.log(`📦 ADSGRAM Body:`, req.body);
   next();
 });
-
 // 🔥 Обработчик ошибок с диагностикой
 app.use((err, req, res, next) => {
   console.error('🚨 КРИТИЧЕСКАЯ ОШИБКА СЕРВЕРА:', err);
@@ -347,6 +367,15 @@ app.use((req, res) => {
     console.log('💰💥 - GET /api/ton/stakes/:telegramId');
     console.log('💰💥 - POST /api/ton/withdraw');
     console.log('💰💥 - POST /api/ton/cancel');
+  }
+
+  if (req.path.startsWith('/api/stars')) {
+    console.log('🌟💥 STARS API ЗАПРОС УПАЛ В 404!');
+    console.log('🌟💥 Доступные STARS маршруты должны быть:');
+    console.log('🌟💥 - GET /api/stars/rates');
+    console.log('🌟💥 - POST /api/stars/exchange');
+    console.log('🌟💥 - GET /api/stars/history/:telegramId');
+    console.log('🌟💥 - POST /api/stars/update-ton-rate');
   }
 
   if (req.path.startsWith('/api/games')) {
@@ -396,6 +425,10 @@ app.use((req, res) => {
       'GET /api/ton/stakes/:telegramId',
       'POST /api/ton/withdraw',
       'POST /api/ton/cancel',
+      '🌟 GET /api/stars/rates - текущие курсы Stars',
+      '🌟 POST /api/stars/exchange - обмен Stars → CS',
+      '🌟 GET /api/stars/history/:telegramId - история обменов',
+      '🌟 POST /api/stars/update-ton-rate - обновить курс TON (админ)',
       'POST /api/collect - сбор ресурсов',
       'POST /api/safe/collect - безопасный сбор',
       'GET /api/player/:telegramId',
@@ -431,6 +464,7 @@ app.listen(PORT, async () => {
   console.log(`🌐 CORS: разрешены все домены`);
   console.log(`💳 WALLET API: /api/wallet/*`);
   console.log(`💰 TON API: /api/ton/*`);
+  console.log(`🌟 STARS API: /api/stars/*`);
   console.log(`🎮 Player API: /api/player/*`);
   console.log(`🛒 Shop API: /api/shop/*`);
   console.log(`🎯 Games API: /api/games/*`);
@@ -446,6 +480,7 @@ app.listen(PORT, async () => {
   console.log('🔍 Проверяем загруженные маршруты...');
   console.log('Wallet routes loaded:', app._router ? 'да' : 'нет');
   console.log('TON routes loaded:', app._router ? 'да' : 'нет');
+  console.log('Stars routes loaded:', app._router ? 'да' : 'нет');
   console.log('Games routes loaded:', app._router ? 'да' : 'нет');
   console.log('Cosmic Shells routes loaded:', app._router ? 'да' : 'нет');
   console.log('Galactic Slots routes loaded:', app._router ? 'да' : 'нет');
@@ -458,5 +493,24 @@ app.listen(PORT, async () => {
   } catch (error) {
     console.error('❌ Ошибка установки вебхука Telegram:', error.message);
     console.error('Убедитесь, что вебхук установлен правильно через BotFather или PUBLIC_URL настроен.');
+  }
+
+  // 🔄 ЗАПУСК АВТООБНОВЛЕНИЯ КУРСОВ TON
+  console.log('🔄 Запуск сервиса автообновления курсов TON...');
+  try {
+    const tonRateService = require('./services/tonRateService');
+    
+    // Запускаем автообновление через 30 секунд после старта сервера
+    setTimeout(async () => {
+      try {
+        await tonRateService.startAutoUpdate();
+        console.log('✅ Сервис курсов TON запущен успешно');
+      } catch (error) {
+        console.error('❌ Ошибка запуска сервиса курсов:', error);
+      }
+    }, 30000);
+    
+  } catch (err) {
+    console.error('❌ Ошибка подключения сервиса курсов TON:', err);
   }
 });
