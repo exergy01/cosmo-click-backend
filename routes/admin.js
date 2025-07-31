@@ -12,7 +12,8 @@ console.log('🔧 Админский модуль загружен. ADMIN_TELEGR
 
 // 🛡️ Middleware для проверки админских прав
 const adminAuth = (req, res, next) => {
-  const telegramId = req.params.telegramId || req.body.telegramId || req.query.telegramId;
+  // ИСПРАВЛЕНИЕ: Получаем telegramId из параметров URL
+  const telegramId = req.params.telegramId;
   
   console.log('🔐 Проверка админских прав:', { 
     telegramId, 
@@ -23,11 +24,17 @@ const adminAuth = (req, res, next) => {
     telegramIdStr: String(telegramId),
     adminIdStr: String(ADMIN_TELEGRAM_ID),
     directMatch: telegramId === ADMIN_TELEGRAM_ID,
-    stringMatch: String(telegramId) === String(ADMIN_TELEGRAM_ID)
+    stringMatch: String(telegramId) === String(ADMIN_TELEGRAM_ID),
+    // Отладка URL параметров
+    urlParams: req.params,
+    method: req.method,
+    url: req.url
   });
   
   if (!telegramId) {
-    console.log('🚫 Telegram ID не предоставлен');
+    console.log('🚫 Telegram ID не предоставлен в URL параметрах');
+    console.log('🔍 Доступные параметры:', req.params);
+    console.log('🔍 URL:', req.url);
     return res.status(400).json({ error: 'Telegram ID is required' });
   }
   
@@ -78,13 +85,29 @@ router.get('/check/:telegramId', (req, res) => {
   });
 });
 
-// 🔐 Все остальные маршруты требуют админских прав
-router.use(adminAuth);
-
-// 📊 GET /api/admin/stats/:telegramId - общая статистика системы
+// 📊 GET /api/admin/stats/:telegramId - общая статистика системы (БЕЗ middleware)
 router.get('/stats/:telegramId', async (req, res) => {
   try {
-    console.log('📊 Запрос общей статистики системы');
+    const { telegramId } = req.params;
+    
+    console.log('📊 Запрос общей статистики системы от ID:', telegramId);
+    
+    // ПРОВЕРЯЕМ АДМИНА ПРЯМО ЗДЕСЬ
+    const telegramIdStr = String(telegramId).trim();
+    const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
+    
+    console.log('🔐 Прямая проверка админа в stats:', {
+      telegramIdStr,
+      adminIdStr,
+      isAdmin: telegramIdStr === adminIdStr
+    });
+    
+    if (telegramIdStr !== adminIdStr) {
+      console.log('🚫 Статистика: доступ запрещен - не админ');
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    console.log('✅ Статистика: админ права подтверждены, загружаем данные...');
     
     // Общая статистика игроков
     const playersStats = await pool.query(`
@@ -175,6 +198,9 @@ router.get('/stats/:telegramId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
+
+// 🔐 Все остальные маршруты используют middleware (кроме check и stats)
+router.use(['!/check/*', '!/stats/*'], adminAuth);
 
 // 👤 GET /api/admin/player/:telegramId/:playerId - информация об игроке
 router.get('/player/:telegramId/:playerId', async (req, res) => {
