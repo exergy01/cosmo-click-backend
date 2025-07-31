@@ -1,5 +1,3 @@
-// routes/adsgram.js - ПРОСТОЙ вариант как у друга
-
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
@@ -24,7 +22,7 @@ router.get('/reward', async (req, res) => {
 
     // Проверяем что пользователь существует
     const userResult = await pool.query(
-      'SELECT telegram_id FROM players WHERE telegram_id = $1',
+      'SELECT telegram_id, ad_views FROM players WHERE telegram_id = $1',
       [userid]
     );
 
@@ -54,6 +52,13 @@ router.get('/reward', async (req, res) => {
           THEN CURRENT_DATE 
           ELSE player_game_limits.last_reset_date 
         END
+    `, [userid]);
+
+    // Обновляем ad_views в таблице players
+    await pool.query(`
+      UPDATE players 
+      SET ad_views = COALESCE(ad_views, 0) + 1
+      WHERE telegram_id = $1
     `, [userid]);
 
     console.log('🎯✅ Adsgram reward processed successfully for user:', userid);

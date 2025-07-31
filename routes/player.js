@@ -612,10 +612,57 @@ router.get('/stats/:telegramId', async (req, res) => {
   }
 });
 
-// ЗАМЕНИТЕ ЭТОТ МАРШРУТ В ФАЙЛЕ player.js
+// POST /api/player/watch_ad - НАЧИСЛЕНИЕ НАГРАДЫ ЗА ПРОСМОТР РЕКЛАМЫ
+router.post('/watch_ad', async (req, res) => {
+  const { telegramId } = req.body;
+  if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const playerResult = await client.query(
+      'SELECT ad_views, ccc FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+
+    if (playerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    const player = playerResult.rows[0];
+    const currentAdViews = player.ad_views || 0;
+
+    if (currentAdViews >= 5) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Ad view limit reached for today' });
+    }
+
+    // Начисляем награду (10 CCC) и увеличиваем ad_views
+    await client.query(
+      'UPDATE players SET ad_views = COALESCE(ad_views, 0) + 1, ccc = ccc + 10 WHERE telegram_id = $1',
+      [telegramId]
+    );
+
+    await client.query('COMMIT');
+    const updatedPlayer = await getPlayer(telegramId);
+
+    res.json({
+      success: true,
+      message: 'Ad watched successfully',
+      player: updatedPlayer
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error processing ad watch:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
 
 // POST /api/player/connect-wallet - ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
-// POST /api/player/connect-wallet - РЕАЛЬНОЕ ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
 router.post('/connect-wallet', async (req, res) => {
   console.log('--- Endpoint /connect-wallet вызван ---');
   console.log('Получено тело запроса:', JSON.stringify(req.body));
