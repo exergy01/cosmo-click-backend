@@ -8,35 +8,73 @@ const router = express.Router();
 // 🔐 АДМИНСКИЙ ID ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID;
 
+console.log('🔧 Админский модуль загружен. ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, 'тип:', typeof ADMIN_TELEGRAM_ID);
+
 // 🛡️ Middleware для проверки админских прав
 const adminAuth = (req, res, next) => {
   const telegramId = req.params.telegramId || req.body.telegramId || req.query.telegramId;
   
-  console.log('🔐 Проверка админских прав:', { telegramId, adminId: ADMIN_TELEGRAM_ID });
+  console.log('🔐 Проверка админских прав:', { 
+    telegramId, 
+    telegramIdType: typeof telegramId,
+    adminId: ADMIN_TELEGRAM_ID, 
+    adminIdType: typeof ADMIN_TELEGRAM_ID,
+    // Приводим к строкам для сравнения
+    telegramIdStr: String(telegramId),
+    adminIdStr: String(ADMIN_TELEGRAM_ID),
+    directMatch: telegramId === ADMIN_TELEGRAM_ID,
+    stringMatch: String(telegramId) === String(ADMIN_TELEGRAM_ID)
+  });
   
   if (!telegramId) {
+    console.log('🚫 Telegram ID не предоставлен');
     return res.status(400).json({ error: 'Telegram ID is required' });
   }
   
-  if (telegramId !== ADMIN_TELEGRAM_ID) {
-    console.log('🚫 Доступ запрещен - не админ');
+  // ИСПРАВЛЕНИЕ: Приводим оба значения к строкам для правильного сравнения
+  const telegramIdStr = String(telegramId).trim();
+  const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
+  
+  if (telegramIdStr !== adminIdStr) {
+    console.log('🚫 Доступ запрещен - не админ:', {
+      received: telegramIdStr,
+      expected: adminIdStr,
+      match: telegramIdStr === adminIdStr
+    });
     return res.status(403).json({ error: 'Access denied' });
   }
   
-  console.log('✅ Админ права подтверждены');
+  console.log('✅ Админ права подтверждены для ID:', telegramIdStr);
   next();
 };
 
 // 🔍 GET /api/admin/check/:telegramId - проверка админского статуса
 router.get('/check/:telegramId', (req, res) => {
   const { telegramId } = req.params;
-  const isAdmin = telegramId === ADMIN_TELEGRAM_ID;
   
-  console.log('🔍 Проверка админского статуса:', { telegramId, isAdmin });
+  // ИСПРАВЛЕНИЕ: Приводим к строкам для сравнения
+  const telegramIdStr = String(telegramId).trim();
+  const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
+  const isAdmin = telegramIdStr === adminIdStr;
+  
+  console.log('🔍 Проверка админского статуса:', { 
+    telegramId: telegramIdStr, 
+    adminId: adminIdStr,
+    isAdmin,
+    receivedType: typeof telegramId,
+    adminType: typeof ADMIN_TELEGRAM_ID
+  });
   
   res.json({ 
     isAdmin,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    // Отладочная информация (удалить в продакшене)
+    debug: {
+      receivedId: telegramIdStr,
+      expectedId: adminIdStr,
+      typesMatch: typeof telegramId === typeof ADMIN_TELEGRAM_ID,
+      stringMatch: telegramIdStr === adminIdStr
+    }
   });
 });
 
@@ -61,13 +99,13 @@ router.get('/stats/:telegramId', async (req, res) => {
     // Статистика валют
     const currencyStats = await pool.query(`
       SELECT 
-        SUM(ccc) as total_ccc,
-        SUM(cs) as total_cs,
-        SUM(ton) as total_ton,
-        SUM(telegram_stars) as total_stars,
-        AVG(ccc) as avg_ccc,
-        AVG(cs) as avg_cs,
-        AVG(ton) as avg_ton
+        COALESCE(SUM(ccc), 0) as total_ccc,
+        COALESCE(SUM(cs), 0) as total_cs,
+        COALESCE(SUM(ton), 0) as total_ton,
+        COALESCE(SUM(telegram_stars), 0) as total_stars,
+        COALESCE(AVG(ccc), 0) as avg_ccc,
+        COALESCE(AVG(cs), 0) as avg_cs,
+        COALESCE(AVG(ton), 0) as avg_ton
       FROM players
     `);
     
@@ -75,8 +113,8 @@ router.get('/stats/:telegramId', async (req, res) => {
     const starsExchangeStats = await pool.query(`
       SELECT 
         COUNT(*) as total_exchanges,
-        SUM(ABS(amount)) as total_stars_exchanged,
-        SUM(cs_amount) as total_cs_received,
+        COALESCE(SUM(ABS(amount)), 0) as total_stars_exchanged,
+        COALESCE(SUM(cs_amount), 0) as total_cs_received,
         COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as exchanges_24h
       FROM star_transactions 
       WHERE transaction_type = 'stars_to_cs_exchange' AND status = 'completed'
@@ -84,7 +122,15 @@ router.get('/stats/:telegramId', async (req, res) => {
     
     // ТОП 10 игроков по CS
     const topPlayers = await pool.query(`
-      SELECT telegram_id, username, first_name, cs, ccc, ton, telegram_stars, verified
+      SELECT 
+        telegram_id, 
+        username, 
+        first_name, 
+        COALESCE(cs, 0) as cs, 
+        COALESCE(ccc, 0) as ccc, 
+        COALESCE(ton, 0) as ton, 
+        COALESCE(telegram_stars, 0) as telegram_stars, 
+        COALESCE(verified, false) as verified
       FROM players 
       ORDER BY cs DESC 
       LIMIT 10
@@ -105,18 +151,28 @@ router.get('/stats/:telegramId', async (req, res) => {
       }
     }
     
-    res.json({
+    const result = {
       players: playersStats.rows[0],
       currencies: currencyStats.rows[0],
       stars_exchange: starsExchangeStats.rows[0],
       top_players: topPlayers.rows,
       current_rates: currentRates,
       timestamp: new Date().toISOString()
+    };
+    
+    console.log('✅ Статистика успешно собрана:', {
+      totalPlayers: result.players.total_players,
+      totalCS: result.currencies.total_cs,
+      totalExchanges: result.stars_exchange.total_exchanges,
+      topPlayersCount: result.top_players.length,
+      ratesCount: Object.keys(result.current_rates).length
     });
+    
+    res.json(result);
     
   } catch (err) {
     console.error('❌ Ошибка получения статистики:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
@@ -168,7 +224,7 @@ router.get('/player/:telegramId/:playerId', async (req, res) => {
     
   } catch (err) {
     console.error('❌ Ошибка получения данных игрока:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
@@ -276,7 +332,7 @@ router.post('/update-balance/:telegramId', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Ошибка обновления баланса:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   } finally {
     client.release();
   }
@@ -320,7 +376,7 @@ router.post('/verify-player/:telegramId', async (req, res) => {
     
   } catch (err) {
     console.error('❌ Ошибка верификации игрока:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
@@ -379,7 +435,7 @@ router.post('/update-ton-rate/:telegramId', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Ошибка админского обновления курса TON:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   } finally {
     client.release();
   }
@@ -421,7 +477,7 @@ router.post('/unblock-exchange/:telegramId', async (req, res) => {
     
   } catch (err) {
     console.error('❌ Ошибка снятия блокировки:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
@@ -437,7 +493,16 @@ router.get('/search/:telegramId', async (req, res) => {
     console.log(`🔍 Поиск игроков: "${q}"`);
     
     const result = await pool.query(`
-      SELECT telegram_id, username, first_name, cs, ccc, ton, telegram_stars, verified, last_activity
+      SELECT 
+        telegram_id, 
+        username, 
+        first_name, 
+        COALESCE(cs, 0) as cs, 
+        COALESCE(ccc, 0) as ccc, 
+        COALESCE(ton, 0) as ton, 
+        COALESCE(telegram_stars, 0) as telegram_stars, 
+        COALESCE(verified, false) as verified, 
+        last_activity
       FROM players 
       WHERE 
         telegram_id::text ILIKE $1 
@@ -455,8 +520,31 @@ router.get('/search/:telegramId', async (req, res) => {
     
   } catch (err) {
     console.error('❌ Ошибка поиска игроков:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
+});
+
+// 🔧 GET /api/admin/debug/:telegramId - отладочная информация (только для разработки)
+router.get('/debug/:telegramId', (req, res) => {
+  const { telegramId } = req.params;
+  
+  const debugInfo = {
+    received_telegram_id: telegramId,
+    received_type: typeof telegramId,
+    admin_telegram_id: ADMIN_TELEGRAM_ID,
+    admin_type: typeof ADMIN_TELEGRAM_ID,
+    string_comparison: String(telegramId) === String(ADMIN_TELEGRAM_ID),
+    direct_comparison: telegramId === ADMIN_TELEGRAM_ID,
+    env_vars: {
+      NODE_ENV: process.env.NODE_ENV,
+      ADMIN_TELEGRAM_ID: process.env.ADMIN_TELEGRAM_ID
+    },
+    timestamp: new Date().toISOString()
+  };
+  
+  console.log('🔧 Debug запрос:', debugInfo);
+  
+  res.json(debugInfo);
 });
 
 module.exports = router;
