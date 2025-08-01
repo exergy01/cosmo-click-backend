@@ -86,6 +86,10 @@ router.get('/check/:telegramId', (req, res) => {
 });
 
 // 📊 GET /api/admin/stats/:telegramId - общая статистика системы (БЕЗ middleware)
+// Обновленная часть для routes/admin.js - endpoint /api/admin/stats/:telegramId
+// Используем существующие таблицы: balance_history, star_transactions
+
+// 📊 GET /api/admin/stats/:telegramId - общая статистика системы 
 router.get('/stats/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
@@ -95,12 +99,6 @@ router.get('/stats/:telegramId', async (req, res) => {
     // ПРОВЕРЯЕМ АДМИНА ПРЯМО ЗДЕСЬ
     const telegramIdStr = String(telegramId).trim();
     const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
-    
-    console.log('🔐 Прямая проверка админа в stats:', {
-      telegramIdStr,
-      adminIdStr,
-      isAdmin: telegramIdStr === adminIdStr
-    });
     
     if (telegramIdStr !== adminIdStr) {
       console.log('🚫 Статистика: доступ запрещен - не админ');
@@ -132,7 +130,9 @@ router.get('/stats/:telegramId', async (req, res) => {
       FROM players
     `);
     
-    // Статистика обменов Stars
+    // 🆕 СТАТИСТИКА ОБМЕНОВ ИЗ СУЩЕСТВУЮЩИХ ТАБЛИЦ:
+    
+    // Stars → CS обмены из star_transactions
     const starsExchangeStats = await pool.query(`
       SELECT 
         COUNT(*) as total_exchanges,
@@ -142,7 +142,54 @@ router.get('/stats/:telegramId', async (req, res) => {
       FROM star_transactions 
       WHERE transaction_type = 'stars_to_cs_exchange' AND status = 'completed'
     `);
-    
+
+    // CCC ↔ CS обмены из balance_history (анализируем изменения балансов)
+    const cccCsExchangeStats = await pool.query(`
+      SELECT 
+        -- CCC → CS (когда CCC уменьшается, а CS увеличивается)
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'ccc' THEN 1 END) as ccc_to_cs_exchanges,
+        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'ccc' THEN ABS(change_amount) ELSE 0 END), 0) as total_ccc_exchanged,
+        
+        -- CS → CCC (когда CS уменьшается, а CCC увеличивается) 
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'cs' THEN 1 END) as cs_to_ccc_exchanges,
+        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'cs' THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_exchanged,
+        
+        -- За 24 часа
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND created_at > NOW() - INTERVAL '24 hours' AND currency = 'ccc' THEN 1 END) as ccc_exchanges_24h,
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND created_at > NOW() - INTERVAL '24 hours' AND currency = 'cs' THEN 1 END) as cs_exchanges_24h
+      FROM balance_history 
+      WHERE reason LIKE '%exchange%' AND created_at IS NOT NULL
+    `);
+
+    // CS ↔ TON обмены из balance_history
+    const csTonExchangeStats = await pool.query(`
+      SELECT 
+        -- CS → TON (когда CS уменьшается, TON увеличивается)
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'cs' THEN 1 END) as cs_to_ton_exchanges,
+        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'cs' THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_to_ton_amount,
+        
+        -- TON → CS (когда TON уменьшается, CS увеличивается)
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'ton' THEN 1 END) as ton_to_cs_exchanges,
+        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'ton' THEN ABS(change_amount) ELSE 0 END), 0) as total_ton_to_cs_amount,
+        
+        -- За 24 часа
+        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as ton_exchanges_24h
+      FROM balance_history 
+      WHERE reason LIKE '%exchange%' AND reason LIKE '%ton%' AND created_at IS NOT NULL
+    `);
+
+    // Мини-игры статистика
+    const minigamesStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_games,
+        COUNT(DISTINCT telegram_id) as active_players,
+        COALESCE(SUM(bet_amount), 0) as total_bet,
+        COALESCE(SUM(win_amount), 0) as total_won,
+        COALESCE(SUM(jackpot_contribution), 0) as total_jackpot_contribution,
+        COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as games_24h
+      FROM minigames_history
+    `);
+
     // ТОП 10 игроков по CS
     const topPlayers = await pool.query(`
       SELECT 
@@ -174,21 +221,79 @@ router.get('/stats/:telegramId', async (req, res) => {
       }
     }
     
+    // 🆕 СОБИРАЕМ ВСЕ СТАТИСТИКИ ОБМЕНОВ ИЗ СУЩЕСТВУЮЩИХ ТАБЛИЦ
+    const allExchangeStats = {
+      // Stars → CS (из star_transactions)
+      stars_to_cs: {
+        total_exchanges: parseInt(starsExchangeStats.rows[0]?.total_exchanges || 0),
+        total_stars_exchanged: parseFloat(starsExchangeStats.rows[0]?.total_stars_exchanged || 0),
+        total_cs_received: parseFloat(starsExchangeStats.rows[0]?.total_cs_received || 0),
+        exchanges_24h: parseInt(starsExchangeStats.rows[0]?.exchanges_24h || 0)
+      },
+      
+      // CCC ↔ CS (из balance_history)
+      ccc_cs: {
+        ccc_to_cs_exchanges: parseInt(cccCsExchangeStats.rows[0]?.ccc_to_cs_exchanges || 0),
+        cs_to_ccc_exchanges: parseInt(cccCsExchangeStats.rows[0]?.cs_to_ccc_exchanges || 0),
+        total_ccc_exchanged: parseFloat(cccCsExchangeStats.rows[0]?.total_ccc_exchanged || 0),
+        total_cs_exchanged: parseFloat(cccCsExchangeStats.rows[0]?.total_cs_exchanged || 0),
+        ccc_exchanges_24h: parseInt(cccCsExchangeStats.rows[0]?.ccc_exchanges_24h || 0),
+        cs_exchanges_24h: parseInt(cccCsExchangeStats.rows[0]?.cs_exchanges_24h || 0)
+      },
+      
+      // CS ↔ TON (из balance_history)
+      cs_ton: {
+        cs_to_ton_exchanges: parseInt(csTonExchangeStats.rows[0]?.cs_to_ton_exchanges || 0),
+        ton_to_cs_exchanges: parseInt(csTonExchangeStats.rows[0]?.ton_to_cs_exchanges || 0),
+        total_cs_to_ton_amount: parseFloat(csTonExchangeStats.rows[0]?.total_cs_to_ton_amount || 0),
+        total_ton_to_cs_amount: parseFloat(csTonExchangeStats.rows[0]?.total_ton_to_cs_amount || 0),
+        ton_exchanges_24h: parseInt(csTonExchangeStats.rows[0]?.ton_exchanges_24h || 0)
+      },
+      
+      // 🆕 ОБЩИЕ ПОДСЧЕТЫ
+      totals: {
+        all_exchanges: 
+          parseInt(starsExchangeStats.rows[0]?.total_exchanges || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.ccc_to_cs_exchanges || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.cs_to_ccc_exchanges || 0) +
+          parseInt(csTonExchangeStats.rows[0]?.cs_to_ton_exchanges || 0) +
+          parseInt(csTonExchangeStats.rows[0]?.ton_to_cs_exchanges || 0),
+        
+        all_exchanges_24h:
+          parseInt(starsExchangeStats.rows[0]?.exchanges_24h || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.ccc_exchanges_24h || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.cs_exchanges_24h || 0) +
+          parseInt(csTonExchangeStats.rows[0]?.ton_exchanges_24h || 0)
+      }
+    };
+    
     const result = {
       players: playersStats.rows[0],
       currencies: currencyStats.rows[0],
-      stars_exchange: starsExchangeStats.rows[0],
+      
+      // 🔧 СТАРЫЙ ФОРМАТ для обратной совместимости
+      stars_exchange: allExchangeStats.stars_to_cs,
+      
+      // 🆕 НОВЫЙ ФОРМАТ со всеми обменами
+      all_exchanges: allExchangeStats,
+      
+      // 🎮 Мини-игры статистика
+      minigames: minigamesStats.rows[0],
+      
       top_players: topPlayers.rows,
       current_rates: currentRates,
       timestamp: new Date().toISOString()
     };
     
-    console.log('✅ Статистика успешно собрана:', {
+    console.log('✅ Статистика успешно собрана из существующих таблиц:', {
       totalPlayers: result.players.total_players,
       totalCS: result.currencies.total_cs,
-      totalExchanges: result.stars_exchange.total_exchanges,
-      topPlayersCount: result.top_players.length,
-      ratesCount: Object.keys(result.current_rates).length
+      starsExchanges: result.all_exchanges.stars_to_cs.total_exchanges,
+      cccCsExchanges: result.all_exchanges.ccc_cs.ccc_to_cs_exchanges + result.all_exchanges.ccc_cs.cs_to_ccc_exchanges,
+      csTonExchanges: result.all_exchanges.cs_ton.cs_to_ton_exchanges + result.all_exchanges.cs_ton.ton_to_cs_exchanges,
+      allExchangesTotal: result.all_exchanges.totals.all_exchanges,
+      minigamesTotalGames: result.minigames.total_games,
+      topPlayersCount: result.top_players.length
     });
     
     res.json(result);
