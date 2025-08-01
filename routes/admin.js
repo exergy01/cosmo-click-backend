@@ -90,6 +90,10 @@ router.get('/check/:telegramId', (req, res) => {
 // Используем существующие таблицы: balance_history, star_transactions
 
 // 📊 GET /api/admin/stats/:telegramId - общая статистика системы 
+// Обновленная часть для routes/admin.js - endpoint /api/admin/stats/:telegramId
+// Используем существующие таблицы: balance_history, star_transactions
+
+// 📊 GET /api/admin/stats/:telegramId - общая статистика системы 
 router.get('/stats/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
@@ -107,15 +111,30 @@ router.get('/stats/:telegramId', async (req, res) => {
     
     console.log('✅ Статистика: админ права подтверждены, загружаем данные...');
     
-    // Общая статистика игроков
+    // Общая статистика игроков - ИСПРАВЛЕННЫЕ ЗАПРОСЫ
     const playersStats = await pool.query(`
       SELECT 
         COUNT(*) as total_players,
         COUNT(CASE WHEN verified = true THEN 1 END) as verified_players,
-        COUNT(CASE WHEN last_activity > NOW() - INTERVAL '24 hours' THEN 1 END) as active_24h,
-        COUNT(CASE WHEN last_activity > NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
+        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 day' THEN 1 END) as active_24h,
+        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
       FROM players
+      WHERE created_at IS NOT NULL
     `);
+
+    // Отладочная информация по активности
+    const debugActivity = await pool.query(`
+      SELECT 
+        COUNT(*) as total_with_activity,
+        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 day' THEN 1 END) as active_1d,
+        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 hour' THEN 1 END) as active_1h,
+        MAX(last_activity) as latest_activity,
+        MIN(last_activity) as earliest_activity
+      FROM players 
+      WHERE last_activity IS NOT NULL
+    `);
+    
+    console.log('🔍 Отладка активности игроков:', debugActivity.rows[0]);
     
     // Статистика валют
     const currencyStats = await pool.query(`
@@ -143,23 +162,44 @@ router.get('/stats/:telegramId', async (req, res) => {
       WHERE transaction_type = 'stars_to_cs_exchange' AND status = 'completed'
     `);
 
-    // CCC ↔ CS обмены из balance_history (анализируем изменения балансов)
+    // CCC ↔ CS обмены из balance_history - ИСПРАВЛЕННЫЕ ЗАПРОСЫ
     const cccCsExchangeStats = await pool.query(`
       SELECT 
-        -- CCC → CS (когда CCC уменьшается, а CS увеличивается)
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'ccc' THEN 1 END) as ccc_to_cs_exchanges,
-        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'ccc' THEN ABS(change_amount) ELSE 0 END), 0) as total_ccc_exchanged,
+        -- CCC → CS (когда reason содержит 'exchange' или 'convert' и валюта CCC)
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+                   AND currency = 'ccc' AND change_amount < 0 THEN 1 END) as ccc_to_cs_exchanges,
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+                         AND currency = 'ccc' AND change_amount < 0 THEN ABS(change_amount) ELSE 0 END), 0) as total_ccc_exchanged,
         
-        -- CS → CCC (когда CS уменьшается, а CCC увеличивается) 
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'cs' THEN 1 END) as cs_to_ccc_exchanges,
-        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND old_balance > new_balance AND currency = 'cs' THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_exchanged,
+        -- CS → CCC (когда reason содержит 'exchange' или 'convert' и валюта CS)
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+                   AND currency = 'cs' AND change_amount < 0 THEN 1 END) as cs_to_ccc_exchanges,
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+                         AND currency = 'cs' AND change_amount < 0 THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_exchanged,
         
-        -- За 24 часа
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND created_at > NOW() - INTERVAL '24 hours' AND currency = 'ccc' THEN 1 END) as ccc_exchanges_24h,
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND created_at > NOW() - INTERVAL '24 hours' AND currency = 'cs' THEN 1 END) as cs_exchanges_24h
+        -- За 24 часа - ЛЮБЫЕ обмены с валютами CCC/CS
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+                   AND created_at >= NOW() - INTERVAL '1 day' 
+                   AND currency IN ('ccc', 'cs') THEN 1 END) as all_ccc_cs_exchanges_24h
       FROM balance_history 
-      WHERE reason LIKE '%exchange%' AND created_at IS NOT NULL
+      WHERE (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%обмен%')
+        AND created_at IS NOT NULL
     `);
+
+    // Отладочная информация по обменам
+    const debugExchanges = await pool.query(`
+      SELECT 
+        COUNT(*) as total_balance_records,
+        COUNT(CASE WHEN reason ILIKE '%exchange%' THEN 1 END) as exchange_records,
+        COUNT(CASE WHEN reason ILIKE '%convert%' THEN 1 END) as convert_records,
+        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 day' THEN 1 END) as records_24h,
+        STRING_AGG(DISTINCT reason, ', ') as sample_reasons
+      FROM balance_history 
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+      LIMIT 10
+    `);
+    
+    console.log('🔍 Отладка обменов в balance_history:', debugExchanges.rows[0]);
 
     // CS ↔ TON обмены из balance_history
     const csTonExchangeStats = await pool.query(`
@@ -261,8 +301,7 @@ router.get('/stats/:telegramId', async (req, res) => {
         
         all_exchanges_24h:
           parseInt(starsExchangeStats.rows[0]?.exchanges_24h || 0) +
-          parseInt(cccCsExchangeStats.rows[0]?.ccc_exchanges_24h || 0) +
-          parseInt(cccCsExchangeStats.rows[0]?.cs_exchanges_24h || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.all_ccc_cs_exchanges_24h || 0) +
           parseInt(csTonExchangeStats.rows[0]?.ton_exchanges_24h || 0)
       }
     };
