@@ -1,6 +1,6 @@
 module.exports = {
   asteroidData: [
-    // ===== СИСТЕМА 1 ===== (306,000 CCC = 15.3 TON)
+    // ===== СИСТЕМА 1 ===== 
     { id: 1, system: 1, totalCcc: 1360, price: 4 },
     { id: 2, system: 1, totalCcc: 1955, price: 6 },
     { id: 3, system: 1, totalCcc: 2975, price: 9 },
@@ -13,8 +13,10 @@ module.exports = {
     { id: 10, system: 1, totalCcc: 49810, price: 108 },
     { id: 11, system: 1, totalCcc: 74715, price: 143 },
     { id: 12, system: 1, totalCcc: 84065, price: 200 },
+    // 💣 БОМБА СИСТЕМЫ 1
+    { id: 13, system: 1, totalCcc: 0, price: 15, currency: 'ton', isBomb: true },
 
-    // ===== СИСТЕМА 2 ===== (410,000 CCC = 20.5 TON)
+    // ===== СИСТЕМА 2 ===== 
     { id: 1, system: 2, totalCcc: 1822, price: 6 },
     { id: 2, system: 2, totalCcc: 2620, price: 8 },
     { id: 3, system: 2, totalCcc: 3987, price: 12 },
@@ -27,8 +29,10 @@ module.exports = {
     { id: 10, system: 2, totalCcc: 66745, price: 141 },
     { id: 11, system: 2, totalCcc: 100118, price: 186 },
     { id: 12, system: 2, totalCcc: 112647, price: 261 },
+    // 💣 БОМБА СИСТЕМЫ 2
+    { id: 13, system: 2, totalCcc: 0, price: 20, currency: 'ton', isBomb: true },
 
-    // ===== СИСТЕМА 3 ===== (535,600 CCC = 26.78 TON)
+    // ===== СИСТЕМА 3 ===== 
     { id: 1, system: 3, totalCcc: 2380, price: 7 },
     { id: 2, system: 3, totalCcc: 3421, price: 11 },
     { id: 3, system: 3, totalCcc: 5206, price: 16 },
@@ -41,8 +45,10 @@ module.exports = {
     { id: 10, system: 3, totalCcc: 87168, price: 189 },
     { id: 11, system: 3, totalCcc: 130751, price: 250 },
     { id: 12, system: 3, totalCcc: 147114, price: 350 },
+    // 💣 БОМБА СИСТЕМЫ 3
+    { id: 13, system: 3, totalCcc: 0, price: 50, currency: 'ton', isBomb: true },
 
-    // ===== СИСТЕМА 4 ===== (3,640 CS = 36.4 TON эквивалент)
+    // ===== СИСТЕМА 4 ===== 
     { id: 1, system: 4, totalCs: 8.09, price: 8 },
     { id: 2, system: 4, totalCs: 11.62, price: 12 },
     { id: 3, system: 4, totalCs: 17.70, price: 18 },
@@ -54,11 +60,13 @@ module.exports = {
     { id: 9, system: 4, totalCs: 197.75, price: 154 },
     { id: 10, system: 4, totalCs: 296.34, price: 216 },
     { id: 11, system: 4, totalCs: 444.46, price: 286 },
-    { id: 12, system: 4, totalCs: 500.19, price: 400 }
+    { id: 12, system: 4, totalCs: 500.19, price: 400 },
+    // 💣 БОМБА СИСТЕМЫ 4
+    { id: 13, system: 4, totalCs: 0, price: 100, currency: 'ton', isBomb: true }
   ],
   
   droneData: [
-    // ===== СИСТЕМА 1 ===== (15,468 CCC/день)
+    // ===== СИСТЕМА 1 ===== 
     { id: 1, system: 1, cccPerDay: 100, price: 1 },
     { id: 2, system: 1, cccPerDay: 135, price: 9 },
     { id: 3, system: 1, cccPerDay: 182, price: 17 },
@@ -75,7 +83,7 @@ module.exports = {
     { id: 14, system: 1, cccPerDay: 4946, price: 120 },
     { id: 15, system: 1, cccPerDay: 6677, price: 130 },
 
-    // ===== СИСТЕМА 2 ===== (20,495 CCC/день)
+    // ===== СИСТЕМА 2 ===== 
     { id: 1, system: 2, cccPerDay: 133, price: 1.5 },
     { id: 2, system: 2, cccPerDay: 179, price: 12 },
     { id: 3, system: 2, cccPerDay: 241, price: 23 },
@@ -92,7 +100,7 @@ module.exports = {
     { id: 14, system: 2, cccPerDay: 6554, price: 159 },
     { id: 15, system: 2, cccPerDay: 8847, price: 173 },
 
-    // ===== СИСТЕМА 3 ===== (26,760 CCC/день)
+    // ===== СИСТЕМА 3 ===== 
     { id: 1, system: 3, cccPerDay: 173, price: 2 },
     { id: 2, system: 3, cccPerDay: 234, price: 16 },
     { id: 3, system: 3, cccPerDay: 315, price: 29 },
@@ -109,7 +117,7 @@ module.exports = {
     { id: 14, system: 3, cccPerDay: 8557, price: 208 },
     { id: 15, system: 3, cccPerDay: 11551, price: 225 },
 
-    // ===== СИСТЕМА 4 ===== (182 CS/день)
+    // ===== СИСТЕМА 4 ===== 
     { id: 1, system: 4, csPerDay: 0.59, price: 3 },
     { id: 2, system: 4, csPerDay: 0.79, price: 23 },
     { id: 3, system: 4, csPerDay: 1.07, price: 43 },

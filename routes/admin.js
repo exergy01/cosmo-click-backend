@@ -90,17 +90,16 @@ router.get('/check/:telegramId', (req, res) => {
 // Используем существующие таблицы: balance_history, star_transactions
 
 // 📊 GET /api/admin/stats/:telegramId - общая статистика системы 
-// Обновленная часть для routes/admin.js - endpoint /api/admin/stats/:telegramId
-// Используем существующие таблицы: balance_history, star_transactions
+// ===== ИСПРАВЛЕННАЯ ЧАСТЬ routes/admin.js =====
+// Заменить существующий endpoint /api/admin/stats/:telegramId
 
-// 📊 GET /api/admin/stats/:telegramId - общая статистика системы 
 router.get('/stats/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
     
     console.log('📊 Запрос общей статистики системы от ID:', telegramId);
     
-    // ПРОВЕРЯЕМ АДМИНА ПРЯМО ЗДЕСЬ
+    // ПРОВЕРЯЕМ АДМИНА
     const telegramIdStr = String(telegramId).trim();
     const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
     
@@ -111,32 +110,39 @@ router.get('/stats/:telegramId', async (req, res) => {
     
     console.log('✅ Статистика: админ права подтверждены, загружаем данные...');
     
-    // Общая статистика игроков - ИСПРАВЛЕННЫЕ ЗАПРОСЫ
+    // 1. ИСПРАВЛЯЕМ статистику игроков - проверяем реальные поля
+    console.log('🔍 Проверяем структуру таблицы players...');
+    
+    // Сначала узнаем какие поля есть в таблице players
+    const playerColumns = await pool.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'players' 
+      ORDER BY ordinal_position
+    `);
+    
+    console.log('📋 Поля таблицы players:', playerColumns.rows.map(r => `${r.column_name}(${r.data_type})`));
+    
+    // Ищем поле активности - может быть last_activity, last_seen, updated_at
+    const activityField = playerColumns.rows.find(col => 
+      col.column_name.includes('activity') || 
+      col.column_name.includes('last_') || 
+      col.column_name === 'updated_at'
+    )?.column_name || 'created_at'; // fallback на created_at
+    
+    console.log('🕒 Используем поле активности:', activityField);
+    
+    // ИСПРАВЛЕННЫЙ запрос статистики игроков
     const playersStats = await pool.query(`
       SELECT 
         COUNT(*) as total_players,
         COUNT(CASE WHEN verified = true THEN 1 END) as verified_players,
-        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 day' THEN 1 END) as active_24h,
-        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
+        COUNT(CASE WHEN ${activityField} > NOW() - INTERVAL '24 hours' THEN 1 END) as active_24h,
+        COUNT(CASE WHEN ${activityField} > NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
       FROM players
-      WHERE created_at IS NOT NULL
-    `);
-
-    // Отладочная информация по активности
-    const debugActivity = await pool.query(`
-      SELECT 
-        COUNT(*) as total_with_activity,
-        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 day' THEN 1 END) as active_1d,
-        COUNT(CASE WHEN last_activity >= NOW() - INTERVAL '1 hour' THEN 1 END) as active_1h,
-        MAX(last_activity) as latest_activity,
-        MIN(last_activity) as earliest_activity
-      FROM players 
-      WHERE last_activity IS NOT NULL
     `);
     
-    console.log('🔍 Отладка активности игроков:', debugActivity.rows[0]);
-    
-    // Статистика валют
+    // 2. Статистика валют - остается без изменений
     const currencyStats = await pool.query(`
       SELECT 
         COALESCE(SUM(ccc), 0) as total_ccc,
@@ -149,9 +155,20 @@ router.get('/stats/:telegramId', async (req, res) => {
       FROM players
     `);
     
-    // 🆕 СТАТИСТИКА ОБМЕНОВ ИЗ СУЩЕСТВУЮЩИХ ТАБЛИЦ:
+    // 3. ИСПРАВЛЯЕМ обмены - проверяем реальные значения reason
+    console.log('🔍 Проверяем значения reason в balance_history...');
     
-    // Stars → CS обмены из star_transactions
+    const reasonValues = await pool.query(`
+      SELECT DISTINCT reason, COUNT(*) as count
+      FROM balance_history 
+      WHERE reason IS NOT NULL 
+      ORDER BY count DESC 
+      LIMIT 20
+    `);
+    
+    console.log('📋 Найденные значения reason:', reasonValues.rows);
+    
+    // Stars → CS обмены из star_transactions (остается без изменений)
     const starsExchangeStats = await pool.query(`
       SELECT 
         COUNT(*) as total_exchanges,
@@ -162,80 +179,85 @@ router.get('/stats/:telegramId', async (req, res) => {
       WHERE transaction_type = 'stars_to_cs_exchange' AND status = 'completed'
     `);
 
-    // CCC ↔ CS обмены из balance_history - ИСПРАВЛЕННЫЕ ЗАПРОСЫ
+    // 4. ИСПРАВЛЯЕМ CCC ↔ CS обмены - используем реальные значения reason
     const cccCsExchangeStats = await pool.query(`
       SELECT 
-        -- CCC → CS (когда reason содержит 'exchange' или 'convert' и валюта CCC)
-        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+        -- Ищем любые записи связанные с обменом (exchange, convert, swap)
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
                    AND currency = 'ccc' AND change_amount < 0 THEN 1 END) as ccc_to_cs_exchanges,
-        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
-                         AND currency = 'ccc' AND change_amount < 0 THEN ABS(change_amount) ELSE 0 END), 0) as total_ccc_exchanged,
         
-        -- CS → CCC (когда reason содержит 'exchange' или 'convert' и валюта CS)
-        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
                    AND currency = 'cs' AND change_amount < 0 THEN 1 END) as cs_to_ccc_exchanges,
-        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
-                         AND currency = 'cs' AND change_amount < 0 THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_exchanged,
         
-        -- За 24 часа - ЛЮБЫЕ обмены с валютами CCC/CS
-        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%') 
-                   AND created_at >= NOW() - INTERVAL '1 day' 
-                   AND currency IN ('ccc', 'cs') THEN 1 END) as all_ccc_cs_exchanges_24h
-      FROM balance_history 
-      WHERE (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%обмен%')
-        AND created_at IS NOT NULL
-    `);
-
-    // Отладочная информация по обменам
-    const debugExchanges = await pool.query(`
-      SELECT 
-        COUNT(*) as total_balance_records,
-        COUNT(CASE WHEN reason ILIKE '%exchange%' THEN 1 END) as exchange_records,
-        COUNT(CASE WHEN reason ILIKE '%convert%' THEN 1 END) as convert_records,
-        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 day' THEN 1 END) as records_24h,
-        STRING_AGG(DISTINCT reason, ', ') as sample_reasons
-      FROM balance_history 
-      WHERE created_at >= NOW() - INTERVAL '7 days'
-      LIMIT 10
-    `);
-    
-    console.log('🔍 Отладка обменов в balance_history:', debugExchanges.rows[0]);
-
-    // CS ↔ TON обмены из balance_history
-    const csTonExchangeStats = await pool.query(`
-      SELECT 
-        -- CS → TON (когда CS уменьшается, TON увеличивается)
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'cs' THEN 1 END) as cs_to_ton_exchanges,
-        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'cs' THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_to_ton_amount,
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                              AND currency = 'ccc' AND change_amount < 0 
+                         THEN ABS(change_amount) ELSE 0 END), 0) as total_ccc_exchanged,
         
-        -- TON → CS (когда TON уменьшается, CS увеличивается)
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'ton' THEN 1 END) as ton_to_cs_exchanges,
-        COALESCE(SUM(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND old_balance > new_balance AND currency = 'ton' THEN ABS(change_amount) ELSE 0 END), 0) as total_ton_to_cs_amount,
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                              AND currency = 'cs' AND change_amount < 0 
+                         THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_exchanged,
         
         -- За 24 часа
-        COUNT(CASE WHEN reason LIKE '%exchange%' AND reason LIKE '%ton%' AND created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as ton_exchanges_24h
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                   AND created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as exchanges_24h
       FROM balance_history 
-      WHERE reason LIKE '%exchange%' AND reason LIKE '%ton%' AND created_at IS NOT NULL
+      WHERE created_at IS NOT NULL
     `);
 
-    // Мини-игры статистика
-    const minigamesStats = await pool.query(`
+    // 5. ИСПРАВЛЯЕМ CS ↔ TON обмены
+    const csTonExchangeStats = await pool.query(`
       SELECT 
-        COUNT(*) as total_games,
-        COUNT(DISTINCT telegram_id) as active_players,
-        COALESCE(SUM(bet_amount), 0) as total_bet,
-        COALESCE(SUM(win_amount), 0) as total_won,
-        COALESCE(SUM(jackpot_contribution), 0) as total_jackpot_contribution,
-        COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as games_24h
-      FROM minigames_history
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                   AND (reason ILIKE '%ton%') AND currency = 'cs' AND change_amount < 0 THEN 1 END) as cs_to_ton_exchanges,
+        
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                   AND (reason ILIKE '%ton%') AND currency = 'ton' AND change_amount < 0 THEN 1 END) as ton_to_cs_exchanges,
+        
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                              AND (reason ILIKE '%ton%') AND currency = 'cs' AND change_amount < 0 
+                         THEN ABS(change_amount) ELSE 0 END), 0) as total_cs_to_ton_amount,
+        
+        COALESCE(SUM(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                              AND (reason ILIKE '%ton%') AND currency = 'ton' AND change_amount < 0 
+                         THEN ABS(change_amount) ELSE 0 END), 0) as total_ton_to_cs_amount,
+        
+        COUNT(CASE WHEN (reason ILIKE '%exchange%' OR reason ILIKE '%convert%' OR reason ILIKE '%swap%') 
+                   AND (reason ILIKE '%ton%') AND created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as ton_exchanges_24h
+      FROM balance_history 
+      WHERE created_at IS NOT NULL
     `);
 
-    // ТОП 10 игроков по CS
+    // 6. Статистика мини-игр - проверяем существование таблицы
+    let minigamesStats = { rows: [{ 
+      total_games: 0, 
+      active_players: 0, 
+      total_bet: 0, 
+      total_won: 0, 
+      total_jackpot_contribution: 0, 
+      games_24h: 0 
+    }] };
+    
+    try {
+      minigamesStats = await pool.query(`
+        SELECT 
+          COUNT(*) as total_games,
+          COUNT(DISTINCT telegram_id) as active_players,
+          COALESCE(SUM(bet_amount), 0) as total_bet,
+          COALESCE(SUM(win_amount), 0) as total_won,
+          COALESCE(SUM(jackpot_contribution), 0) as total_jackpot_contribution,
+          COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as games_24h
+        FROM minigames_history
+      `);
+    } catch (minigamesError) {
+      console.log('⚠️ Таблица minigames_history не существует или недоступна:', minigamesError.message);
+    }
+
+    // 7. ТОП 10 игроков по CS
     const topPlayers = await pool.query(`
       SELECT 
         telegram_id, 
-        username, 
-        first_name, 
+        COALESCE(username, '') as username, 
+        COALESCE(first_name, '') as first_name, 
         COALESCE(cs, 0) as cs, 
         COALESCE(ccc, 0) as ccc, 
         COALESCE(ton, 0) as ton, 
@@ -246,24 +268,34 @@ router.get('/stats/:telegramId', async (req, res) => {
       LIMIT 10
     `);
     
-    // Статистика курсов
-    const ratesStats = await pool.query(`
-      SELECT currency_pair, rate, last_updated, source
-      FROM exchange_rates 
-      WHERE currency_pair IN ('TON_USD', 'STARS_CS')
-      ORDER BY currency_pair, last_updated DESC
-    `);
+    // 8. Статистика курсов - проверяем существование таблицы
+    let ratesStats = { rows: [] };
+    let currentRates = {};
     
-    const currentRates = {};
-    for (const row of ratesStats.rows) {
-      if (!currentRates[row.currency_pair]) {
-        currentRates[row.currency_pair] = row;
+    try {
+      ratesStats = await pool.query(`
+        SELECT currency_pair, rate, last_updated, source
+        FROM exchange_rates 
+        WHERE currency_pair IN ('TON_USD', 'STARS_CS')
+        ORDER BY currency_pair, last_updated DESC
+      `);
+      
+      for (const row of ratesStats.rows) {
+        if (!currentRates[row.currency_pair]) {
+          currentRates[row.currency_pair] = row;
+        }
       }
+    } catch (ratesError) {
+      console.log('⚠️ Таблица exchange_rates не существует или недоступна:', ratesError.message);
+      // Устанавливаем дефолтные курсы
+      currentRates = {
+        'TON_USD': { currency_pair: 'TON_USD', rate: 3.30, source: 'default' },
+        'STARS_CS': { currency_pair: 'STARS_CS', rate: 0.10, source: 'default' }
+      };
     }
     
-    // 🆕 СОБИРАЕМ ВСЕ СТАТИСТИКИ ОБМЕНОВ ИЗ СУЩЕСТВУЮЩИХ ТАБЛИЦ
+    // 9. СОБИРАЕМ ВСЕ СТАТИСТИКИ
     const allExchangeStats = {
-      // Stars → CS (из star_transactions)
       stars_to_cs: {
         total_exchanges: parseInt(starsExchangeStats.rows[0]?.total_exchanges || 0),
         total_stars_exchanged: parseFloat(starsExchangeStats.rows[0]?.total_stars_exchanged || 0),
@@ -271,17 +303,14 @@ router.get('/stats/:telegramId', async (req, res) => {
         exchanges_24h: parseInt(starsExchangeStats.rows[0]?.exchanges_24h || 0)
       },
       
-      // CCC ↔ CS (из balance_history)
       ccc_cs: {
         ccc_to_cs_exchanges: parseInt(cccCsExchangeStats.rows[0]?.ccc_to_cs_exchanges || 0),
         cs_to_ccc_exchanges: parseInt(cccCsExchangeStats.rows[0]?.cs_to_ccc_exchanges || 0),
         total_ccc_exchanged: parseFloat(cccCsExchangeStats.rows[0]?.total_ccc_exchanged || 0),
         total_cs_exchanged: parseFloat(cccCsExchangeStats.rows[0]?.total_cs_exchanged || 0),
-        ccc_exchanges_24h: parseInt(cccCsExchangeStats.rows[0]?.ccc_exchanges_24h || 0),
-        cs_exchanges_24h: parseInt(cccCsExchangeStats.rows[0]?.cs_exchanges_24h || 0)
+        exchanges_24h: parseInt(cccCsExchangeStats.rows[0]?.exchanges_24h || 0)
       },
       
-      // CS ↔ TON (из balance_history)
       cs_ton: {
         cs_to_ton_exchanges: parseInt(csTonExchangeStats.rows[0]?.cs_to_ton_exchanges || 0),
         ton_to_cs_exchanges: parseInt(csTonExchangeStats.rows[0]?.ton_to_cs_exchanges || 0),
@@ -290,7 +319,6 @@ router.get('/stats/:telegramId', async (req, res) => {
         ton_exchanges_24h: parseInt(csTonExchangeStats.rows[0]?.ton_exchanges_24h || 0)
       },
       
-      // 🆕 ОБЩИЕ ПОДСЧЕТЫ
       totals: {
         all_exchanges: 
           parseInt(starsExchangeStats.rows[0]?.total_exchanges || 0) +
@@ -301,7 +329,7 @@ router.get('/stats/:telegramId', async (req, res) => {
         
         all_exchanges_24h:
           parseInt(starsExchangeStats.rows[0]?.exchanges_24h || 0) +
-          parseInt(cccCsExchangeStats.rows[0]?.all_ccc_cs_exchanges_24h || 0) +
+          parseInt(cccCsExchangeStats.rows[0]?.exchanges_24h || 0) +
           parseInt(csTonExchangeStats.rows[0]?.ton_exchanges_24h || 0)
       }
     };
@@ -309,37 +337,41 @@ router.get('/stats/:telegramId', async (req, res) => {
     const result = {
       players: playersStats.rows[0],
       currencies: currencyStats.rows[0],
-      
-      // 🔧 СТАРЫЙ ФОРМАТ для обратной совместимости
       stars_exchange: allExchangeStats.stars_to_cs,
-      
-      // 🆕 НОВЫЙ ФОРМАТ со всеми обменами
       all_exchanges: allExchangeStats,
-      
-      // 🎮 Мини-игры статистика
       minigames: minigamesStats.rows[0],
-      
       top_players: topPlayers.rows,
       current_rates: currentRates,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      
+      // Отладочная информация
+      debug: {
+        activity_field_used: activityField,
+        reason_values_found: reasonValues.rows.length,
+        top_reasons: reasonValues.rows.slice(0, 5).map(r => `${r.reason}(${r.count})`),
+        tables_checked: ['players', 'balance_history', 'star_transactions', 'minigames_history', 'exchange_rates']
+      }
     };
     
-    console.log('✅ Статистика успешно собрана из существующих таблиц:', {
+    console.log('✅ Статистика успешно собрана:', {
       totalPlayers: result.players.total_players,
+      active24h: result.players.active_24h,
       totalCS: result.currencies.total_cs,
       starsExchanges: result.all_exchanges.stars_to_cs.total_exchanges,
       cccCsExchanges: result.all_exchanges.ccc_cs.ccc_to_cs_exchanges + result.all_exchanges.ccc_cs.cs_to_ccc_exchanges,
-      csTonExchanges: result.all_exchanges.cs_ton.cs_to_ton_exchanges + result.all_exchanges.cs_ton.ton_to_cs_exchanges,
-      allExchangesTotal: result.all_exchanges.totals.all_exchanges,
-      minigamesTotalGames: result.minigames.total_games,
-      topPlayersCount: result.top_players.length
+      activityFieldUsed: activityField,
+      reasonValuesFound: reasonValues.rows.length
     });
     
     res.json(result);
     
   } catch (err) {
     console.error('❌ Ошибка получения статистики:', err);
-    res.status(500).json({ error: 'Internal server error', details: err.message });
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 

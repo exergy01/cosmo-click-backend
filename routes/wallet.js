@@ -273,10 +273,10 @@ router.post('/create-stars-invoice', async (req, res) => {
     return res.status(400).json({ error: 'Telegram ID and amount are required' });
   }
 
-  if (amount < 1 || amount > 2500) {
-    return res.status(400).json({ error: 'Amount must be between 1 and 2500 stars' });
+  if (amount < 100 || amount > 150000) {
+    return res.status(400).json({ error: 'Amount must be between 100 and 150000 stars' });
   }
-
+  
   try {
     // Проверяем, что игрок существует
     const player = await getPlayer(telegram_id);

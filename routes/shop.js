@@ -1,4 +1,4 @@
-// ===== routes/shop.js - ПОЛНЫЙ ИСПРАВЛЕННЫЙ КОД =====
+// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ =====
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -174,6 +174,41 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
   }
 };
 
+// 💣 ФУНКЦИЯ ОБНОВЛЕНИЯ ЛИМИТОВ АСТЕРОИДОВ (для бомб)
+const updateAsteroidLimits = async (client, telegramId, systemId) => {
+  try {
+    const player = await getPlayer(telegramId);
+    if (!player) return;
+
+    // Получаем все астероиды игрока в этой системе (кроме бомбы)
+    const updatedAsteroids = player.asteroids.map(asteroid => {
+      if (asteroid.system === systemId && asteroid.id <= 12) {
+        return {
+          ...asteroid,
+          totalCcc: asteroid.totalCcc ? asteroid.totalCcc * 2 : asteroid.totalCcc,
+          totalCs: asteroid.totalCs ? asteroid.totalCs * 2 : asteroid.totalCs
+        };
+      }
+      return asteroid;
+    });
+
+    // Обновляем asteroid_total_data
+    const updatedAsteroidTotal = { ...player.asteroid_total_data };
+    if (updatedAsteroidTotal[systemId]) {
+      updatedAsteroidTotal[systemId] *= 2; // Удваиваем общие ресурсы
+    }
+
+    await client.query(
+      'UPDATE players SET asteroids = $1::jsonb, asteroid_total_data = $2 WHERE telegram_id = $3',
+      [JSON.stringify(updatedAsteroids), updatedAsteroidTotal, telegramId]
+    );
+
+    console.log(`💣 Лимиты астероидов в системе ${systemId} удвоены для игрока ${telegramId}`);
+  } catch (err) {
+    console.error('❌ Ошибка обновления лимитов астероидов:', err);
+  }
+};
+
 // GET маршруты для данных магазина
 router.get('/asteroids', (req, res) => {
   res.json(shopData.asteroidData);
@@ -228,7 +263,7 @@ router.get('/cargo/:telegramId', async (req, res) => {
   }
 });
 
-// POST /api/shop/buy - С РЕФЕРАЛЬНЫМИ НАГРАДАМИ
+// POST /api/shop/buy - С РЕФЕРАЛЬНЫМИ НАГРАДАМИ И ПОДДЕРЖКОЙ БОМБ
 router.post('/buy', async (req, res) => {
   const { telegramId, itemId, itemType, systemId, currency } = req.body;
   if (!telegramId || !itemId || !itemType || !systemId) return res.status(400).json({ error: 'Missing required fields' });
@@ -257,19 +292,8 @@ router.post('/buy', async (req, res) => {
       currentPlayer = await getPlayer(telegramId);
     }
 
-    console.log('🔍 Определяем валюту...');
-    // Определяем валюту для покупки
-    const useCs = systemId >= 1 && systemId <= 4;
-    const useTon = systemId >= 5 && systemId <= 7;
-    const currencyToUse = useCs ? 'cs' : useTon ? 'ton' : 'ccc';
-    
-    if (currency && currency !== currencyToUse) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Invalid currency for system ${systemId}. Use ${currencyToUse}` });
-    }
-
     console.log('🔍 Ищем товар...');
-    // Поиск товара
+    // Поиск товара СНАЧАЛА
     const itemData = (itemType === 'asteroid' ? shopData.asteroidData :
                      (itemType === 'drone' || itemType === 'drones') ? shopData.droneData :
                      itemType === 'cargo' ? shopData.cargoData : []).find(item => item.id === itemId && item.system === systemId);
@@ -279,19 +303,42 @@ router.post('/buy', async (req, res) => {
       return res.status(404).json({ error: `${itemType} not found` });
     }
 
+    console.log('🔍 Определяем валюту...');
+    // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБ - ВАЛЮТА TON
+    const isBomb = itemData.isBomb || (itemType === 'asteroid' && itemId === 13);
+    let currencyToUse;
+    
+    if (isBomb || itemData.currency === 'ton') {
+      currencyToUse = 'ton';
+    } else {
+      // Стандартная логика валют
+      const useCs = systemId >= 1 && systemId <= 4;
+      const useTon = systemId >= 5 && systemId <= 7;
+      currencyToUse = useCs ? 'cs' : useTon ? 'ton' : 'ccc';
+    }
+    
+    console.log(`💰 Валюта для покупки: ${currencyToUse}, это бомба: ${isBomb}`);
+    
+    if (currency && currency !== currencyToUse) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Invalid currency for ${itemType} ${itemId}. Use ${currencyToUse}` });
+    }
+
     const price = itemData.price;
     console.log(`🔍 Цена товара: ${price} ${currencyToUse}`);
 
     // Проверка баланса
     let playerBalance;
-    if (systemId >= 1 && systemId <= 4) {
+    if (currencyToUse === 'ton') {
+      playerBalance = parseFloat(currentPlayer.ton || 0);
+    } else if (currencyToUse === 'cs') {
       if (systemId === 4) {
         playerBalance = updatedBalance; // CS из автосбора системы 4
       } else {
         playerBalance = parseFloat(currentPlayer.cs); // CS из обновленных данных для систем 1-3
       }
-    } else if (systemId >= 5 && systemId <= 7) {
-      playerBalance = parseFloat(currentPlayer.ton || 0); // TON для систем 5-7
+    } else {
+      playerBalance = parseFloat(currentPlayer.ccc || 0);
     }
     
     console.log(`🔍 Баланс игрока: ${playerBalance} ${currencyToUse}`);
@@ -325,28 +372,46 @@ router.post('/buy', async (req, res) => {
     if (itemType === 'asteroid') {
       updatedItems = [...(currentPlayer.asteroids || [])];
       
-      const asteroidData = systemId === 4 ? 
-        { id: itemId, system: systemId, totalCs: itemData.totalCs } :
-        { id: itemId, system: systemId, totalCcc: itemData.totalCcc };
-      
-      updatedItems.push(asteroidData);
-      
-      const totalValue = systemId === 4 ? (itemData.totalCs || 0) : (itemData.totalCcc || 0);
-      
-      // 🔥 ИСПРАВЛЕНО: Получаем СВЕЖИЕ данные астероидов после автосбора из БД
-      const freshPlayerQuery = await client.query('SELECT asteroid_total_data FROM players WHERE telegram_id = $1', [telegramId]);
-      const freshAsteroidData = freshPlayerQuery.rows[0]?.asteroid_total_data || {};
-      
-      const updatedAsteroidTotal = { 
-        ...freshAsteroidData, 
-        [systemId]: (freshAsteroidData[systemId] || 0) + totalValue 
-      };
-      
-      console.log(`🔍 Обновляем астероиды в БД... Было: ${freshAsteroidData[systemId] || 0}, добавляем: ${totalValue}, станет: ${updatedAsteroidTotal[systemId]}`);
-      await client.query(
-        'UPDATE players SET asteroids = $1::jsonb, asteroid_total_data = $2, last_collection_time = $3 WHERE telegram_id = $4',
-        [JSON.stringify(updatedItems), updatedAsteroidTotal, newLastCollectionTime, telegramId]
-      );
+      // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБ
+      if (isBomb) {
+        console.log('💣 ПОКУПКА БОМБЫ - обновляем лимиты астероидов!');
+        // Добавляем бомбу (без ресурсов)
+        const bombData = { id: itemId, system: systemId, isBomb: true };
+        updatedItems.push(bombData);
+        
+        // Обновляем астероиды в БД
+        await client.query(
+          'UPDATE players SET asteroids = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
+          [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
+        );
+        
+        // 💣 УДВАИВАЕМ ЛИМИТЫ ВСЕХ АСТЕРОИДОВ В СИСТЕМЕ
+        await updateAsteroidLimits(client, telegramId, systemId);
+      } else {
+        // Обычный астероид
+        const asteroidData = systemId === 4 ? 
+          { id: itemId, system: systemId, totalCs: itemData.totalCs } :
+          { id: itemId, system: systemId, totalCcc: itemData.totalCcc };
+        
+        updatedItems.push(asteroidData);
+        
+        const totalValue = systemId === 4 ? (itemData.totalCs || 0) : (itemData.totalCcc || 0);
+        
+        // 🔥 ИСПРАВЛЕНО: Получаем СВЕЖИЕ данные астероидов после автосбора из БД
+        const freshPlayerQuery = await client.query('SELECT asteroid_total_data FROM players WHERE telegram_id = $1', [telegramId]);
+        const freshAsteroidData = freshPlayerQuery.rows[0]?.asteroid_total_data || {};
+        
+        const updatedAsteroidTotal = { 
+          ...freshAsteroidData, 
+          [systemId]: (freshAsteroidData[systemId] || 0) + totalValue 
+        };
+        
+        console.log(`🔍 Обновляем астероиды в БД... Было: ${freshAsteroidData[systemId] || 0}, добавляем: ${totalValue}, станет: ${updatedAsteroidTotal[systemId]}`);
+        await client.query(
+          'UPDATE players SET asteroids = $1::jsonb, asteroid_total_data = $2, last_collection_time = $3 WHERE telegram_id = $4',
+          [JSON.stringify(updatedItems), updatedAsteroidTotal, newLastCollectionTime, telegramId]
+        );
+      }
       
     } else if (itemType === 'drone' || itemType === 'drones') {
       updatedItems = [...(currentPlayer.drones || [])];
@@ -397,7 +462,7 @@ router.post('/buy', async (req, res) => {
     console.log('🔍 Получаем обновленного игрока...');
     const finalPlayer = await getPlayer(telegramId);
     
-    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}`);
+    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}${isBomb ? ' (БОМБА!)' : ''}`);
     res.json(finalPlayer);
   } catch (err) {
     await client.query('ROLLBACK');
