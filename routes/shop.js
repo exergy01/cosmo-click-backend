@@ -1,4 +1,4 @@
-// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ =====
+// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ - ЧАСТЬ 1/4 =====
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -102,6 +102,7 @@ const recalculatePlayerData = async (client, telegramId) => {
     console.error('Ошибка пересчета данных игрока:', err);
   }
 };
+// ===== routes/shop.js - ЧАСТЬ 2/4 (Автосбор и бомбы) =====
 
 // 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ АВТОСБОРА перед покупкой
 const autoCollectBeforePurchase = async (client, player, systemId) => {
@@ -154,7 +155,7 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
       const updatedCs = parseFloat(player.cs) + newResources;
       await client.query(
         'UPDATE players SET cs = $1, collected_by_system = $2, last_collection_time = $3, asteroid_total_data = $4 WHERE telegram_id = $5',
-        [updatedCs, updatedCollected, updatedTime, updatedAsteroidTotal, player.telegram_id]
+        [updatedCs, updatedCollected, updatedTime, updatedAsteroidTotal, telegramId]
       );
       console.log(`✅ Автосбор CS: ${player.cs} + ${newResources} = ${updatedCs}, астероидов осталось: ${updatedAsteroidTotal[systemStr]}`);
       return updatedCs;
@@ -208,6 +209,7 @@ const updateAsteroidLimits = async (client, telegramId, systemId) => {
     console.error('❌ Ошибка обновления лимитов астероидов:', err);
   }
 };
+// ===== routes/shop.js - ЧАСТЬ 3/4 (GET маршруты и основная логика) =====
 
 // GET маршруты для данных магазина
 router.get('/asteroids', (req, res) => {
@@ -268,7 +270,7 @@ router.post('/buy', async (req, res) => {
   const { telegramId, itemId, itemType, systemId, currency } = req.body;
   if (!telegramId || !itemId || !itemType || !systemId) return res.status(400).json({ error: 'Missing required fields' });
 
-  console.log(`🛒 ПОКУПКА СТАРТ: игрок ${telegramId}, товар ${itemType} #${itemId}, система ${systemId}`);
+  console.log(`🛒 ПОКУПКА СТАРТ: игрок ${telegramId}, товар ${itemType} #${itemId}, система ${systemId}, валюта: ${currency || 'не указана'}`);
 
   const client = await pool.connect();
   try {
@@ -304,26 +306,25 @@ router.post('/buy', async (req, res) => {
     }
 
     console.log('🔍 Определяем валюту...');
-    // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБ - ВАЛЮТА TON
-    const isBomb = itemData.isBomb || (itemType === 'asteroid' && itemId === 13);
-    let currencyToUse;
+    // 🔥 ИСПРАВЛЕНО: ПРИОРИТЕТ ПЕРЕДАННОЙ ВАЛЮТЕ!
+    let currencyToUse = currency; // Используем переданную валюту
     
-    if (isBomb || itemData.currency === 'ton') {
-      currencyToUse = 'ton';
-    } else {
-      // Стандартная логика валют
-      const useCs = systemId >= 1 && systemId <= 4;
-      const useTon = systemId >= 5 && systemId <= 7;
-      currencyToUse = useCs ? 'cs' : useTon ? 'ton' : 'ccc';
+    if (!currencyToUse) {
+      // Только если валюта НЕ передана, определяем автоматически
+      const isBomb = itemData.isBomb || (itemType === 'asteroid' && itemId === 13);
+      
+      if (isBomb || itemData.currency === 'ton') {
+        currencyToUse = 'ton';
+      } else {
+        // Стандартная логика валют
+        const useCs = systemId >= 1 && systemId <= 4;
+        const useTon = systemId >= 5 && systemId <= 7;
+        currencyToUse = useCs ? 'cs' : useTon ? 'ton' : 'ccc';
+      }
     }
     
-    console.log(`💰 Валюта для покупки: ${currencyToUse}, это бомба: ${isBomb}`);
+    console.log(`💰 Валюта для покупки: ${currencyToUse}, переданная: ${currency || 'нет'}, это бомба: ${itemData.isBomb || false}`);
     
-    if (currency && currency !== currencyToUse) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Invalid currency for ${itemType} ${itemId}. Use ${currencyToUse}` });
-    }
-
     const price = itemData.price;
     console.log(`🔍 Цена товара: ${price} ${currencyToUse}`);
 
@@ -347,6 +348,7 @@ router.post('/buy', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient funds' });
     }
+    // ===== routes/shop.js - ЧАСТЬ 4/4 (Покупка товаров и остальные маршруты) =====
 
     console.log('🔍 Проверяем дублирование...');
     // Проверка на дублирование покупки
@@ -373,6 +375,7 @@ router.post('/buy', async (req, res) => {
       updatedItems = [...(currentPlayer.asteroids || [])];
       
       // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБ
+      const isBomb = itemData.isBomb || itemId === 13;
       if (isBomb) {
         console.log('💣 ПОКУПКА БОМБЫ - обновляем лимиты астероидов!');
         // Добавляем бомбу (без ресурсов)
@@ -462,7 +465,7 @@ router.post('/buy', async (req, res) => {
     console.log('🔍 Получаем обновленного игрока...');
     const finalPlayer = await getPlayer(telegramId);
     
-    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}${isBomb ? ' (БОМБА!)' : ''}`);
+    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}${itemData.isBomb ? ' (БОМБА!)' : ''}`);
     res.json(finalPlayer);
   } catch (err) {
     await client.query('ROLLBACK');
