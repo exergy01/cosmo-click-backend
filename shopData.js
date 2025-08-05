@@ -14,7 +14,7 @@ module.exports = {
     { id: 11, system: 1, totalCcc: 74715, price: 143 },
     { id: 12, system: 1, totalCcc: 84065, price: 200 },
     // 💣 БОМБА СИСТЕМЫ 1
-    { id: 13, system: 1, totalCcc: 0, price: 15, currency: 'ton', isBomb: true },
+    { id: 13, system: 1, totalCcc: 0, price: 15, currency: 'cs', isBomb: true },
 
     // ===== СИСТЕМА 2 ===== 
     { id: 1, system: 2, totalCcc: 1822, price: 6 },

@@ -196,7 +196,8 @@ const updateAsteroidLimits = async (client, telegramId, systemId) => {
     // Обновляем asteroid_total_data
     const updatedAsteroidTotal = { ...player.asteroid_total_data };
     if (updatedAsteroidTotal[systemId]) {
-      updatedAsteroidTotal[systemId] *= 2; // Удваиваем общие ресурсы
+      updatedAsteroidTotal[systemId] = getInitialSystemTotal(systemId);
+    
     }
 
     await client.query(
@@ -313,9 +314,13 @@ router.post('/buy', async (req, res) => {
       // Только если валюта НЕ передана, определяем автоматически
       const isBomb = itemData.isBomb || (itemType === 'asteroid' && itemId === 13);
       
-      if (isBomb || itemData.currency === 'ton') {
+      if (itemData.currency === 'ton') {
         currencyToUse = 'ton';
-      } else {
+      } else if (itemData.currency === 'cs') {
+        currencyToUse = 'cs';  // 🔥 ТЕПЕРЬ БОМБА БУДЕТ CS!
+      }
+      
+      else {
         // Стандартная логика валют
         const useCs = systemId >= 1 && systemId <= 4;
         const useTon = systemId >= 5 && systemId <= 7;
