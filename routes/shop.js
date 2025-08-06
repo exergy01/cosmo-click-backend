@@ -1,4 +1,4 @@
-// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ КАК "ВОССТАНОВИТЬ ЛИМИТЫ" =====
+// ===== routes/shop.js - С ИСПРАВЛЕННОЙ МЕХАНИКОЙ БОМБЫ =====
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -169,7 +169,7 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
   }
 };
 
-// 💣 ФУНКЦИЯ ВОССТАНОВЛЕНИЯ ЛИМИТОВ АСТЕРОИДОВ (БОМБА)
+// 💣 ИСПРАВЛЕННАЯ ФУНКЦИЯ ВОССТАНОВЛЕНИЯ ЛИМИТОВ АСТЕРОИДОВ (БОМБА)
 const restoreAsteroidLimits = async (client, telegramId, systemId) => {
   try {
     const player = await getPlayer(telegramId);
@@ -177,10 +177,10 @@ const restoreAsteroidLimits = async (client, telegramId, systemId) => {
 
     console.log(`💣 ВОССТАНОВЛЕНИЕ ЛИМИТОВ для системы ${systemId} игрока ${telegramId}`);
 
-    // Получаем изначальные значения астероидов из shopData
-    const systemAsteroids = shopData.asteroidData.filter(a => a.system === systemId && a.id <= 12);
+    // 🔥 ИСПРАВЛЕНО: Получаем изначальные значения астероидов из shopData
+    const systemAsteroids = shopData.asteroidData.filter(a => a.system === systemId && a.id <= 12 && !a.isBomb);
     
-    // Вычисляем общий лимит системы
+    // 🔥 ИСПРАВЛЕНО: Вычисляем общий лимит системы из shopData
     let totalSystemLimit = 0;
     systemAsteroids.forEach(asteroidData => {
       if (systemId === 4) {
@@ -191,10 +191,11 @@ const restoreAsteroidLimits = async (client, telegramId, systemId) => {
     });
 
     console.log(`💣 Восстанавливаем лимиты системы ${systemId}: ${totalSystemLimit} ${systemId === 4 ? 'CS' : 'CCC'}`);
+    console.log(`💣 Найдено астероидов в shopData для системы ${systemId}:`, systemAsteroids.length);
 
-    // ✅ ОБНОВЛЯЕМ asteroid_total_data до ПОЛНОГО изначального значения
+    // 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: УСТАНАВЛИВАЕМ asteroid_total_data до ПОЛНОГО изначального значения
     const updatedAsteroidTotal = { ...player.asteroid_total_data };
-    updatedAsteroidTotal[systemId] = totalSystemLimit;
+    updatedAsteroidTotal[systemId] = totalSystemLimit; // ЗАМЕНЯЕМ, а не добавляем!
 
     // ✅ СБРАСЫВАЕМ collected_by_system в 0
     const updatedCollected = { ...player.collected_by_system };
@@ -209,7 +210,8 @@ const restoreAsteroidLimits = async (client, telegramId, systemId) => {
       [updatedAsteroidTotal, updatedCollected, newLastCollectionTime, telegramId]
     );
 
-    console.log(`✅ Лимиты астероидов системы ${systemId} восстановлены до ${totalSystemLimit}`);
+    console.log(`✅ Лимиты астероидов системы ${systemId} ПОЛНОСТЬЮ ВОССТАНОВЛЕНЫ до ${totalSystemLimit}`);
+    console.log(`💣 Было: ${player.asteroid_total_data?.[systemId] || 0}, стало: ${totalSystemLimit}`);
   } catch (err) {
     console.error('❌ Ошибка восстановления лимитов астероидов:', err);
   }
@@ -305,11 +307,17 @@ router.post('/buy', async (req, res) => {
       return res.status(404).json({ error: `${itemType} not found` });
     }
 
-    // 🔥 ОПРЕДЕЛЯЕМ ВАЛЮТУ (с поддержкой переданной валюты)
+    // 🔥 ИСПРАВЛЕНО: ОПРЕДЕЛЯЕМ ВАЛЮТУ (с поддержкой переданной валюты и бомбы)
     let currencyToUse = currency;
     
     if (!currencyToUse) {
-      if (itemData.currency === 'ton') {
+      // 💣 ПРОВЕРЯЕМ, ЭТО БОМБА?
+      const isBomb = itemData.isBomb || itemId === 13;
+      
+      if (isBomb && itemData.currency) {
+        // Для бомбы используем указанную в shopData валюту
+        currencyToUse = itemData.currency;
+      } else if (itemData.currency === 'ton') {
         currencyToUse = 'ton';
       } else if (itemData.currency === 'cs') {
         currencyToUse = 'cs';

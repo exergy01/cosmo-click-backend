@@ -13,8 +13,8 @@ module.exports = {
     { id: 10, system: 1, totalCcc: 49810, price: 108 },
     { id: 11, system: 1, totalCcc: 74715, price: 143 },
     { id: 12, system: 1, totalCcc: 84065, price: 200 },
-    // 💣 БОМБА СИСТЕМЫ 1 - "ВОССТАНОВИТЬ ЛИМИТЫ"
-    { id: 13, system: 1, totalCcc: 0, price: 15, currency: 'cs', isBomb: true },
+    // 💣 БОМБА СИСТЕМЫ 1 - "ВОССТАНОВИТЬ ЛИМИТЫ" (ПРОДАКШН - TON)
+    { id: 13, system: 1, totalCcc: 306000, price: 15, currency: 'ton', isBomb: true },
 
     // ===== СИСТЕМА 2 ===== 
     { id: 1, system: 2, totalCcc: 1822, price: 6 },
@@ -171,7 +171,5 @@ module.exports = {
     { id: 3, price: 300, currency: 'cs' },
     { id: 4, price: 500, currency: 'cs' },
     { id: 5, price: 15, currency: 'ton', dynamic: true },
-    { id: 6, price: 50, currency: 'ton' },
-    { id: 7, price: 500, currency: 'ton' }
   ]
 };
