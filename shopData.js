@@ -13,7 +13,7 @@ module.exports = {
     { id: 10, system: 1, totalCcc: 49810, price: 108 },
     { id: 11, system: 1, totalCcc: 74715, price: 143 },
     { id: 12, system: 1, totalCcc: 84065, price: 200 },
-    // 💣 БОМБА СИСТЕМЫ 1
+    // 💣 БОМБА СИСТЕМЫ 1 - "ВОССТАНОВИТЬ ЛИМИТЫ"
     { id: 13, system: 1, totalCcc: 0, price: 15, currency: 'cs', isBomb: true },
 
     // ===== СИСТЕМА 2 ===== 
@@ -29,7 +29,7 @@ module.exports = {
     { id: 10, system: 2, totalCcc: 66745, price: 141 },
     { id: 11, system: 2, totalCcc: 100118, price: 186 },
     { id: 12, system: 2, totalCcc: 112647, price: 261 },
-    // 💣 БОМБА СИСТЕМЫ 2
+    // 💣 БОМБА СИСТЕМЫ 2 - "ВОССТАНОВИТЬ ЛИМИТЫ"
     { id: 13, system: 2, totalCcc: 0, price: 20, currency: 'ton', isBomb: true },
 
     // ===== СИСТЕМА 3 ===== 
@@ -45,7 +45,7 @@ module.exports = {
     { id: 10, system: 3, totalCcc: 87168, price: 189 },
     { id: 11, system: 3, totalCcc: 130751, price: 250 },
     { id: 12, system: 3, totalCcc: 147114, price: 350 },
-    // 💣 БОМБА СИСТЕМЫ 3
+    // 💣 БОМБА СИСТЕМЫ 3 - "ВОССТАНОВИТЬ ЛИМИТЫ"
     { id: 13, system: 3, totalCcc: 0, price: 50, currency: 'ton', isBomb: true },
 
     // ===== СИСТЕМА 4 ===== 
@@ -61,7 +61,7 @@ module.exports = {
     { id: 10, system: 4, totalCs: 296.34, price: 216 },
     { id: 11, system: 4, totalCs: 444.46, price: 286 },
     { id: 12, system: 4, totalCs: 500.19, price: 400 },
-    // 💣 БОМБА СИСТЕМЫ 4
+    // 💣 БОМБА СИСТЕМЫ 4 - "ВОССТАНОВИТЬ ЛИМИТЫ"
     { id: 13, system: 4, totalCs: 0, price: 100, currency: 'ton', isBomb: true }
   ],
   

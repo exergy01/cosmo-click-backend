@@ -1,4 +1,4 @@
-// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ И ПРАВИЛЬНЫМ ВОССТАНОВЛЕНИЕМ =====
+// ===== routes/shop.js - С ПОДДЕРЖКОЙ БОМБ КАК "ВОССТАНОВИТЬ ЛИМИТЫ" =====
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -6,7 +6,7 @@ const shopData = require('../shopData.js');
 
 const router = express.Router();
 
-// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ - ПОЛНОСТЬЮ ИСПРАВЛЕНО!
+// 🎯 ФУНКЦИЯ НАЧИСЛЕНИЯ РЕФЕРАЛЬНОЙ НАГРАДЫ ПРИ ПОКУПКАХ
 const processReferralReward = async (client, telegramId, spentAmount, currency) => {
   try {
     const player = await getPlayer(telegramId);
@@ -37,9 +37,9 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
       return;
     }
 
-    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} накапливается ${rewardAmount} ${rewardCurrency.toUpperCase()} (НЕ зачисляется сразу!)`);
+    console.log(`💸 Реферальная награда: игрок ${telegramId} потратил ${spentAmount} ${currency.toUpperCase()}, рефереру ${player.referrer_id} накапливается ${rewardAmount} ${rewardCurrency.toUpperCase()}`);
 
-    // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS - НИКАКОГО ЗАЧИСЛЕНИЯ НА БАЛАНС!
+    // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS
     const csEarned = rewardCurrency === 'cs' ? rewardAmount : 0;
     const tonEarned = rewardCurrency === 'ton' ? rewardAmount : 0;
     
@@ -52,15 +52,14 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, csEarned, tonEarned]);
 
-    console.log(`✅ Реферальная награда ТОЛЬКО накоплена в таблице: ${rewardAmount} ${rewardCurrency.toUpperCase()} для реферера ${player.referrer_id}`);
+    console.log(`✅ Реферальная награда накоплена: ${rewardAmount} ${rewardCurrency.toUpperCase()} для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды:', err);
-    // НЕ бросаем ошибку - пусть покупка продолжается
   }
 };
 
-// 🔥 ФУНКЦИЯ ПЕРЕСЧЕТА данных игрока (БЕЗ ЛОГИРОВАНИЯ)
+// 🔥 ФУНКЦИЯ ПЕРЕСЧЕТА данных игрока
 const recalculatePlayerData = async (client, telegramId) => {
   try {
     const player = await getPlayer(telegramId);
@@ -92,7 +91,6 @@ const recalculatePlayerData = async (client, telegramId) => {
       miningSpeed[system] = (totalSpeed * bonusMultiplier) / 86400;
     }
 
-    // НЕ ОБНОВЛЯЕМ asteroid_total_data! Только карго и скорость!
     await client.query(
       'UPDATE players SET max_cargo_capacity_data = $1, mining_speed_data = $2 WHERE telegram_id = $3',
       [JSON.stringify(maxCargoCapacity), JSON.stringify(miningSpeed), telegramId]
@@ -103,7 +101,7 @@ const recalculatePlayerData = async (client, telegramId) => {
   }
 };
 
-// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ АВТОСБОРА перед покупкой
+// 🔥 АВТОСБОР перед покупкой
 const autoCollectBeforePurchase = async (client, player, systemId) => {
   try {
     const systemStr = String(systemId);
@@ -113,10 +111,10 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
     const maxCargoCapacity = player.max_cargo_capacity_data?.[systemId] || 0;
     const totalAsteroidResources = player.asteroid_total_data?.[systemId] || 0;
 
-    console.log(`🔄 АВТОСБОР система ${systemId}: уже_собрано=${collectedAmount}, скорость=${miningSpeed}/сек, карго=${maxCargoCapacity}, астероиды=${totalAsteroidResources}`);
+    console.log(`🔄 АВТОСБОР система ${systemId}: собрано=${collectedAmount}, скорость=${miningSpeed}/сек, карго=${maxCargoCapacity}, астероиды=${totalAsteroidResources}`);
 
     if (miningSpeed === 0 || maxCargoCapacity === 0) {
-      console.log(`⏹️ Автосбор невозможен для системы ${systemId} (нет дронов или карго)`);
+      console.log(`⏹️ Автосбор невозможен для системы ${systemId}`);
       return systemId === 4 ? parseFloat(player.cs) : parseFloat(player.ccc);
     }
 
@@ -126,11 +124,9 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
     let newResources = collectedAmount + (miningSpeed * timeElapsed);
     newResources = Math.min(newResources, maxCargoCapacity);
     
-    // 🔥 ИСПРАВЛЕНО: Ограничиваем только доступными ресурсами
     if (totalAsteroidResources > 0) {
       newResources = Math.min(newResources, totalAsteroidResources);
     } else {
-      // Если астероидов нет - нечего собирать
       newResources = 0;
     }
 
@@ -139,14 +135,13 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
       return systemId === 4 ? parseFloat(player.cs) : parseFloat(player.ccc);
     }
 
-    console.log(`💰 К автосбору: ${newResources} ${systemId === 4 ? 'CS' : 'CCC'}`);
+    console.log(`💰 Автосбор: ${newResources} ${systemId === 4 ? 'CS' : 'CCC'}`);
 
     const updatedCollected = { ...player.collected_by_system };
     updatedCollected[systemStr] = 0;
     const updatedTime = { ...player.last_collection_time };
     updatedTime[systemStr] = new Date().toISOString();
     
-    // 🔥 ГЛАВНОЕ: ВЫЧИТАЕМ из asteroid_total_data!
     const updatedAsteroidTotal = { ...player.asteroid_total_data };
     updatedAsteroidTotal[systemStr] = Math.max(0, (updatedAsteroidTotal[systemStr] || 0) - newResources);
     
@@ -156,7 +151,7 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
         'UPDATE players SET cs = $1, collected_by_system = $2, last_collection_time = $3, asteroid_total_data = $4 WHERE telegram_id = $5',
         [updatedCs, updatedCollected, updatedTime, updatedAsteroidTotal, player.telegram_id]
       );
-      console.log(`✅ Автосбор CS: ${player.cs} + ${newResources} = ${updatedCs}, астероидов осталось: ${updatedAsteroidTotal[systemStr]}`);
+      console.log(`✅ Автосбор CS: ${updatedCs}, астероидов осталось: ${updatedAsteroidTotal[systemStr]}`);
       return updatedCs;
     } else {
       const updatedCcc = parseFloat(player.ccc) + newResources;
@@ -164,7 +159,7 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
         'UPDATE players SET ccc = $1, collected_by_system = $2, last_collection_time = $3, asteroid_total_data = $4 WHERE telegram_id = $5',
         [updatedCcc, updatedCollected, updatedTime, updatedAsteroidTotal, player.telegram_id]
       );
-      console.log(`✅ Автосбор CCC: ${player.ccc} + ${newResources} = ${updatedCcc}, астероидов осталось: ${updatedAsteroidTotal[systemStr]}`);
+      console.log(`✅ Автосбор CCC: ${updatedCcc}, астероидов осталось: ${updatedAsteroidTotal[systemStr]}`);
       return updatedCcc;
     }
     
@@ -174,63 +169,49 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
   }
 };
 
-// 💣 ИСПРАВЛЕННАЯ ФУНКЦИЯ БОМБЫ - УСТАНАВЛИВАЕТ МАКСИМАЛЬНЫЕ ЛИМИТЫ
-const updateAsteroidLimits = async (client, telegramId, systemId) => {
+// 💣 ФУНКЦИЯ ВОССТАНОВЛЕНИЯ ЛИМИТОВ АСТЕРОИДОВ (БОМБА)
+const restoreAsteroidLimits = async (client, telegramId, systemId) => {
   try {
     const player = await getPlayer(telegramId);
     if (!player) return;
 
-    // 🔥 ПОЛУЧАЕМ МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ИЗ shopData
-    const systemAsteroids = shopData.asteroidData.filter(item => 
-      item.system === systemId && item.id <= 12 // только основные астероиды
-    );
+    console.log(`💣 ВОССТАНОВЛЕНИЕ ЛИМИТОВ для системы ${systemId} игрока ${telegramId}`);
 
-    // 🔥 ВЫЧИСЛЯЕМ ОБЩИЙ МАКСИМУМ ВСЕХ АСТЕРОИДОВ СИСТЕМЫ
-    let totalMaxResources = 0;
+    // Получаем изначальные значения астероидов из shopData
+    const systemAsteroids = shopData.asteroidData.filter(a => a.system === systemId && a.id <= 12);
     
+    // Вычисляем общий лимит системы
+    let totalSystemLimit = 0;
     systemAsteroids.forEach(asteroidData => {
       if (systemId === 4) {
-        totalMaxResources += asteroidData.totalCs || 0;
+        totalSystemLimit += asteroidData.totalCs || 0;
       } else {
-        totalMaxResources += asteroidData.totalCcc || 0;
+        totalSystemLimit += asteroidData.totalCcc || 0;
       }
     });
 
-    console.log(`💣 Бомба в системе ${systemId}: устанавливаем максимум ${totalMaxResources} ${systemId === 4 ? 'CS' : 'CCC'}`);
+    console.log(`💣 Восстанавливаем лимиты системы ${systemId}: ${totalSystemLimit} ${systemId === 4 ? 'CS' : 'CCC'}`);
 
-    // 🔥 УСТАНАВЛИВАЕМ МАКСИМАЛЬНЫЕ ЛИМИТЫ (НЕ ДОБАВЛЯЕМ!)
+    // ✅ ОБНОВЛЯЕМ asteroid_total_data до ПОЛНОГО изначального значения
     const updatedAsteroidTotal = { ...player.asteroid_total_data };
-    updatedAsteroidTotal[systemId] = totalMaxResources; // ✅ ЗАМЕНЯЕМ НА МАКСИМУМ
+    updatedAsteroidTotal[systemId] = totalSystemLimit;
 
-    // 🔥 ОБНОВЛЯЕМ ИНДИВИДУАЛЬНЫЕ АСТЕРОИДЫ НА МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ
-    const updatedAsteroids = player.asteroids.map(asteroid => {
-      if (asteroid.system === systemId && asteroid.id <= 12) {
-        // Находим данные астероида из shopData
-        const asteroidData = systemAsteroids.find(item => item.id === asteroid.id);
-        if (asteroidData) {
-          return {
-            ...asteroid,
-            // ✅ УСТАНАВЛИВАЕМ МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ
-            totalCcc: systemId === 4 ? asteroid.totalCcc : (asteroidData.totalCcc || 0),
-            totalCs: systemId === 4 ? (asteroidData.totalCs || 0) : asteroid.totalCs
-          };
-        }
-      }
-      return asteroid;
-    });
-
-    // 🔥 СБРАСЫВАЕМ СОБРАННЫЕ РЕСУРСЫ В СИСТЕМЕ
+    // ✅ СБРАСЫВАЕМ collected_by_system в 0
     const updatedCollected = { ...player.collected_by_system };
     updatedCollected[String(systemId)] = 0;
 
+    // ✅ ОБНОВЛЯЕМ время последнего сбора
+    const newLastCollectionTime = { ...player.last_collection_time };
+    newLastCollectionTime[String(systemId)] = new Date().toISOString();
+
     await client.query(
-      'UPDATE players SET asteroids = $1::jsonb, asteroid_total_data = $2, collected_by_system = $3 WHERE telegram_id = $4',
-      [JSON.stringify(updatedAsteroids), updatedAsteroidTotal, updatedCollected, telegramId]
+      'UPDATE players SET asteroid_total_data = $1, collected_by_system = $2, last_collection_time = $3 WHERE telegram_id = $4',
+      [updatedAsteroidTotal, updatedCollected, newLastCollectionTime, telegramId]
     );
 
-    console.log(`💣 Бомба применена! Система ${systemId} восстановлена до максимума: ${totalMaxResources} ${systemId === 4 ? 'CS' : 'CCC'}`);
+    console.log(`✅ Лимиты астероидов системы ${systemId} восстановлены до ${totalSystemLimit}`);
   } catch (err) {
-    console.error('❌ Ошибка применения бомбы:', err);
+    console.error('❌ Ошибка восстановления лимитов астероидов:', err);
   }
 };
 
@@ -288,37 +269,33 @@ router.get('/cargo/:telegramId', async (req, res) => {
   }
 });
 
-// POST /api/shop/buy - С РЕФЕРАЛЬНЫМИ НАГРАДАМИ И ПОДДЕРЖКОЙ БОМБ
+// POST /api/shop/buy - ОСНОВНОЙ МАРШРУТ ПОКУПКИ
 router.post('/buy', async (req, res) => {
   const { telegramId, itemId, itemType, systemId, currency } = req.body;
   if (!telegramId || !itemId || !itemType || !systemId) return res.status(400).json({ error: 'Missing required fields' });
 
-  console.log(`🛒 ПОКУПКА СТАРТ: игрок ${telegramId}, товар ${itemType} #${itemId}, система ${systemId}, валюта: ${currency || 'не указана'}`);
+  console.log(`🛒 ПОКУПКА: игрок ${telegramId}, товар ${itemType} #${itemId}, система ${systemId}, валюта: ${currency || 'не указана'}`);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    console.log('🔍 Получаем игрока...');
     const player = await getPlayer(telegramId);
     if (!player) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
 
-    console.log('🔄 Автосбор перед покупкой...');
-    // 🔥 ИСПРАВЛЕН: Автосбор перед покупкой
+    // 🔄 Автосбор перед покупкой
     const updatedBalance = await autoCollectBeforePurchase(client, player, systemId);
     
-    // 🔥 ИСПРАВЛЕНО: Получаем обновленные данные игрока после автосбора если был сбор
+    // Получаем обновленные данные игрока после автосбора
     let currentPlayer = player;
     if (updatedBalance !== (systemId === 4 ? parseFloat(player.cs) : parseFloat(player.ccc))) {
-      console.log('🔄 Получаем обновленные данные после автосбора...');
       currentPlayer = await getPlayer(telegramId);
     }
 
-    console.log('🔍 Ищем товар...');
-    // Поиск товара СНАЧАЛА
+    // Поиск товара
     const itemData = (itemType === 'asteroid' ? shopData.asteroidData :
                      (itemType === 'drone' || itemType === 'drones') ? shopData.droneData :
                      itemType === 'cargo' ? shopData.cargoData : []).find(item => item.id === itemId && item.system === systemId);
@@ -328,28 +305,24 @@ router.post('/buy', async (req, res) => {
       return res.status(404).json({ error: `${itemType} not found` });
     }
 
-    console.log('🔍 Определяем валюту...');
-    // 🔥 ИСПРАВЛЕНО: ПРИОРИТЕТ ПЕРЕДАННОЙ ВАЛЮТЕ!
-    let currencyToUse = currency; // Используем переданную валюту
+    // 🔥 ОПРЕДЕЛЯЕМ ВАЛЮТУ (с поддержкой переданной валюты)
+    let currencyToUse = currency;
     
     if (!currencyToUse) {
-      // Только если валюта НЕ передана, определяем автоматически
-      const isBomb = itemData.isBomb || (itemType === 'asteroid' && itemId === 13);
-      
-      if (isBomb || itemData.currency === 'ton') {
+      if (itemData.currency === 'ton') {
         currencyToUse = 'ton';
+      } else if (itemData.currency === 'cs') {
+        currencyToUse = 'cs';
       } else {
-        // Стандартная логика валют
         const useCs = systemId >= 1 && systemId <= 4;
         const useTon = systemId >= 5 && systemId <= 7;
         currencyToUse = useCs ? 'cs' : useTon ? 'ton' : 'ccc';
       }
     }
     
-    console.log(`💰 Валюта для покупки: ${currencyToUse}, переданная: ${currency || 'нет'}, это бомба: ${itemData.isBomb || false}`);
+    console.log(`💰 Валюта: ${currencyToUse}, переданная: ${currency || 'нет'}, это бомба: ${itemData.isBomb || false}`);
     
     const price = itemData.price;
-    console.log(`🔍 Цена товара: ${price} ${currencyToUse}`);
 
     // Проверка баланса
     let playerBalance;
@@ -357,63 +330,54 @@ router.post('/buy', async (req, res) => {
       playerBalance = parseFloat(currentPlayer.ton || 0);
     } else if (currencyToUse === 'cs') {
       if (systemId === 4) {
-        playerBalance = updatedBalance; // CS из автосбора системы 4
+        playerBalance = updatedBalance;
       } else {
-        playerBalance = parseFloat(currentPlayer.cs); // CS из обновленных данных для систем 1-3
+        playerBalance = parseFloat(currentPlayer.cs);
       }
     } else {
       playerBalance = parseFloat(currentPlayer.ccc || 0);
     }
     
-    console.log(`🔍 Баланс игрока: ${playerBalance} ${currencyToUse}`);
+    console.log(`🔍 Баланс игрока: ${playerBalance} ${currencyToUse}, цена: ${price}`);
     
     if (playerBalance < price) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient funds' });
     }
 
-    console.log('🔍 Проверяем дублирование...');
-    // Проверка на дублирование покупки
-    if (itemType === 'asteroid' && currentPlayer.asteroids.some(item => item.id === itemId && item.system === systemId)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Asteroid already purchased' });
-    }
-    if ((itemType === 'drone' || itemType === 'drones') && currentPlayer.drones.some(item => item.id === itemId && item.system === systemId)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Drone already purchased' });
-    }
-    if (itemType === 'cargo' && currentPlayer.cargo_levels.some(item => item.id === itemId && item.system === systemId)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Cargo already purchased' });
-    }
-
-    console.log('🔍 Добавляем товар...');
-    // Добавление предмета в БД
-    let updatedItems = [];
-    const newLastCollectionTime = { ...currentPlayer.last_collection_time };
-    newLastCollectionTime[String(systemId)] = new Date().toISOString();
+    // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБЫ (id=13)
+    const isBomb = itemData.isBomb || itemId === 13;
     
-    if (itemType === 'asteroid') {
-      updatedItems = [...(currentPlayer.asteroids || [])];
+    if (isBomb) {
+      console.log('💣 ПОКУПКА БОМБЫ - восстанавливаем лимиты астероидов!');
       
-      // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБ
-      const isBomb = itemData.isBomb || itemId === 13;
-      if (isBomb) {
-        console.log('💣 ПОКУПКА БОМБЫ - восстанавливаем лимиты астероидов!');
-        // Добавляем бомбу (без ресурсов)
-        const bombData = { id: itemId, system: systemId, isBomb: true };
-        updatedItems.push(bombData);
+      // ✅ НЕ ДОБАВЛЯЕМ БОМБУ В ИНВЕНТАРЬ - это просто действие!
+      // ✅ Восстанавливаем лимиты астероидов
+      await restoreAsteroidLimits(client, telegramId, systemId);
+      
+    } else {
+      // Проверка на дублирование для обычных товаров
+      if (itemType === 'asteroid' && currentPlayer.asteroids.some(item => item.id === itemId && item.system === systemId)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Asteroid already purchased' });
+      }
+      if ((itemType === 'drone' || itemType === 'drones') && currentPlayer.drones.some(item => item.id === itemId && item.system === systemId)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Drone already purchased' });
+      }
+      if (itemType === 'cargo' && currentPlayer.cargo_levels.some(item => item.id === itemId && item.system === systemId)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Cargo already purchased' });
+      }
+
+      // Добавление обычного товара в БД
+      let updatedItems = [];
+      const newLastCollectionTime = { ...currentPlayer.last_collection_time };
+      newLastCollectionTime[String(systemId)] = new Date().toISOString();
+      
+      if (itemType === 'asteroid') {
+        updatedItems = [...(currentPlayer.asteroids || [])];
         
-        // Обновляем астероиды в БД
-        await client.query(
-          'UPDATE players SET asteroids = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
-          [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
-        );
-        
-        // 💣 ВОССТАНАВЛИВАЕМ ВСЕ ЛИМИТЫ АСТЕРОИДОВ В СИСТЕМЕ
-        await updateAsteroidLimits(client, telegramId, systemId);
-      } else {
-        // Обычный астероид
         const asteroidData = systemId === 4 ? 
           { id: itemId, system: systemId, totalCs: itemData.totalCs } :
           { id: itemId, system: systemId, totalCcc: itemData.totalCcc };
@@ -422,7 +386,6 @@ router.post('/buy', async (req, res) => {
         
         const totalValue = systemId === 4 ? (itemData.totalCs || 0) : (itemData.totalCcc || 0);
         
-        // 🔥 ИСПРАВЛЕНО: Получаем СВЕЖИЕ данные астероидов после автосбора из БД
         const freshPlayerQuery = await client.query('SELECT asteroid_total_data FROM players WHERE telegram_id = $1', [telegramId]);
         const freshAsteroidData = freshPlayerQuery.rows[0]?.asteroid_total_data || {};
         
@@ -431,42 +394,38 @@ router.post('/buy', async (req, res) => {
           [systemId]: (freshAsteroidData[systemId] || 0) + totalValue 
         };
         
-        console.log(`🔍 Обновляем астероиды в БД... Было: ${freshAsteroidData[systemId] || 0}, добавляем: ${totalValue}, станет: ${updatedAsteroidTotal[systemId]}`);
         await client.query(
           'UPDATE players SET asteroids = $1::jsonb, asteroid_total_data = $2, last_collection_time = $3 WHERE telegram_id = $4',
           [JSON.stringify(updatedItems), updatedAsteroidTotal, newLastCollectionTime, telegramId]
         );
+        
+      } else if (itemType === 'drone' || itemType === 'drones') {
+        updatedItems = [...(currentPlayer.drones || [])];
+        
+        const droneData = systemId === 4 ? 
+          { id: itemId, system: systemId, csPerDay: itemData.csPerDay } :
+          { id: itemId, system: systemId, cccPerDay: itemData.cccPerDay };
+        
+        updatedItems.push(droneData);
+        
+        await client.query(
+          'UPDATE players SET drones = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
+          [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
+        );
+        
+      } else if (itemType === 'cargo') {
+        updatedItems = [...(currentPlayer.cargo_levels || [])];
+        
+        const cargoData = { id: itemId, system: systemId, capacity: itemData.capacity };
+        updatedItems.push(cargoData);
+        
+        await client.query(
+          'UPDATE players SET cargo_levels = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
+          [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
+        );
       }
-      
-    } else if (itemType === 'drone' || itemType === 'drones') {
-      updatedItems = [...(currentPlayer.drones || [])];
-      
-      const droneData = systemId === 4 ? 
-        { id: itemId, system: systemId, csPerDay: itemData.csPerDay } :
-        { id: itemId, system: systemId, cccPerDay: itemData.cccPerDay };
-      
-      updatedItems.push(droneData);
-      
-      console.log('🔍 Обновляем дронов в БД...');
-      await client.query(
-        'UPDATE players SET drones = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
-        [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
-      );
-      
-    } else if (itemType === 'cargo') {
-      updatedItems = [...(currentPlayer.cargo_levels || [])];
-      
-      const cargoData = { id: itemId, system: systemId, capacity: itemData.capacity };
-      updatedItems.push(cargoData);
-      
-      console.log('🔍 Обновляем карго в БД...');
-      await client.query(
-        'UPDATE players SET cargo_levels = $1::jsonb, last_collection_time = $2 WHERE telegram_id = $3',
-        [JSON.stringify(updatedItems), newLastCollectionTime, telegramId]
-      );
     }
 
-    console.log('🔍 Списываем валюту...');
     // Списание валюты
     const updatedBalanceAfterPurchase = (playerBalance - price).toFixed(5);
     await client.query(
@@ -474,20 +433,17 @@ router.post('/buy', async (req, res) => {
       [updatedBalanceAfterPurchase, telegramId]
     );
 
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ (КОПИТСЯ В БАЗЕ!)
+    // Реферальная награда
     await processReferralReward(client, telegramId, price, currencyToUse);
 
-    console.log('🔍 Пересчитываем данные...');
     // Пересчет данных игрока
     await recalculatePlayerData(client, telegramId);
 
-    console.log('🔍 Коммитим транзакцию...');
     await client.query('COMMIT');
     
-    console.log('🔍 Получаем обновленного игрока...');
     const finalPlayer = await getPlayer(telegramId);
     
-    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}${itemData.isBomb ? ' (БОМБА!)' : ''}`);
+    console.log(`✅ ПОКУПКА ЗАВЕРШЕНА: ${itemType} #${itemId} за ${price} ${currencyToUse}${isBomb ? ' (БОМБА - ЛИМИТЫ ВОССТАНОВЛЕНЫ!)' : ''}`);
     res.json(finalPlayer);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -553,9 +509,7 @@ router.post('/buy-system', async (req, res) => {
       [updatedCs, updatedTon, JSON.stringify(updatedUnlockedSystems), updatedCollectedBySystem, newLastCollectionTime, telegramId]
     );
 
-    // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ ПОКУПКЕ СИСТЕМЫ (КОПИТСЯ В БАЗЕ!)
     await processReferralReward(client, telegramId, priceToCheck, systemToBuy.currency);
-
     await recalculatePlayerData(client, telegramId);
 
     await client.query('COMMIT');
