@@ -56,6 +56,81 @@ router.get('/:telegramId', async (req, res) => {
   }
 });
 
+// POST /api/quests/watch_ad - просмотр рекламы для заданий
+router.post('/watch_ad', async (req, res) => {
+  try {
+    const { telegramId } = req.body;
+    
+    if (!telegramId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'telegramId is required' 
+      });
+    }
+    
+    // Проверяем существование игрока
+    const playerResult = await pool.query(
+      'SELECT telegram_id, quest_ad_views FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Игрок не найден' 
+      });
+    }
+    
+    const player = playerResult.rows[0];
+    const questAdViews = player.quest_ad_views || 0;
+    
+    // Проверяем дневной лимит (5 раз в день)
+    if (questAdViews >= 5) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Дневной лимит просмотра рекламы исчерпан' 
+      });
+    }
+    
+    const newQuestAdViews = questAdViews + 1;
+    const reward = 10; // 10 CCC за просмотр
+    
+    // Начинаем транзакцию
+    await pool.query('BEGIN');
+    
+    try {
+      // Увеличиваем счетчик рекламы и добавляем CCC
+      await pool.query(`
+        UPDATE players 
+        SET quest_ad_views = $1, ccc = ccc + $2
+        WHERE telegram_id = $3
+      `, [newQuestAdViews, reward, telegramId]);
+      
+      await pool.query('COMMIT');
+      
+      console.log(`✅ Игрок ${telegramId} посмотрел рекламу заданий ${newQuestAdViews}/5, получил ${reward} CCC`);
+      
+      res.json({
+        success: true,
+        message: 'Награда за рекламу получена',
+        quest_ad_views: newQuestAdViews,
+        reward_ccc: reward
+      });
+      
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
+    }
+    
+  } catch (error) {
+    console.error('Ошибка просмотра рекламы заданий:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Ошибка сервера' 
+    });
+  }
+});
+
 // POST /api/quests/complete - отметить задание как выполненное
 router.post('/complete', async (req, res) => {
   try {
