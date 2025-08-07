@@ -1,22 +1,89 @@
+// routes/adsgram.js - ЗАМЕНИТЬ ВЕСЬ ФАЙЛ
+
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 
-// Reward endpoint - как у друга с userid в URL
+// Функция проверки премиум статуса
+const checkPremiumStatus = async (telegramId) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        premium_no_ads_until,
+        premium_no_ads_forever
+       FROM players 
+       WHERE telegram_id = $1`,
+      [telegramId]
+    );
+
+    if (result.rows.length === 0) {
+      return { hasPremium: false, reason: 'Player not found' };
+    }
+
+    const player = result.rows[0];
+    const now = new Date();
+    
+    // Проверяем навсегда
+    if (player.premium_no_ads_forever) {
+      return { 
+        hasPremium: true, 
+        type: 'forever',
+        reason: 'Premium forever subscription' 
+      };
+    }
+    
+    // Проверяем временную подписку
+    if (player.premium_no_ads_until && new Date(player.premium_no_ads_until) > now) {
+      const daysLeft = Math.ceil((new Date(player.premium_no_ads_until) - now) / (1000 * 60 * 60 * 24));
+      return { 
+        hasPremium: true, 
+        type: 'temporary',
+        daysLeft: daysLeft,
+        reason: `Premium subscription active for ${daysLeft} more days` 
+      };
+    }
+    
+    return { 
+      hasPremium: false, 
+      reason: 'No active premium subscription' 
+    };
+    
+  } catch (err) {
+    console.error('❌ Ошибка проверки премиум статуса:', err);
+    return { 
+      hasPremium: false, 
+      reason: 'Error checking premium status' 
+    };
+  }
+};
+
+// Reward endpoint - с проверкой премиума
 router.get('/reward', async (req, res) => {
   try {
-    const { userid } = req.query; // Берем из URL параметра как у друга
+    const { userid } = req.query;
     
     console.log('🎯 Adsgram reward received for user:', userid);
-    console.log('🎯 Query params:', req.query);
-    console.log('🎯 IP:', req.ip);
 
-    // Проверяем что userid есть
     if (!userid) {
       console.error('🎯❌ No userid provided');
       return res.status(400).json({
         success: false,
         error: 'No userid provided'
+      });
+    }
+
+    // 👑 ПРОВЕРЯЕМ ПРЕМИУМ СТАТУС ПЕРЕД ОБРАБОТКОЙ РЕКЛАМЫ
+    const premiumStatus = await checkPremiumStatus(userid);
+    console.log(`👑 Premium status for ${userid}:`, premiumStatus);
+
+    if (premiumStatus.hasPremium) {
+      console.log(`👑 User ${userid} has premium - skipping ad reward processing`);
+      return res.json({
+        success: true,
+        message: 'Premium user - ad skipped',
+        userid: userid,
+        premium: premiumStatus,
+        timestamp: new Date().toISOString()
       });
     }
 
@@ -34,7 +101,7 @@ router.get('/reward', async (req, res) => {
       });
     }
 
-    console.log('🎯 User found, processing reward...');
+    console.log('🎯 User found, processing ad reward (non-premium user)...');
 
     // Увеличиваем счетчик рекламы в лимитах
     await pool.query(`
@@ -61,13 +128,14 @@ router.get('/reward', async (req, res) => {
       WHERE telegram_id = $1
     `, [userid]);
 
-    console.log('🎯✅ Adsgram reward processed successfully for user:', userid);
+    console.log('🎯✅ Adsgram reward processed successfully for non-premium user:', userid);
 
     // Успешный ответ для Adsgram
     res.json({
       success: true,
-      message: 'Reward processed',
+      message: 'Ad reward processed',
       userid: userid,
+      premium: premiumStatus,
       timestamp: new Date().toISOString()
     });
 
@@ -80,7 +148,32 @@ router.get('/reward', async (req, res) => {
   }
 });
 
-// Простая статистика
+// Новый эндпоинт для проверки блокировки рекламы
+router.get('/check-ad-block/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    
+    const premiumStatus = await checkPremiumStatus(telegramId);
+    
+    console.log(`🎯 Ad block check for ${telegramId}:`, premiumStatus);
+    
+    res.json({
+      success: true,
+      blockAds: premiumStatus.hasPremium,
+      premium: premiumStatus
+    });
+    
+  } catch (error) {
+    console.error('🎯❌ Ad block check error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error',
+      blockAds: false // По умолчанию не блокируем при ошибке
+    });
+  }
+});
+
+// Простая статистика с премиум информацией
 router.get('/stats/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
@@ -93,11 +186,15 @@ router.get('/stats/:telegramId', async (req, res) => {
 
     const dailyAds = limitsResult.rows[0]?.daily_ads_watched || 0;
 
+    // Проверяем премиум статус
+    const premiumStatus = await checkPremiumStatus(telegramId);
+
     res.json({
       success: true,
       stats: {
         todayAds: dailyAds,
-        maxAds: 20
+        maxAds: 20,
+        premium: premiumStatus
       }
     });
 

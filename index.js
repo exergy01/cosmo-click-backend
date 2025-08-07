@@ -455,6 +455,128 @@ app.use((req, res) => {
   });
 });
 
+// ДОБАВИТЬ В КОНЕЦ index.js (ПЕРЕД app.listen)
+
+// ========================
+// 👑 ПРЕМИУМ CRON ЗАДАЧИ
+// ========================
+
+console.log('🔄 Настраиваем cron задачи для премиум подписок...');
+
+// Функция очистки истекших премиум подписок
+const cleanupExpiredPremium = async () => {
+  try {
+    console.log('🧹 Запуск очистки истекших премиум подписок...');
+    
+    // Обновляем статус истекших подписок
+    const expiredResult = await pool.query(
+      `UPDATE premium_subscriptions 
+       SET status = 'expired' 
+       WHERE status = 'active' 
+         AND end_date IS NOT NULL 
+         AND end_date < NOW()
+       RETURNING telegram_id, subscription_type`
+    );
+    
+    // Очищаем премиум статус у игроков с истекшими подписками
+    const cleanupResult = await pool.query(
+      `UPDATE players 
+       SET premium_no_ads_until = NULL 
+       WHERE premium_no_ads_until IS NOT NULL 
+         AND premium_no_ads_until < NOW()
+         AND premium_no_ads_forever = FALSE
+       RETURNING telegram_id`
+    );
+    
+    if (expiredResult.rows.length > 0 || cleanupResult.rows.length > 0) {
+      console.log(`✅ Очищено ${expiredResult.rows.length} подписок и ${cleanupResult.rows.length} статусов игроков`);
+      
+      // Уведомляем пользователей об истечении подписки
+      for (const row of expiredResult.rows) {
+        try {
+          await bot.telegram.sendMessage(
+            row.telegram_id,
+            `⏰ Ваша премиум подписка "Без рекламы" истекла.\n\nВы можете продлить её в кошельке игры CosmoClick.`,
+            {
+              reply_markup: {
+                inline_keyboard: [[{
+                  text: '💳 Продлить подписку',
+                  web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
+                }]]
+              }
+            }
+          );
+        } catch (msgErr) {
+          console.error(`❌ Ошибка отправки уведомления о истечении премиума для ${row.telegram_id}:`, msgErr);
+        }
+      }
+    } else {
+      console.log('✅ Истекших премиум подписок не найдено');
+    }
+    
+  } catch (err) {
+    console.error('❌ Ошибка очистки премиум подписок:', err);
+  }
+};
+
+// Функция обновления статистики премиум подписок
+const updatePremiumStats = async () => {
+  try {
+    const statsResult = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE premium_no_ads_forever = TRUE) as forever_count,
+        COUNT(*) FILTER (WHERE premium_no_ads_until > NOW()) as active_30_days,
+        COUNT(*) FILTER (WHERE premium_no_ads_until IS NOT NULL AND premium_no_ads_until < NOW()) as expired_count
+      FROM players
+    `);
+    
+    const stats = statsResult.rows[0];
+    console.log('📊 Премиум статистика:', {
+      навсегда: stats.forever_count,
+      активных_30_дней: stats.active_30_days,
+      истекших: stats.expired_count
+    });
+    
+  } catch (err) {
+    console.error('❌ Ошибка обновления статистики премиум:', err);
+  }
+};
+
+// Запуск cron задач
+let premiumCleanupInterval;
+let premiumStatsInterval;
+
+const startPremiumCronJobs = () => {
+  // Очистка каждый час
+  premiumCleanupInterval = setInterval(cleanupExpiredPremium, 60 * 60 * 1000);
+  
+  // Статистика каждые 6 часов
+  premiumStatsInterval = setInterval(updatePremiumStats, 6 * 60 * 60 * 1000);
+  
+  console.log('✅ Cron задачи для премиум подписок запущены');
+  console.log('   - Очистка истекших: каждый час');
+  console.log('   - Обновление статистики: каждые 6 часов');
+  
+  // Запускаем первый раз через 30 секунд после старта
+  setTimeout(() => {
+    cleanupExpiredPremium();
+    updatePremiumStats();
+  }, 30000);
+};
+
+// Graceful shutdown для cron задач
+process.on('SIGTERM', () => {
+  if (premiumCleanupInterval) clearInterval(premiumCleanupInterval);
+  if (premiumStatsInterval) clearInterval(premiumStatsInterval);
+  console.log('🛑 Cron задачи премиум остановлены');
+});
+
+process.on('SIGINT', () => {
+  if (premiumCleanupInterval) clearInterval(premiumCleanupInterval);
+  if (premiumStatsInterval) clearInterval(premiumStatsInterval);
+  console.log('🛑 Cron задачи премиум остановлены');
+});
+
 // 🔥 ЗАПУСК СЕРВЕРА с диагностикой
 app.listen(PORT, async () => {
   console.log(`\n🚀 ============================================`);
@@ -513,4 +635,40 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.error('❌ Ошибка подключения сервиса курсов TON:', err);
   }
+
+  // НАЙТИ В index.js секцию app.listen и ДОБАВИТЬ ЭТО В КОНЕЦ (перед закрывающей скобкой):
+
+  // 🔄 ЗАПУСК ПРЕМИУМ CRON ЗАДАЧ
+  setTimeout(() => {
+    try {
+      startPremiumCronJobs();
+      console.log('👑 Премиум cron задачи запущены успешно');
+    } catch (error) {
+      console.error('❌ Ошибка запуска премиум cron:', error);
+    }
+  }, 10000); // Запуск через 10 секунд после старта сервера
+
+// ПРИМЕР КАК ДОЛЖНО ВЫГЛЯДЕТЬ:
+
+app.listen(PORT, async () => {
+  // ... существующий код ...
+  
+  console.log(`🚀 ============================================`);
+  console.log(`🚀 CosmoClick Backend запущен успешно!`);
+  // ... остальной существующий код лога ...
+  
+  // ТУТ ДОБАВЛЯЕМ:
+  
+  // 🔄 ЗАПУСК ПРЕМИУМ CRON ЗАДАЧ
+  setTimeout(() => {
+    try {
+      startPremiumCronJobs();
+      console.log('👑 Премиум cron задачи запущены успешно');
+    } catch (error) {
+      console.error('❌ Ошибка запуска премиум cron:', error);
+    }
+  }, 10000);
+  
+});
+
 });

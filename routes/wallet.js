@@ -891,4 +891,325 @@ router.post('/process-deposit', async (req, res) => {
   }
 });
 
+// ДОБАВИТЬ В КОНЕЦ routes/wallet.js (перед module.exports = router;)
+
+// ========================
+// 👑 ПРЕМИУМ ПОДПИСКИ
+// ========================
+
+// GET /api/wallet/premium-status/:telegramId - Проверка премиум статуса
+router.get('/premium-status/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  
+  try {
+    const result = await pool.query(
+      `SELECT 
+        premium_no_ads_until,
+        premium_no_ads_forever
+       FROM players 
+       WHERE telegram_id = $1`,
+      [telegramId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    const player = result.rows[0];
+    const now = new Date();
+    
+    let premiumStatus = {
+      active: false,
+      forever: false,
+      until: null
+    };
+
+    // Проверяем навсегда
+    if (player.premium_no_ads_forever) {
+      premiumStatus = {
+        active: true,
+        forever: true,
+        until: null
+      };
+    }
+    // Проверяем временную подписку
+    else if (player.premium_no_ads_until && new Date(player.premium_no_ads_until) > now) {
+      premiumStatus = {
+        active: true,
+        forever: false,
+        until: player.premium_no_ads_until
+      };
+    }
+
+    console.log(`✅ Премиум статус для ${telegramId}:`, premiumStatus);
+
+    res.json({
+      success: true,
+      premium: premiumStatus
+    });
+
+  } catch (err) {
+    console.error('❌ Ошибка проверки премиум статуса:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/wallet/purchase-premium - Покупка премиума
+router.post('/purchase-premium', async (req, res) => {
+  const { telegram_id, package_type, payment_method, payment_amount } = req.body;
+  
+  console.log('👑 Покупка премиума:', { telegram_id, package_type, payment_method, payment_amount });
+  
+  if (!telegram_id || !package_type || !payment_method || !payment_amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // Валидация пакета
+  const validPackages = ['no_ads_30_days', 'no_ads_forever'];
+  if (!validPackages.includes(package_type)) {
+    return res.status(400).json({ error: 'Invalid package type' });
+  }
+
+  // Валидация метода оплаты
+  const validPaymentMethods = ['stars', 'ton'];
+  if (!validPaymentMethods.includes(payment_method)) {
+    return res.status(400).json({ error: 'Invalid payment method' });
+  }
+
+  // Валидация цен
+  const priceValidation = {
+    'no_ads_30_days': { stars: 150, ton: 1 },
+    'no_ads_forever': { stars: 1500, ton: 10 }
+  };
+
+  const expectedAmount = priceValidation[package_type][payment_method];
+  if (parseFloat(payment_amount) !== expectedAmount) {
+    return res.status(400).json({ error: 'Invalid payment amount' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Получаем игрока
+    const playerResult = await client.query(
+      'SELECT telegram_id, telegram_stars, ton FROM players WHERE telegram_id = $1',
+      [telegram_id]
+    );
+
+    if (playerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    const player = playerResult.rows[0];
+
+    // Проверяем баланс
+    if (payment_method === 'stars') {
+      const currentStars = parseInt(player.telegram_stars || '0');
+      if (currentStars < payment_amount) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: `Недостаточно Stars! У вас: ${currentStars}, нужно: ${payment_amount}` 
+        });
+      }
+    } else if (payment_method === 'ton') {
+      const currentTON = parseFloat(player.ton || '0');
+      if (currentTON < payment_amount) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: `Недостаточно TON! У вас: ${currentTON.toFixed(4)}, нужно: ${payment_amount}` 
+        });
+      }
+    }
+
+    // Списываем средства
+    if (payment_method === 'stars') {
+      await client.query(
+        'UPDATE players SET telegram_stars = telegram_stars - $1 WHERE telegram_id = $2',
+        [payment_amount, telegram_id]
+      );
+    } else if (payment_method === 'ton') {
+      await client.query(
+        'UPDATE players SET ton = ton - $1 WHERE telegram_id = $2',
+        [payment_amount, telegram_id]
+      );
+    }
+
+    // Обновляем премиум статус
+    if (package_type === 'no_ads_forever') {
+      await client.query(
+        `UPDATE players SET 
+         premium_no_ads_forever = TRUE,
+         premium_no_ads_until = NULL
+         WHERE telegram_id = $1`,
+        [telegram_id]
+      );
+    } else if (package_type === 'no_ads_30_days') {
+      await client.query(
+        `UPDATE players SET 
+         premium_no_ads_until = GREATEST(
+           COALESCE(premium_no_ads_until, NOW()),
+           NOW() + INTERVAL '30 days'
+         )
+         WHERE telegram_id = $1`,
+        [telegram_id]
+      );
+    }
+
+    // Добавляем запись в подписки
+    const subscriptionResult = await client.query(
+      `INSERT INTO premium_subscriptions (
+        telegram_id, 
+        subscription_type, 
+        payment_method, 
+        payment_amount,
+        end_date,
+        transaction_id
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id`,
+      [
+        telegram_id,
+        package_type,
+        payment_method,
+        payment_amount,
+        package_type === 'no_ads_forever' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        `prem_${Date.now()}_${telegram_id}`
+      ]
+    );
+
+    // Записываем транзакцию
+    await client.query(
+      `INSERT INTO premium_transactions (
+        telegram_id,
+        transaction_type,
+        subscription_type,
+        payment_method,
+        payment_amount,
+        payment_currency,
+        description,
+        metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        telegram_id,
+        'purchase',
+        package_type,
+        payment_method,
+        payment_amount,
+        payment_method,
+        `Premium subscription purchase: ${package_type}`,
+        JSON.stringify({
+          subscription_id: subscriptionResult.rows[0].id,
+          purchase_timestamp: new Date().toISOString()
+        })
+      ]
+    );
+
+    // Записываем в историю баланса
+    await client.query(
+      `INSERT INTO balance_history (
+        telegram_id,
+        currency,
+        old_balance,
+        new_balance,
+        change_amount,
+        reason,
+        details,
+        timestamp
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        telegram_id,
+        payment_method,
+        payment_method === 'stars' ? parseInt(player.telegram_stars || '0') : parseFloat(player.ton || '0'),
+        payment_method === 'stars' 
+          ? parseInt(player.telegram_stars || '0') - payment_amount
+          : parseFloat(player.ton || '0') - payment_amount,
+        -payment_amount,
+        'premium_purchase',
+        JSON.stringify({
+          package_type,
+          subscription_id: subscriptionResult.rows[0].id
+        })
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const successMessage = package_type === 'no_ads_forever' 
+      ? 'Поздравляем! Реклама отключена НАВСЕГДА! 👑' 
+      : 'Поздравляем! Реклама отключена на 30 дней! 🎉';
+
+    console.log(`✅ Премиум куплен для ${telegram_id}: ${package_type} за ${payment_amount} ${payment_method}`);
+
+    res.json({
+      success: true,
+      message: successMessage,
+      subscription_id: subscriptionResult.rows[0].id
+    });
+
+    // Отправляем уведомление игроку
+    try {
+      const notificationMessage = package_type === 'no_ads_forever'
+        ? `🎉 Поздравляем! Вы приобрели премиум подписку!\n\n👑 Реклама отключена НАВСЕГДА!\n\nТеперь вы можете наслаждаться игрой CosmoClick без отвлекающей рекламы.`
+        : `🎉 Поздравляем! Вы приобрели премиум подписку!\n\n🚫 Реклама отключена на 30 дней!\n\nТеперь вы можете наслаждаться игрой CosmoClick без отвлекающей рекламы.`;
+
+      await bot.telegram.sendMessage(
+        telegram_id,
+        notificationMessage,
+        {
+          reply_markup: {
+            inline_keyboard: [[{
+              text: '🎮 Открыть игру',
+              web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
+            }]]
+          }
+        }
+      );
+    } catch (msgErr) {
+      console.error('❌ Ошибка отправки уведомления о премиуме:', msgErr);
+    }
+
+  } catch (err) {
+    console.error('❌ Ошибка покупки премиума:', err);
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/wallet/premium-history/:telegramId - История премиум транзакций
+router.get('/premium-history/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  
+  try {
+    const result = await pool.query(
+      `SELECT 
+        id,
+        transaction_type,
+        subscription_type,
+        payment_method,
+        payment_amount,
+        payment_currency,
+        description,
+        status,
+        created_at
+       FROM premium_transactions 
+       WHERE telegram_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 50`,
+      [telegramId]
+    );
+
+    res.json({
+      success: true,
+      transactions: result.rows
+    });
+
+  } catch (err) {
+    console.error('❌ Ошибка получения истории премиум:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
