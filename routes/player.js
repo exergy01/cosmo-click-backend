@@ -435,6 +435,41 @@ router.get('/:telegramId', async (req, res) => {
   }
 });
 
+// Добавьте этот код в файл player.js после строки с router.get('/:telegramId', ...)
+
+// GET /api/player/info/:telegramId - получить дополнительную информацию о игроке для заданий
+router.get('/info/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    
+    const result = await pool.query(
+      'SELECT telegram_id, quest_link_states, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Player not found' 
+      });
+    }
+    
+    const player = result.rows[0];
+    
+    res.json({
+      success: true,
+      player: player
+    });
+    
+  } catch (error) {
+    console.error('Error fetching player info:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // POST /api/player/:telegramId
 router.post('/:telegramId', async (req, res) => {
   const { telegramId } = req.params;

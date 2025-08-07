@@ -43,22 +43,22 @@ router.get('/:telegramId', async (req, res) => {
     
     const completedQuestIds = completedResult.rows.map(row => row.quest_id);
     
-    // Обрабатываем состояния таймеров заданий
+    // Обрабатываем состояния таймеров заданий - упрощаем логику
     const currentTime = new Date();
     const updatedLinkStates = { ...questLinkStates };
     
-    // Проверяем и обновляем таймеры для каждого задания
+    // Проверяем завершенные таймеры
     Object.keys(updatedLinkStates).forEach(questId => {
       const state = updatedLinkStates[questId];
-      if (state.clicked_at && state.timer_remaining > 0) {
+      if (state.clicked_at) {
         const clickedTime = new Date(state.clicked_at);
         const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
-        const remainingTime = Math.max(0, 30 - elapsedSeconds);
+        const isCompleted = elapsedSeconds >= 30;
         
         updatedLinkStates[questId] = {
           ...state,
-          timer_remaining: remainingTime,
-          can_claim: remainingTime === 0
+          timer_remaining: Math.max(0, 30 - elapsedSeconds),
+          can_claim: isCompleted
         };
       }
     });
@@ -66,12 +66,11 @@ router.get('/:telegramId', async (req, res) => {
     // Объединяем данные
     const quests = questsResult.rows.map(quest => ({
       ...quest,
-      completed: completedQuestIds.includes(quest.quest_id),
-      link_state: updatedLinkStates[quest.quest_id.toString()] || null
+      completed: completedQuestIds.includes(quest.quest_id)
     }));
     
     console.log(`✅ Найдено ${quests.length} заданий для игрока ${telegramId}`);
-    res.json({ success: true, quests, quest_link_states: updatedLinkStates });
+    res.json({ success: true, quests });
     
   } catch (error) {
     console.error('Error fetching quests:', error);
@@ -114,11 +113,21 @@ router.post('/click_link', async (req, res) => {
       can_claim: false
     };
     
+    console.log(`🔍 СОХРАНЯЕМ состояние для задания ${questId}:`, JSON.stringify(questLinkStates[questId.toString()], null, 2));
+    
     // Сохраняем в базу данных
     await pool.query(
       'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
       [JSON.stringify(questLinkStates), telegramId]
     );
+    
+    // Проверяем что сохранилось
+    const verifyResult = await pool.query(
+      'SELECT quest_link_states FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    console.log(`🔍 ПРОВЕРКА после сохранения:`, JSON.stringify(verifyResult.rows[0].quest_link_states, null, 2));
     
     console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questId}`);
     
@@ -256,21 +265,48 @@ router.post('/complete', async (req, res) => {
     
     // Для partner_link заданий проверяем состояние таймера
     if (questType === 'partner_link') {
+      console.log(`🔍 ОТЛАДКА ЗАДАНИЯ ${questId}:`);
+      
       const playerResult = await pool.query(
         'SELECT quest_link_states FROM players WHERE telegram_id = $1',
         [telegramId]
       );
       
       if (playerResult.rows.length === 0) {
+        console.log(`❌ Игрок ${telegramId} не найден в БД`);
         return res.status(404).json({ error: 'Player not found' });
       }
       
       const questLinkStates = playerResult.rows[0].quest_link_states || {};
-      const linkState = questLinkStates[questId.toString()];
+      console.log(`🔍 quest_link_states из БД:`, JSON.stringify(questLinkStates, null, 2));
       
-      if (!linkState || !linkState.can_claim) {
-        return res.status(400).json({ error: 'Link timer not completed yet' });
+      const linkState = questLinkStates[questId.toString()];
+      console.log(`🔍 Состояние для задания ${questId}:`, JSON.stringify(linkState, null, 2));
+      
+      // Проверяем, прошло ли 30 секунд с момента клика
+      if (!linkState || !linkState.clicked_at) {
+        console.log(`❌ Отсутствует clicked_at для задания ${questId}`);
+        return res.status(400).json({ error: 'Link was not clicked yet' });
       }
+      
+      const clickedTime = new Date(linkState.clicked_at);
+      const currentTime = new Date();
+      const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
+      
+      console.log(`🔍 clicked_at: ${linkState.clicked_at}`);
+      console.log(`🔍 currentTime: ${currentTime.toISOString()}`);
+      console.log(`🔍 elapsedSeconds: ${elapsedSeconds}`);
+      console.log(`🔍 Требуется минимум: 30 секунд`);
+      
+      if (elapsedSeconds < 30) {
+        console.log(`❌ Таймер еще не завершен: прошло ${elapsedSeconds} из 30 секунд`);
+        return res.status(400).json({ 
+          error: `Link timer not completed yet. Wait ${30 - elapsedSeconds} more seconds.`,
+          remainingSeconds: 30 - elapsedSeconds
+        });
+      }
+      
+      console.log(`✅ Таймер для задания ${questId} завершен (прошло ${elapsedSeconds} секунд)`);
     }
     
     // Начинаем транзакцию
@@ -318,6 +354,50 @@ router.post('/complete', async (req, res) => {
   } catch (error) {
     console.error('Error completing quest:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ ОТЛАДКИ - удалите после исправления
+router.get('/debug/:telegramId/:questId', async (req, res) => {
+  try {
+    const { telegramId, questId } = req.params;
+    
+    const result = await pool.query(
+      'SELECT quest_link_states FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ error: 'Player not found' });
+    }
+    
+    const questLinkStates = result.rows[0].quest_link_states || {};
+    const linkState = questLinkStates[questId.toString()];
+    
+    if (!linkState) {
+      return res.json({ 
+        message: 'No link state found',
+        allStates: questLinkStates
+      });
+    }
+    
+    const clickedTime = new Date(linkState.clicked_at);
+    const currentTime = new Date();
+    const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
+    
+    res.json({
+      questId: questId,
+      linkState: linkState,
+      clickedTime: clickedTime.toISOString(),
+      currentTime: currentTime.toISOString(),
+      elapsedSeconds: elapsedSeconds,
+      canClaim: elapsedSeconds >= 30,
+      allStates: questLinkStates
+    });
+    
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
