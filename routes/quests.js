@@ -325,20 +325,30 @@ router.post('/complete', async (req, res) => {
         [rewardCs, telegramId]
       );
       
-      // Очищаем состояние ссылки для этого задания
+      // Очищаем состояние ссылки для этого задания ТОЛЬКО если это partner_link
       if (questType === 'partner_link') {
         const playerResult = await pool.query(
           'SELECT quest_link_states FROM players WHERE telegram_id = $1',
           [telegramId]
         );
         
-        const questLinkStates = playerResult.rows[0].quest_link_states || {};
-        delete questLinkStates[questId.toString()];
-        
-        await pool.query(
-          'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
-          [JSON.stringify(questLinkStates), telegramId]
-        );
+        if (playerResult.rows.length > 0) {
+          const questLinkStates = playerResult.rows[0].quest_link_states || {};
+          
+          // Помечаем задание как завершенное, а не удаляем состояние
+          questLinkStates[questId.toString()] = {
+            ...questLinkStates[questId.toString()],
+            completed: true,
+            completed_at: new Date().toISOString()
+          };
+          
+          await pool.query(
+            'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
+            [JSON.stringify(questLinkStates), telegramId]
+          );
+          
+          console.log(`✅ Задание ${questId} помечено как завершенное в quest_link_states`);
+        }
       }
       
       await pool.query('COMMIT');
