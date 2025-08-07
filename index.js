@@ -101,6 +101,7 @@ bot.help((ctx) => {
 bot.catch((err, ctx) => {
   console.error(`❌ Ошибка Telegraf для ${ctx.updateType}:`, err);
 });
+
 // 🔥 ОТЛАДОЧНЫЙ МАРШРУТ
 app.get('/api/debug/count-referrals/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
@@ -212,6 +213,7 @@ try {
 } catch (err) {
   console.error('❌ Ошибка подключения маршрутов Adsgram:', err);
 }
+
 // 🔥 БАЗОВЫЕ МАРШРУТЫ
 app.get('/api/time', (req, res) => {
   console.log('⏰ Запрос времени сервера');
@@ -254,6 +256,9 @@ app.get('/', (req, res) => {
       <li><strong>💳 POST /api/wallet/prepare-withdrawal - подготовка вывода</strong></li>
       <li><strong>💳 POST /api/wallet/confirm-withdrawal - подтверждение вывода</strong></li>
       <li><strong>💳 GET /api/wallet/history/:telegramId - история операций</strong></li>
+      <li><strong>👑 GET /api/wallet/premium-status/:telegramId - статус премиум</strong></li>
+      <li><strong>👑 POST /api/wallet/purchase-premium - покупка премиум</strong></li>
+      <li><strong>👑 GET /api/wallet/premium-history/:telegramId - история премиум</strong></li>
       <li>GET /api/ton/calculate/15 - расчет стейкинга</li>
       <li>POST /api/ton/stake - создание стейка</li>
       <li>GET /api/ton/stakes/:telegramId - список стейков</li>
@@ -276,10 +281,13 @@ app.get('/', (req, res) => {
       <li><strong>🎰 GET /api/games/galactic-slots/history/:telegramId - история слотов</strong></li>
       <li><strong>🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды</strong></li>
       <li><strong>🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram</strong></li>
+      <li><strong>👑 GET /api/adsgram/check-ad-block/:telegramId - проверка блокировки рекламы</strong></li>
     </ul>
     <p><strong>Время сервера:</strong> ${new Date().toISOString()}</p>
     <h3>🔧 Redirect система:</h3>
     <p>Старые реферальные ссылки автоматически перенаправляются на frontend</p>
+    <h3>👑 Premium система:</h3>
+    <p>Поддержка премиум подписок для отключения рекламы</p>
   `);
 });
 
@@ -322,6 +330,7 @@ app.use('/api/adsgram/*', (req, res, next) => {
   console.log(`📦 ADSGRAM Body:`, req.body);
   next();
 });
+
 // 🔥 Обработчик ошибок с диагностикой
 app.use((err, req, res, next) => {
   console.error('🚨 КРИТИЧЕСКАЯ ОШИБКА СЕРВЕРА:', err);
@@ -357,43 +366,9 @@ app.use((req, res) => {
     console.log('💳💥 - POST /api/wallet/prepare-withdrawal');
     console.log('💳💥 - POST /api/wallet/confirm-withdrawal');
     console.log('💳💥 - GET /api/wallet/history/:telegramId');
-  }
-
-  if (req.path.startsWith('/api/ton')) {
-    console.log('💰💥 TON API ЗАПРОС УПАЛ В 404!');
-    console.log('💰💥 Доступные TON маршруты должны быть:');
-    console.log('💰💥 - GET /api/ton/calculate/:amount');
-    console.log('💰💥 - POST /api/ton/stake');
-    console.log('💰💥 - GET /api/ton/stakes/:telegramId');
-    console.log('💰💥 - POST /api/ton/withdraw');
-    console.log('💰💥 - POST /api/ton/cancel');
-  }
-
-  if (req.path.startsWith('/api/stars')) {
-    console.log('🌟💥 STARS API ЗАПРОС УПАЛ В 404!');
-    console.log('🌟💥 Доступные STARS маршруты должны быть:');
-    console.log('🌟💥 - GET /api/stars/rates');
-    console.log('🌟💥 - POST /api/stars/exchange');
-    console.log('🌟💥 - GET /api/stars/history/:telegramId');
-    console.log('🌟💥 - POST /api/stars/update-ton-rate');
-  }
-
-  if (req.path.startsWith('/api/games')) {
-    console.log('🎮💥 GAMES API ЗАПРОС УПАЛ В 404!');
-    console.log('🎮💥 Доступные GAMES маршруты должны быть:');
-    console.log('🎮💥 - GET /api/games/stats/:telegramId');
-    console.log('🎮💥 - GET /api/games/tapper/status/:telegramId');
-    console.log('🎮💥 - POST /api/games/tapper/tap/:telegramId');
-    console.log('🎮💥 - POST /api/games/tapper/watch-ad/:telegramId');
-    console.log('🎮💥 - GET /api/games/cosmic-shells/status/:telegramId');
-    console.log('🎮💥 - POST /api/games/cosmic-shells/start-game/:telegramId');
-    console.log('🎮💥 - POST /api/games/cosmic-shells/make-choice/:telegramId');
-    console.log('🎮💥 - POST /api/games/cosmic-shells/watch-ad/:telegramId');
-    console.log('🎮💥 - GET /api/games/cosmic-shells/history/:telegramId');
-    console.log('🎮💥 - GET /api/games/galactic-slots/status/:telegramId');
-    console.log('🎮💥 - POST /api/games/galactic-slots/spin/:telegramId');
-    console.log('🎮💥 - POST /api/games/galactic-slots/watch-ad/:telegramId');
-    console.log('🎮💥 - GET /api/games/galactic-slots/history/:telegramId');
+    console.log('💳💥 - GET /api/wallet/premium-status/:telegramId');
+    console.log('💳💥 - POST /api/wallet/purchase-premium');
+    console.log('💳💥 - GET /api/wallet/premium-history/:telegramId');
   }
 
   if (req.path.startsWith('/api/adsgram')) {
@@ -401,6 +376,7 @@ app.use((req, res) => {
     console.log('🎯💥 Доступные ADSGRAM маршруты должны быть:');
     console.log('🎯💥 - GET /api/adsgram/reward?userid=[userId]');
     console.log('🎯💥 - GET /api/adsgram/stats/:telegramId');
+    console.log('🎯💥 - GET /api/adsgram/check-ad-block/:telegramId');
   }
 
   res.status(404).json({
@@ -409,53 +385,9 @@ app.use((req, res) => {
     path: req.path,
     originalUrl: req.originalUrl,
     message: 'Маршрут не найден',
-    timestamp: new Date().toISOString(),
-    availableRoutes: [
-      'GET /',
-      'GET /api/health',
-      'GET /api/time',
-      'GET /api/debug/count-referrals/:telegramId',
-      '💳 POST /api/wallet/connect - подключение кошелька',
-      '💳 POST /api/wallet/disconnect - отключение кошелька', 
-      '💳 POST /api/wallet/prepare-withdrawal - подготовка вывода',
-      '💳 POST /api/wallet/confirm-withdrawal - подтверждение вывода',
-      '💳 GET /api/wallet/history/:telegramId - история операций',
-      'GET /api/ton/calculate/:amount',
-      'POST /api/ton/stake ⭐ ГЛАВНЫЙ',
-      'GET /api/ton/stakes/:telegramId',
-      'POST /api/ton/withdraw',
-      'POST /api/ton/cancel',
-      '🌟 GET /api/stars/rates - текущие курсы Stars',
-      '🌟 POST /api/stars/exchange - обмен Stars → CS',
-      '🌟 GET /api/stars/history/:telegramId - история обменов',
-      '🌟 POST /api/stars/update-ton-rate - обновить курс TON (админ)',
-      'POST /api/collect - сбор ресурсов',
-      'POST /api/safe/collect - безопасный сбор',
-      'GET /api/player/:telegramId',
-      'POST /api/player/language',
-      'GET /api/shop/asteroids',
-      'POST /api/shop/buy',
-      'GET /api/debug/player/:telegramId',
-      '🎮 GET /api/games/stats/:telegramId - статистика игр',
-      '🎮 GET /api/games/tapper/status/:telegramId - статус тапалки',
-      '🎮 POST /api/games/tapper/tap/:telegramId - тап по астероиду',
-      '🎮 POST /api/games/tapper/watch-ad/:telegramId - реклама за энергию',
-      '🛸 GET /api/games/cosmic-shells/status/:telegramId - статус космических напёрстков',
-      '🛸 POST /api/games/cosmic-shells/start-game/:telegramId - начать игру',
-      '🛸 POST /api/games/cosmic-shells/make-choice/:telegramId - сделать выбор',
-      '🛸 POST /api/games/cosmic-shells/watch-ad/:telegramId - реклама за игру',
-      '🛸 GET /api/games/cosmic-shells/history/:telegramId - история игр',
-      '🎰 GET /api/games/galactic-slots/status/:telegramId - статус галактических слотов',
-      '🎰 POST /api/games/galactic-slots/spin/:telegramId - крутить слоты',
-      '🎰 POST /api/games/galactic-slots/watch-ad/:telegramId - реклама за игру',
-      '🎰 GET /api/games/galactic-slots/history/:telegramId - история слотов',
-      '🎯 GET /api/adsgram/reward?userid=[userId] - Adsgram награды',
-      '🎯 GET /api/adsgram/stats/:telegramId - статистика Adsgram'
-    ]
+    timestamp: new Date().toISOString()
   });
 });
-
-// ДОБАВИТЬ В КОНЕЦ index.js (ПЕРЕД app.listen)
 
 // ========================
 // 👑 ПРЕМИУМ CRON ЗАДАЧИ
@@ -467,6 +399,8 @@ console.log('🔄 Настраиваем cron задачи для премиум
 const cleanupExpiredPremium = async () => {
   try {
     console.log('🧹 Запуск очистки истекших премиум подписок...');
+    
+    const pool = require('./db');
     
     // Обновляем статус истекших подписок
     const expiredResult = await pool.query(
@@ -522,6 +456,8 @@ const cleanupExpiredPremium = async () => {
 // Функция обновления статистики премиум подписок
 const updatePremiumStats = async () => {
   try {
+    const pool = require('./db');
+    
     const statsResult = await pool.query(`
       SELECT 
         COUNT(*) FILTER (WHERE premium_no_ads_forever = TRUE) as forever_count,
@@ -577,7 +513,7 @@ process.on('SIGINT', () => {
   console.log('🛑 Cron задачи премиум остановлены');
 });
 
-// 🔥 ЗАПУСК СЕРВЕРА с диагностикой
+// 🔥 ЗАПУСК СЕРВЕРА с диагностикой - ТОЛЬКО ОДИН!!!
 app.listen(PORT, async () => {
   console.log(`\n🚀 ============================================`);
   console.log(`🚀 CosmoClick Backend запущен успешно!`);
@@ -593,6 +529,7 @@ app.listen(PORT, async () => {
   console.log(`🛸 Cosmic Shells: /api/games/cosmic-shells/*`);
   console.log(`🎰 Galactic Slots: /api/games/galactic-slots/*`);
   console.log(`🎯 Adsgram API: /api/adsgram/*`);
+  console.log(`👑 Premium API: /api/wallet/premium-*`);
   console.log(`🏥 Health check: /api/health`);
   console.log(`⏰ Time check: /api/time`);
   console.log(`🔍 Debug: /api/debug/*`);
@@ -636,8 +573,6 @@ app.listen(PORT, async () => {
     console.error('❌ Ошибка подключения сервиса курсов TON:', err);
   }
 
-  // НАЙТИ В index.js секцию app.listen и ДОБАВИТЬ ЭТО В КОНЕЦ (перед закрывающей скобкой):
-
   // 🔄 ЗАПУСК ПРЕМИУМ CRON ЗАДАЧ
   setTimeout(() => {
     try {
@@ -647,28 +582,5 @@ app.listen(PORT, async () => {
       console.error('❌ Ошибка запуска премиум cron:', error);
     }
   }, 10000); // Запуск через 10 секунд после старта сервера
-
-// ПРИМЕР КАК ДОЛЖНО ВЫГЛЯДЕТЬ:
-
-app.listen(PORT, async () => {
-  // ... существующий код ...
-  
-  console.log(`🚀 ============================================`);
-  console.log(`🚀 CosmoClick Backend запущен успешно!`);
-  // ... остальной существующий код лога ...
-  
-  // ТУТ ДОБАВЛЯЕМ:
-  
-  // 🔄 ЗАПУСК ПРЕМИУМ CRON ЗАДАЧ
-  setTimeout(() => {
-    try {
-      startPremiumCronJobs();
-      console.log('👑 Премиум cron задачи запущены успешно');
-    } catch (error) {
-      console.error('❌ Ошибка запуска премиум cron:', error);
-    }
-  }, 10000);
-  
-});
 
 });
