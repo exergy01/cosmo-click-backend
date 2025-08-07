@@ -20,8 +20,6 @@ router.get('/:telegramId', async (req, res) => {
     const registrationLanguage = playerResult.rows[0].registration_language || 'en';
     const questLinkStates = playerResult.rows[0].quest_link_states || {};
     
-    console.log(`🎯 Загружаем задания для игрока ${telegramId}, язык регистрации: ${registrationLanguage}`);
-    
     // Получаем все активные задания
     const questsResult = await pool.query(`
       SELECT quest_id, quest_name, quest_type, description, reward_cs, quest_data, is_active
@@ -69,7 +67,7 @@ router.get('/:telegramId', async (req, res) => {
       completed: completedQuestIds.includes(quest.quest_id)
     }));
     
-    console.log(`✅ Найдено ${quests.length} заданий для игрока ${telegramId}`);
+    console.log(`🎯 Загружаем задания для игрока ${telegramId} (${quests.length} найдено)`);
     res.json({ success: true, quests });
     
   } catch (error) {
@@ -113,21 +111,11 @@ router.post('/click_link', async (req, res) => {
       can_claim: false
     };
     
-    console.log(`🔍 СОХРАНЯЕМ состояние для задания ${questId}:`, JSON.stringify(questLinkStates[questId.toString()], null, 2));
-    
     // Сохраняем в базу данных
     await pool.query(
       'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
       [JSON.stringify(questLinkStates), telegramId]
     );
-    
-    // Проверяем что сохранилось
-    const verifyResult = await pool.query(
-      'SELECT quest_link_states FROM players WHERE telegram_id = $1',
-      [telegramId]
-    );
-    
-    console.log(`🔍 ПРОВЕРКА после сохранения:`, JSON.stringify(verifyResult.rows[0].quest_link_states, null, 2));
     
     console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questId}`);
     
@@ -265,27 +253,20 @@ router.post('/complete', async (req, res) => {
     
     // Для partner_link заданий проверяем состояние таймера
     if (questType === 'partner_link') {
-      console.log(`🔍 ОТЛАДКА ЗАДАНИЯ ${questId}:`);
-      
       const playerResult = await pool.query(
         'SELECT quest_link_states FROM players WHERE telegram_id = $1',
         [telegramId]
       );
       
       if (playerResult.rows.length === 0) {
-        console.log(`❌ Игрок ${telegramId} не найден в БД`);
         return res.status(404).json({ error: 'Player not found' });
       }
       
       const questLinkStates = playerResult.rows[0].quest_link_states || {};
-      console.log(`🔍 quest_link_states из БД:`, JSON.stringify(questLinkStates, null, 2));
-      
       const linkState = questLinkStates[questId.toString()];
-      console.log(`🔍 Состояние для задания ${questId}:`, JSON.stringify(linkState, null, 2));
       
       // Проверяем, прошло ли 30 секунд с момента клика
       if (!linkState || !linkState.clicked_at) {
-        console.log(`❌ Отсутствует clicked_at для задания ${questId}`);
         return res.status(400).json({ error: 'Link was not clicked yet' });
       }
       
@@ -293,20 +274,12 @@ router.post('/complete', async (req, res) => {
       const currentTime = new Date();
       const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
       
-      console.log(`🔍 clicked_at: ${linkState.clicked_at}`);
-      console.log(`🔍 currentTime: ${currentTime.toISOString()}`);
-      console.log(`🔍 elapsedSeconds: ${elapsedSeconds}`);
-      console.log(`🔍 Требуется минимум: 30 секунд`);
-      
       if (elapsedSeconds < 30) {
-        console.log(`❌ Таймер еще не завершен: прошло ${elapsedSeconds} из 30 секунд`);
         return res.status(400).json({ 
           error: `Link timer not completed yet. Wait ${30 - elapsedSeconds} more seconds.`,
           remainingSeconds: 30 - elapsedSeconds
         });
       }
-      
-      console.log(`✅ Таймер для задания ${questId} завершен (прошло ${elapsedSeconds} секунд)`);
     }
     
     // Начинаем транзакцию
@@ -347,7 +320,7 @@ router.post('/complete', async (req, res) => {
             [JSON.stringify(questLinkStates), telegramId]
           );
           
-          console.log(`✅ Задание ${questId} помечено как завершенное в quest_link_states`);
+          console.log(`✅ Задание ${questId} помечено как завершенное`);
         }
       }
       
