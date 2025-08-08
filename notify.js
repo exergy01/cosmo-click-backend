@@ -3,10 +3,8 @@ const { sendNotification } = require('./routes/telegramBot');
 
 const checkNotifications = async () => {
   try {
-    const now = new Date();
     const notifications = await pool.query(
-      'SELECT * FROM notifications WHERE event_time <= $1 AND notified = FALSE',
-      [now]
+      'SELECT * FROM notifications WHERE event_time <= NOW() AND notified = FALSE'
     );
 
     for (const notification of notifications.rows) {
@@ -18,6 +16,7 @@ const checkNotifications = async () => {
   }
 };
 
-setInterval(checkNotifications, 60000); // Проверка каждую минуту
+// Проверка каждую минуту
+setInterval(checkNotifications, 60000);
 
 module.exports = { checkNotifications };
