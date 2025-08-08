@@ -7,9 +7,9 @@ router.get('/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
     
-    // Получаем игрока с его registration_language и quest_link_states
+    // Получаем игрока с его данными
     const playerResult = await pool.query(
-      'SELECT registration_language, quest_link_states FROM players WHERE telegram_id = $1',
+      'SELECT registration_language, quest_link_states, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
       [telegramId]
     );
     
@@ -17,8 +17,28 @@ router.get('/:telegramId', async (req, res) => {
       return res.status(404).json({ error: 'Player not found' });
     }
     
-    const registrationLanguage = playerResult.rows[0].registration_language || 'en';
-    const questLinkStates = playerResult.rows[0].quest_link_states || {};
+    const player = playerResult.rows[0];
+    const registrationLanguage = player.registration_language || 'en';
+    const questLinkStates = player.quest_link_states || {};
+    
+    // ✅ ДОБАВЛЕНО: Проверка сброса рекламы при каждом запросе заданий
+    const currentTime = new Date();
+    const today = currentTime.toDateString();
+    const lastResetDate = player.quest_ad_last_reset ? new Date(player.quest_ad_last_reset).toDateString() : null;
+    
+    let questAdViews = player.quest_ad_views || 0;
+    
+    // Если новый день - сбрасываем счетчик
+    if (lastResetDate !== today) {
+      questAdViews = 0;
+      console.log(`🔄 Сброс счетчика рекламы заданий для игрока ${telegramId} (${lastResetDate} → ${today})`);
+      
+      // Обновляем в базе данных
+      await pool.query(
+        'UPDATE players SET quest_ad_views = 0, quest_ad_last_reset = $1 WHERE telegram_id = $2',
+        [currentTime, telegramId]
+      );
+    }
     
     // Получаем все активные задания
     const questsResult = await pool.query(`
@@ -41,8 +61,7 @@ router.get('/:telegramId', async (req, res) => {
     
     const completedQuestIds = completedResult.rows.map(row => row.quest_id);
     
-    // Обрабатываем состояния таймеров заданий - упрощаем логику
-    const currentTime = new Date();
+    // Обрабатываем состояния таймеров заданий
     const updatedLinkStates = { ...questLinkStates };
     
     // Проверяем завершенные таймеры
@@ -67,8 +86,14 @@ router.get('/:telegramId', async (req, res) => {
       completed: completedQuestIds.includes(quest.quest_id)
     }));
     
-    console.log(`🎯 Загружаем задания для игрока ${telegramId} (${quests.length} найдено)`);
-    res.json({ success: true, quests });
+    console.log(`🎯 Загружаем задания для игрока ${telegramId} (${quests.length} найдено, язык: ${registrationLanguage}), реклама заданий: ${questAdViews}/5`);
+    
+    // ✅ ВАЖНО: Возвращаем актуальный quest_ad_views
+    res.json({ 
+      success: true, 
+      quests,
+      quest_ad_views: questAdViews // Добавляем актуальный счетчик
+    });
     
   } catch (error) {
     console.error('Error fetching quests:', error);
