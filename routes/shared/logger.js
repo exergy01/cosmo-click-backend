@@ -1,7 +1,8 @@
-// logger.js - Очищенная версия
 const pool = require('../../db');
 
-// Основная функция логирования
+// 🛡️ БЕЗОПАСНАЯ СИСТЕМА ЛОГИРОВАНИЯ
+
+// Основная функция логирования с обработкой ошибок
 const logPlayerAction = async (
   telegramId, 
   actionType, 
@@ -23,18 +24,18 @@ const logPlayerAction = async (
       [telegramId, actionType, amount, systemId, itemId, details, ip, userAgent]
     );
     
-    console.log(`LOG: ${telegramId} - ${actionType} - ${amount} - система ${systemId}`);
+    console.log(`📝 LOG: ${telegramId} - ${actionType} - ${amount} - система ${systemId}`);
     return result.rows[0].id;
   } catch (err) {
-    console.error('Ошибка логирования:', err.message);
-    return null;
+    console.error('❌ Ошибка логирования (НЕ КРИТИЧНО):', err.message);
+    return null; // Возвращаем null, но не ломаем основную логику
   }
 };
 
-// Логирование баланса
+// Логирование баланса с обработкой ошибок
 const logBalanceChange = async (telegramId, actionId, beforeBalance, afterBalance) => {
   try {
-    if (!actionId) return;
+    if (!actionId) return; // Если нет actionId, не логируем
     
     await pool.query(
       `INSERT INTO balance_history 
@@ -48,13 +49,14 @@ const logBalanceChange = async (telegramId, actionId, beforeBalance, afterBalanc
       ]
     );
   } catch (err) {
-    console.error('Ошибка логирования баланса:', err.message);
+    console.error('❌ Ошибка логирования баланса (НЕ КРИТИЧНО):', err.message);
   }
 };
 
-// Детекция подозрительной активности
+// Детекция подозрительной активности (упрощенная)
 const detectSuspiciousActivity = async (telegramId, actionType, amount, systemId) => {
   try {
+    // Простая проверка - не более 50 действий в минуту
     const now = new Date();
     const oneMinuteAgo = new Date(now.getTime() - 60000);
     
@@ -67,8 +69,9 @@ const detectSuspiciousActivity = async (telegramId, actionType, amount, systemId
     const actionsPerMinute = parseInt(recentActions.rows[0].count);
     
     if (actionsPerMinute > 50) {
-      console.log(`МНОГО ДЕЙСТВИЙ: ${telegramId} - ${actionsPerMinute} действий в минуту`);
+      console.log(`🚨 МНОГО ДЕЙСТВИЙ: ${telegramId} - ${actionsPerMinute} действий в минуту`);
       
+      // Пытаемся записать подозрительную активность
       try {
         await pool.query(
           `INSERT INTO suspicious_activity 
@@ -77,7 +80,7 @@ const detectSuspiciousActivity = async (telegramId, actionType, amount, systemId
           [telegramId, 'rapid_activity', `${actionsPerMinute} действий в минуту`, 3]
         );
       } catch (susErr) {
-        console.error('Ошибка записи подозрительной активности:', susErr.message);
+        console.error('❌ Ошибка записи подозрительной активности (НЕ КРИТИЧНО):', susErr.message);
       }
       
       return true;
@@ -85,7 +88,7 @@ const detectSuspiciousActivity = async (telegramId, actionType, amount, systemId
     
     return false;
   } catch (err) {
-    console.error('Ошибка детекции подозрительной активности:', err.message);
+    console.error('❌ Ошибка детекции подозрительной активности (НЕ КРИТИЧНО):', err.message);
     return false;
   }
 };
@@ -115,11 +118,11 @@ const updateLifetimeStats = async (telegramId, actionType, amount) => {
       );
     }
   } catch (err) {
-    console.error('Ошибка обновления lifetime статистики:', err.message);
+    console.error('❌ Ошибка обновления lifetime статистики (НЕ КРИТИЧНО):', err.message);
   }
 };
 
-// Получение статистики
+// Получение статистики по логам
 const getPlayerStatistics = async (telegramId) => {
   try {
     // Статистика за последние 7 дней
@@ -154,7 +157,7 @@ const getPlayerStatistics = async (telegramId) => {
       total: totalStats.rows[0]
     };
   } catch (err) {
-    console.error('Ошибка получения статистики:', err.message);
+    console.error('❌ Ошибка получения статистики (НЕ КРИТИЧНО):', err.message);
     return { weekly: [], total: {} };
   }
 };
