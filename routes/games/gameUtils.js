@@ -1,3 +1,4 @@
+// gameUtils.js - Очищенная версия
 const pool = require('../../db');
 
 // Проверка баланса игрока
@@ -19,7 +20,6 @@ async function updatePlayerBalance(telegramId, amount) {
 
 // Проверка лимитов игр
 async function checkGameLimits(telegramId, gameType, maxGames = 5) {
-    const today = new Date().toDateString();
     const result = await pool.query(`
         SELECT daily_games, last_reset_date 
         FROM player_game_limits 
@@ -27,7 +27,6 @@ async function checkGameLimits(telegramId, gameType, maxGames = 5) {
     `, [telegramId, gameType]);
 
     if (result.rows.length === 0) {
-        // Создаем запись для нового игрока
         await pool.query(`
             INSERT INTO player_game_limits (telegram_id, game_type, daily_games, last_reset_date)
             VALUES ($1, $2, 0, CURRENT_DATE)
@@ -36,6 +35,7 @@ async function checkGameLimits(telegramId, gameType, maxGames = 5) {
     }
 
     const playerLimits = result.rows[0];
+    const today = new Date().toDateString();
     const lastReset = new Date(playerLimits.last_reset_date).toDateString();
 
     // Сброс лимитов если новый день
@@ -70,4 +70,4 @@ module.exports = {
     updatePlayerBalance,
     checkGameLimits,
     contributeToJackpot
-}; 
+};

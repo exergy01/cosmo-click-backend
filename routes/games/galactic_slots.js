@@ -3,15 +3,15 @@ const router = express.Router();
 const pool = require('../../db');
 const crypto = require('crypto');
 
-// ✅ ИСПРАВЛЕНО: Правильные константы игры
+// Константы игры
 const MIN_BET = 100;
 const MAX_BET = 5000;
-const DAILY_GAME_LIMIT = 50; // ✅ ИСПРАВЛЕНО: 50 базовых игр
-const MAX_AD_GAMES = 10; // ✅ ИСПРАВЛЕНО: 10 реклам (по 20 игр каждая = 200 дополнительных игр)
-const GAMES_PER_AD = 20; // ✅ НОВОЕ: 20 игр за одну рекламу
+const DAILY_GAME_LIMIT = 50;
+const MAX_AD_GAMES = 10;
+const GAMES_PER_AD = 20;
 const JACKPOT_CONTRIBUTION = 0.001; // 0.1%
 
-// 20 линий выплат (позиции 0-14, где 0-4 первый ряд, 5-9 второй, 10-14 третий)
+// 20 линий выплат
 const PAYLINES = [
   [0, 1, 2, 3, 4],     // Линия 1: верхний ряд
   [5, 6, 7, 8, 9],     // Линия 2: средний ряд  
@@ -35,92 +35,73 @@ const PAYLINES = [
   [0, 1, 12, 3, 4]     // Линия 20: дуга
 ];
 
-// ✅ ИСПРАВЛЕНО: Снижены коэффициенты для худшего RTP
+// Символы и их множители
 const SYMBOLS = {
-  '🌟': { id: 'wild', multipliers: [0.25, 0.6, 1.2], isWild: true },    // WILD - снижено
-  '🚀': { id: 'ship', multipliers: [0.15, 0.4, 1.0] },                 // Корабль - снижено
-  '🌌': { id: 'galaxy', multipliers: [0.12, 0.35, 0.8] },              // Галактика - снижено
-  '⭐': { id: 'star', multipliers: [0.08, 0.2, 0.5] },                 // Звезда - снижено
-  '🌍': { id: 'planet', multipliers: [0.06, 0.15, 0.3] },              // Планета - снижено
-  '☄️': { id: 'asteroid', multipliers: [0.04, 0.1, 0.2] },             // Астероид - снижено
-  '🛸': { id: 'void', multipliers: [0, 0, 0], isDead: true }           // МЕРТВЫЙ
+  '🌟': { id: 'wild', multipliers: [0.25, 0.6, 1.2], isWild: true },
+  '🚀': { id: 'ship', multipliers: [0.15, 0.4, 1.0] },
+  '🌌': { id: 'galaxy', multipliers: [0.12, 0.35, 0.8] },
+  '⭐': { id: 'star', multipliers: [0.08, 0.2, 0.5] },
+  '🌍': { id: 'planet', multipliers: [0.06, 0.15, 0.3] },
+  '☄️': { id: 'asteroid', multipliers: [0.04, 0.1, 0.2] },
+  '🛸': { id: 'void', multipliers: [0, 0, 0], isDead: true }
 };
 
 const SYMBOL_KEYS = Object.keys(SYMBOLS);
 const ALIVE_SYMBOLS = SYMBOL_KEYS.filter(s => !SYMBOLS[s].isDead);
 
-// ✅ ИСПРАВЛЕНО: Увеличен шанс выигрыша с 20% до 35%
-const WIN_PROBABILITY = 0.35; // 35% шанс что будет ХОТЬ КАКОЙ-ТО выигрыш
+// Вероятности
+const WIN_PROBABILITY = 0.35; // 35% шанс выигрыша
 
-// ✅ ИСПРАВЛЕНО: Определение будет ли выигрыш
+// Логика генерации
 function willHaveWin() {
-  return Math.random() < WIN_PROBABILITY; // 35% шанс на ЛЮБОЙ выигрыш
+  return Math.random() < WIN_PROBABILITY;
 }
 
-// ✅ ИСПРАВЛЕНО: Выбор количества выигрышных линий (больше акцент на 1 линию)
 function selectWinningLinesCount() {
   const random = Math.random();
-  if (random < 0.85) return 1;      // 85% - одна линия
-  if (random < 0.96) return 2;     // 11% - две линии  
-  if (random < 0.99) return 3;     // 3% - три линии
-  return 4;                        // 1% - четыре линии
+  if (random < 0.85) return 1;
+  if (random < 0.96) return 2;
+  if (random < 0.99) return 3;
+  return 4;
 }
 
-// ✅ ИСПРАВЛЕНО: Больше дешевых символов для частых мелких выигрышей
 function selectSymbolForLine() {
   const random = Math.random();
-  
-  // Больше дешевых символов для частых выигрышей
-  if (random < 0.5) return '☄️';      // 50% - астероид (дешевый) - увеличено
-  if (random < 0.75) return '🌍';     // 25% - планета - увеличено
-  if (random < 0.88) return '⭐';     // 13% - звезда - снижено
-  if (random < 0.95) return '🌌';     // 7% - галактика - снижено
-  if (random < 0.99) return '🚀';     // 4% - корабль - снижено
-  return '🌟';                        // 1% - WILD (дорогой) - снижено
+  if (random < 0.5) return '☄️';
+  if (random < 0.75) return '🌍';
+  if (random < 0.88) return '⭐';
+  if (random < 0.95) return '🌌';
+  if (random < 0.99) return '🚀';
+  return '🌟';
 }
 
-// ✅ ИСПРАВЛЕНО: Выбор длины комбинации (еще больше коротких)
 function selectComboLength() {
   const random = Math.random();
-  if (random < 0.9) return 3;       // 90% - короткая комбинация (3 символа)
-  if (random < 0.98) return 4;      // 8% - средняя комбинация (4 символа)
-  return 5;                         // 2% - длинная комбинация (5 символов)
+  if (random < 0.9) return 3;
+  if (random < 0.98) return 4;
+  return 5;
 }
 
-// ✅ ИСПРАВЛЕНО: Умная генерация поля с правильной экономикой
+// Генерация поля
 function generateSmartField(betAmount) {
-  console.log('🎰 ИСПРАВЛЕННАЯ ЛОГИКА: Starting smart field generation...');
-  
-  // Шаг 1: Решаем будет ли выигрыш (15% шанс)
   const hasWin = willHaveWin();
-  console.log('🎰 Will have win:', hasWin, '(35% chance)');
-  
-  // Инициализируем пустое поле
   const field = Array(15).fill(null);
   const plannedWins = [];
   
   if (hasWin) {
-    // Шаг 2: Выбираем количество линий (1-4, акцент на 1)
     const linesCount = selectWinningLinesCount();
-    console.log('🎰 Winning lines count:', linesCount);
     
-    // Шаг 3: Для каждой линии выбираем символ и длину
     for (let i = 0; i < linesCount; i++) {
       const symbol = selectSymbolForLine();
       const length = selectComboLength();
       
-      console.log(`🎰 Line ${i + 1}: ${symbol} x${length}`);
-      
-      // Шаг 4: Размещаем выигрышные символы на линиях
       const availableLines = PAYLINES.filter((line, index) => {
-        // Проверяем что линия не пересекается с уже размещенными
         return !line.slice(0, length).some(pos => field[pos] !== null);
       });
       
       if (availableLines.length > 0) {
         const selectedLine = availableLines[Math.floor(Math.random() * availableLines.length)];
         
-        // Размещаем символы
         for (let j = 0; j < length; j++) {
           field[selectedLine[j]] = symbol;
         }
@@ -135,17 +116,15 @@ function generateSmartField(betAmount) {
     }
   }
   
-  // Шаг 5: Заполняем остальные позиции безопасными символами
+  // Заполняем остальные позиции
   for (let i = 0; i < 15; i++) {
     if (field[i] === null) {
-      field[i] = getSecureSymbol(field, i);
+      field[i] = ALIVE_SYMBOLS[Math.floor(Math.random() * ALIVE_SYMBOLS.length)];
     }
   }
   
-  // Шаг 6: Добавляем 2-3 мертвых символа
-  const deadSymbolsCount = 2 + Math.floor(Math.random() * 2); // 2 или 3
-  
-  console.log('🎰 Adding dead symbols:', deadSymbolsCount);
+  // Добавляем мертвые символы
+  const deadSymbolsCount = 2 + Math.floor(Math.random() * 2);
   
   for (let i = 0; i < deadSymbolsCount; i++) {
     let attempts = 0;
@@ -153,28 +132,18 @@ function generateSmartField(betAmount) {
     
     while (!placed && attempts < 20) {
       const randomPos = Math.floor(Math.random() * 15);
-      // НЕ размещаем на выигрышных позициях
       if (!plannedWins.some(win => win.positions.includes(randomPos)) && field[randomPos] !== '🛸') {
         field[randomPos] = '🛸';
-        console.log('🎰 Placed dead symbol at position:', randomPos);
         placed = true;
       }
       attempts++;
     }
   }
   
-  console.log('🎰 Generated field:', field);
-  console.log('🎰 Planned wins:', plannedWins);
-  
   return field;
 }
 
-// Безопасный выбор символа
-function getSecureSymbol(field, position) {
-  return ALIVE_SYMBOLS[Math.floor(Math.random() * ALIVE_SYMBOLS.length)];
-}
-
-// Проверка выигрышей на готовом поле
+// Расчет выигрышей
 function calculateFieldWinnings(symbols, betAmount) {
   let totalWin = 0;
   const winningLines = [];
@@ -183,18 +152,14 @@ function calculateFieldWinnings(symbols, betAmount) {
     const line = PAYLINES[i];
     const lineSymbols = line.map(pos => symbols[pos]);
     
-    // Проверяем комбинацию слева направо
     let matchCount = 1;
     let matchSymbol = lineSymbols[0];
     let hasWild = false;
     
-    // Пропускаем мертвые символы
     if (SYMBOLS[matchSymbol]?.isDead) continue;
     
-    // Если первый символ WILD
     if (SYMBOLS[matchSymbol]?.isWild) {
       hasWild = true;
-      // Ищем первый не-WILD символ
       for (let j = 1; j < lineSymbols.length; j++) {
         if (!SYMBOLS[lineSymbols[j]]?.isWild && !SYMBOLS[lineSymbols[j]]?.isDead) {
           matchSymbol = lineSymbols[j];
@@ -203,11 +168,10 @@ function calculateFieldWinnings(symbols, betAmount) {
       }
     }
     
-    // Считаем совпадения
     for (let j = 1; j < lineSymbols.length; j++) {
       const currentSymbol = lineSymbols[j];
       
-      if (SYMBOLS[currentSymbol]?.isDead) break; // Мертвый символ прерывает линию
+      if (SYMBOLS[currentSymbol]?.isDead) break;
       
       if (currentSymbol === matchSymbol || SYMBOLS[currentSymbol]?.isWild) {
         if (SYMBOLS[currentSymbol]?.isWild) hasWild = true;
@@ -217,12 +181,10 @@ function calculateFieldWinnings(symbols, betAmount) {
       }
     }
     
-    // Проверяем выигрыш (минимум 3 символа)
     if (matchCount >= 3 && SYMBOLS[matchSymbol] && !SYMBOLS[matchSymbol].isDead) {
       const multiplierIndex = Math.min(matchCount - 3, SYMBOLS[matchSymbol].multipliers.length - 1);
       let lineWin = betAmount * SYMBOLS[matchSymbol].multipliers[multiplierIndex];
       
-      // WILD удваивает выигрыш
       if (hasWild) {
         lineWin *= 2;
       }
@@ -242,27 +204,13 @@ function calculateFieldWinnings(symbols, betAmount) {
   return { totalWin, winningLines };
 }
 
-// Создание игры с умной логикой
+// Создание игры
 function createSecureSlotGame(betAmount) {
   const randomBytes = crypto.randomBytes(32);
   const gameId = randomBytes.toString('hex');
   
-  console.log('🎰 Creating secure slot game for bet:', betAmount);
-  
-  // Генерируем умное поле
   const symbols = generateSmartField(betAmount);
-  
-  // Проверяем итоговые выигрыши
   const { totalWin, winningLines } = calculateFieldWinnings(symbols, betAmount);
-  
-  console.log('🎰 Final game result:', {
-    gameId: gameId.substring(0, 8),
-    totalWin,
-    winRatio: (totalWin / betAmount).toFixed(2),
-    winningLines: winningLines.length,
-    symbols: symbols,
-            expectedRTP: '~75%'
-  });
   
   return {
     gameId,
@@ -274,10 +222,8 @@ function createSecureSlotGame(betAmount) {
   };
 }
 
-// Безопасное получение лимитов
+// Получение лимитов
 async function getGameLimits(telegramId) {
-  console.log('🎰 Getting slot game limits for:', telegramId);
-  
   let limitsResult = await pool.query(`
     SELECT daily_games, daily_ads_watched, last_reset_date 
     FROM player_game_limits 
@@ -289,24 +235,18 @@ async function getGameLimits(telegramId) {
       INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
       VALUES ($1, 'galactic_slots', 0, 0, CURRENT_DATE)
     `, [telegramId]);
-    console.log('🎰 Created new slot limits record for player:', telegramId);
     return { dailyGames: 0, dailyAds: 0 };
   }
 
   const limits = limitsResult.rows[0];
-  const lastResetDate = limits.last_reset_date;
-  
   const needsReset = await pool.query(`
     SELECT CASE 
       WHEN $1::date < CURRENT_DATE THEN true 
       ELSE false 
     END as needs_reset
-  `, [lastResetDate]);
+  `, [limits.last_reset_date]);
   
-  const shouldReset = needsReset.rows[0].needs_reset;
-  
-  if (shouldReset) {
-    console.log('🎰 Resetting slot limits - detected new day');
+  if (needsReset.rows[0].needs_reset) {
     await pool.query(`
       UPDATE player_game_limits 
       SET daily_games = 0, daily_ads_watched = 0, last_reset_date = CURRENT_DATE
@@ -314,11 +254,6 @@ async function getGameLimits(telegramId) {
     `, [telegramId]);
     return { dailyGames: 0, dailyAds: 0 };
   }
-
-  console.log('🎰 Same day - using existing slot limits:', { 
-    dailyGames: limits.daily_games, 
-    dailyAds: limits.daily_ads_watched 
-  });
   
   return { 
     dailyGames: limits.daily_games, 
@@ -326,22 +261,12 @@ async function getGameLimits(telegramId) {
   };
 }
 
-// ✅ ИСПРАВЛЕНО: Правильный расчет доступных игр (50 + 10*20 = 250)
+// Расчет доступных игр
 function calculateGamesAvailable(dailyGames, dailyAds) {
   const totalGamesAvailable = DAILY_GAME_LIMIT + (dailyAds * GAMES_PER_AD);
   const gamesLeft = Math.max(0, totalGamesAvailable - dailyGames);
   const canPlayFree = gamesLeft > 0;
   const canWatchAd = dailyAds < MAX_AD_GAMES && gamesLeft === 0;
-  
-  console.log('🎰 ИСПРАВЛЕННЫЙ расчет игр (50 + 10*20 = 250 MAX):', {
-    dailyGames,
-    dailyAds,
-    totalGamesAvailable,
-    gamesLeft,
-    canPlayFree,
-    canWatchAd,
-    maxTotalGames: DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD)
-  });
   
   return { gamesLeft, canPlayFree, canWatchAd };
 }
@@ -349,13 +274,12 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
 // Получить статус игры
 router.get('/status/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Galactic slots status request for:', req.params.telegramId);
     const { telegramId } = req.params;
     
     const { dailyGames, dailyAds } = await getGameLimits(telegramId);
     const { gamesLeft, canPlayFree, canWatchAd } = calculateGamesAvailable(dailyGames, dailyAds);
 
-    // Получаем статистику игрока
+    // Получаем статистику
     const statsResult = await pool.query(`
       SELECT total_games, total_wins, total_losses, total_bet, total_won, best_streak, worst_streak
       FROM minigames_stats 
@@ -363,32 +287,17 @@ router.get('/status/:telegramId', async (req, res) => {
     `, [telegramId]);
 
     const stats = statsResult.rows[0] || {
-      total_games: 0,
-      total_wins: 0,
-      total_losses: 0,
-      total_bet: 0,
-      total_won: 0,
-      best_streak: 0,
-      worst_streak: 0
+      total_games: 0, total_wins: 0, total_losses: 0,
+      total_bet: 0, total_won: 0, best_streak: 0, worst_streak: 0
     };
 
-    // Получаем баланс игрока
+    // Получаем баланс
     const balanceResult = await pool.query(
       'SELECT ccc FROM players WHERE telegram_id = $1',
       [telegramId]
     );
 
     const balance = balanceResult.rows[0]?.ccc || 0;
-
-    console.log('🎰 Galactic slots status response:', { 
-      balance: parseFloat(balance), 
-      dailyGames, 
-      dailyAds,
-      gamesLeft,
-      canPlayFree,
-      canWatchAd,
-      expectedRTP: '~70%'
-    });
 
     res.json({
       success: true,
@@ -405,21 +314,19 @@ router.get('/status/:telegramId', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('🎰❌ Galactic slots status error:', error);
+    console.error('Galactic slots status error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Крутить слоты с улучшенной валидацией
+// Крутить слоты
 router.post('/spin/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Starting galactic slots spin for:', req.params.telegramId, 'Bet:', req.body.betAmount);
     const { telegramId } = req.params;
     const { betAmount } = req.body;
 
     const parsedBetAmount = Number(betAmount);
     if (!parsedBetAmount || isNaN(parsedBetAmount) || parsedBetAmount < MIN_BET || parsedBetAmount > MAX_BET) {
-      console.log('🎰❌ Invalid bet amount:', betAmount, 'parsed:', parsedBetAmount);
       return res.status(400).json({
         success: false,
         error: `Ставка должна быть от ${MIN_BET} до ${MAX_BET} CCC`
@@ -429,7 +336,7 @@ router.post('/spin/:telegramId', async (req, res) => {
     await pool.query('BEGIN');
 
     try {
-      // Проверка баланса и списание ставки
+      // Проверка баланса
       const balanceResult = await pool.query(
         'SELECT ccc FROM players WHERE telegram_id = $1',
         [telegramId]
@@ -444,7 +351,6 @@ router.post('/spin/:telegramId', async (req, res) => {
       }
 
       const currentBalance = parseFloat(balanceResult.rows[0].ccc);
-      console.log('🎰 Player balance:', currentBalance, 'Bet:', parsedBetAmount);
       
       if (currentBalance < parsedBetAmount) {
         await pool.query('ROLLBACK');
@@ -454,7 +360,7 @@ router.post('/spin/:telegramId', async (req, res) => {
         });
       }
 
-      // Проверяем лимиты
+      // Проверка лимитов
       const { dailyGames, dailyAds } = await getGameLimits(telegramId);
       const { canPlayFree } = calculateGamesAvailable(dailyGames, dailyAds);
       
@@ -472,7 +378,7 @@ router.post('/spin/:telegramId', async (req, res) => {
         [parsedBetAmount, telegramId]
       );
 
-      // ✅ ИСПРАВЛЕНО: Создаем игру с новой экономикой
+      // Создаем игру
       const game = createSecureSlotGame(parsedBetAmount);
       const totalWin = game.totalWin;
       const winningLines = game.winningLines;
@@ -480,25 +386,15 @@ router.post('/spin/:telegramId', async (req, res) => {
       const isWin = totalWin > 0;
       const profit = totalWin - parsedBetAmount;
 
-      console.log('🎰 ИСПРАВЛЕННЫЙ slot result:', { 
-        symbols: game.symbols,
-        totalWin,
-        profit,
-        multiplier: (totalWin / parsedBetAmount).toFixed(2),
-        winningLines: winningLines.length,
-        expectedRTP: '~75%'
-      });
-
-      // Начисляем выигрыш если есть
+      // Начисляем выигрыш
       if (isWin) {
         await pool.query(
           'UPDATE players SET ccc = ccc + $1 WHERE telegram_id = $2',
           [totalWin, telegramId]
         );
-        console.log('🎰✅ Win! Added to balance:', totalWin);
       }
 
-      // Обновляем джекпот при проигрыше
+      // Вклад в джекпот при проигрыше
       let jackpotContribution = 0;
       if (!isWin) {
         jackpotContribution = Math.floor(parsedBetAmount * JACKPOT_CONTRIBUTION);
@@ -510,11 +406,9 @@ router.post('/spin/:telegramId', async (req, res) => {
               updated_at = CURRENT_TIMESTAMP
           WHERE id = 1
         `, [jackpotContribution]);
-        
-        console.log('🎰💰 Added to jackpot:', jackpotContribution);
       }
 
-      // Сохраняем в историю с серверным временем
+      // Сохраняем в историю
       await pool.query(`
         INSERT INTO minigames_history (telegram_id, game_type, bet_amount, win_amount, game_result, jackpot_contribution, created_at)
         VALUES ($1, 'galactic_slots', $2, $3, $4, $5, CURRENT_TIMESTAMP)
@@ -543,7 +437,7 @@ router.post('/spin/:telegramId', async (req, res) => {
           updated_at = CURRENT_TIMESTAMP
       `, [telegramId, isWin ? 1 : 0, isWin ? 0 : 1, parsedBetAmount, totalWin, 0, 0]);
 
-      // Обновляем лимиты игр
+      // Обновляем лимиты
       await pool.query(`
         UPDATE player_game_limits 
         SET daily_games = daily_games + 1
@@ -552,7 +446,6 @@ router.post('/spin/:telegramId', async (req, res) => {
 
       await pool.query('COMMIT');
 
-      console.log('🎰✅ Slot spin completed successfully');
       res.json({
         success: true,
         result: {
@@ -572,23 +465,19 @@ router.post('/spin/:telegramId', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('🎰❌ Galactic slots spin error:', error);
+    console.error('Galactic slots spin error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// ✅ ИСПРАВЛЕНО: Реклама дает 10 игр за раз
+// Просмотр рекламы
 router.post('/watch-ad/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Watch ad request for slots:', req.params.telegramId);
     const { telegramId } = req.params;
 
     const { dailyGames, dailyAds } = await getGameLimits(telegramId);
     
-    console.log('🎰 Current slot limits before ad:', { dailyGames, dailyAds });
-    
     if (dailyAds >= MAX_AD_GAMES) {
-      console.log('🎰❌ Slot ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
       return res.status(400).json({
         success: false,
         error: `Дневной лимит рекламы исчерпан (${MAX_AD_GAMES}/${MAX_AD_GAMES})`,
@@ -600,7 +489,6 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
     const maxTotalGames = DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD);
     
     if (totalGamesPlayed >= maxTotalGames) {
-      console.log('🎰❌ Total slot games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
       return res.status(400).json({
         success: false,
         error: `Максимальный дневной лимит игр исчерпан (${maxTotalGames} игр)`,
@@ -608,7 +496,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
       });
     }
 
-    // Увеличиваем счетчик рекламы на 1
+    // Увеличиваем счетчик рекламы
     await pool.query(`
       UPDATE player_game_limits 
       SET daily_ads_watched = daily_ads_watched + 1
@@ -617,13 +505,6 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
 
     const newAdsWatched = dailyAds + 1;
     const adsRemaining = MAX_AD_GAMES - newAdsWatched;
-
-    console.log('🎰✅ Slot ad watched successfully! New stats:', {
-      adsWatched: newAdsWatched,
-      adsRemaining,
-      maxAds: MAX_AD_GAMES,
-      gamesGranted: GAMES_PER_AD
-    });
 
     res.json({
       success: true,
@@ -634,31 +515,20 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('🎰❌ Watch ad slots error:', error);
+    console.error('Watch ad slots error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
-// Получить историю игр
-// galactic_slots.js (только роут истории)
-
+// История игр
 router.get('/history/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Getting FULL slot history for:', req.params.telegramId);
     const { telegramId } = req.params;
     
     const historyResult = await pool.query(`
       SELECT 
-        id,
-        bet_amount,
-        win_amount,
-        game_result,
-        jackpot_contribution,
-        created_at,
-        CASE 
-          WHEN win_amount > bet_amount THEN 'win'
-          ELSE 'loss'
-        END as result_type
+        id, bet_amount, win_amount, game_result, jackpot_contribution, created_at,
+        CASE WHEN win_amount > bet_amount THEN 'win' ELSE 'loss' END as result_type
       FROM minigames_history 
       WHERE telegram_id = $1 AND game_type = 'galactic_slots'
       ORDER BY created_at DESC
@@ -683,11 +553,6 @@ router.get('/history/:telegramId', async (req, res) => {
       jackpotContribution: parseInt(game.jackpot_contribution || 0)
     }));
 
-    console.log('🎰 FULL history loaded:', { 
-      totalGames,
-      loaded: history.length 
-    });
-
     res.json({
       success: true,
       history,
@@ -695,7 +560,7 @@ router.get('/history/:telegramId', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('🎰❌ FULL history error:', error);
+    console.error('History error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });

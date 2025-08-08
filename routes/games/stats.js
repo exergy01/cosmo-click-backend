@@ -1,4 +1,4 @@
- 
+// stats.js - Очищенная версия
 const express = require('express');
 const router = express.Router();
 const pool = require('../../db');
@@ -8,7 +8,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     try {
         const { telegramId } = req.params;
 
-        // Получаем общую статистику по всем играм
+        // Общая статистика по всем играм
         const statsResult = await pool.query(`
             SELECT 
                 COALESCE(SUM(total_games), 0) as total_games,
@@ -20,7 +20,7 @@ router.get('/stats/:telegramId', async (req, res) => {
             WHERE telegram_id = $1
         `, [telegramId]);
 
-        // Получаем текущий джекпот
+        // Текущий джекпот
         const jackpotResult = await pool.query(
             'SELECT current_amount FROM jackpot ORDER BY id DESC LIMIT 1'
         );
@@ -61,15 +61,9 @@ router.get('/stats/:telegramId/:gameType', async (req, res) => {
 
         if (result.rows.length === 0) {
             return res.json({
-                totalGames: 0,
-                totalWins: 0,
-                totalLosses: 0,
-                totalBet: 0,
-                totalWon: 0,
-                bestStreak: 0,
-                worstStreak: 0,
-                winRate: 0,
-                profit: 0
+                totalGames: 0, totalWins: 0, totalLosses: 0,
+                totalBet: 0, totalWon: 0, bestStreak: 0, 
+                worstStreak: 0, winRate: 0, profit: 0
             });
         }
 
@@ -99,7 +93,7 @@ router.get('/stats/:telegramId/:gameType', async (req, res) => {
 // Получить топ игроков
 router.get('/leaderboard/:period', async (req, res) => {
     try {
-        const { period } = req.params; // 'day', 'week', 'month'
+        const { period } = req.params;
         
         let timeFilter = '';
         switch (period) {
@@ -160,10 +154,8 @@ router.get('/jackpot', async (req, res) => {
 
         if (result.rows.length === 0) {
             return res.json({
-                currentAmount: 0,
-                lastWinner: null,
-                lastWinAmount: 0,
-                lastWinDate: null
+                currentAmount: 0, lastWinner: null,
+                lastWinAmount: 0, lastWinDate: null
             });
         }
 

@@ -1,15 +1,15 @@
+// index.js (games routes) - Очищенная версия
 const express = require('express');
 const router = express.Router();
 
 // Подключаем маршруты отдельных игр
 router.use('/tapper', require('./tapper'));
 router.use('/cosmic-shells', require('./cosmic_shells'));
-router.use('/galactic-slots', require('./galactic_slots')); // ← ДОБАВИТЬ ЭТУ СТРОКУ
+router.use('/galactic-slots', require('./galactic_slots'));
 router.use('/', require('./stats')); // Статистика доступна напрямую
 
 // Middleware для проверки пользователя
 router.use('*', (req, res, next) => {
-    // Добавляем базовую проверку телеграм ID
     const telegramId = req.params.telegramId;
     if (telegramId && isNaN(parseInt(telegramId))) {
         return res.status(400).json({ 
