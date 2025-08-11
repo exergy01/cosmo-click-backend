@@ -1,0 +1,5 @@
+// Game constants 
+export const GAME_CONSTANTS = { 
+  MAX_ENERGY: 150, 
+  ENERGY_REGEN_RATE: 3, 
+  MAX_LUMINOS_DISPLAY: 999999999, 
