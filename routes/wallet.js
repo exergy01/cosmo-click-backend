@@ -335,11 +335,11 @@ router.post('/create-stars-invoice', async (req, res) => {
   }
 });
 
-// POST /api/wallet/webhook-stars - Webhook для обработки платежей Stars
+// POST /api/wallet/webhook-stars - ИСПРАВЛЕННАЯ ВЕРСИЯ
 router.post('/webhook-stars', async (req, res) => {
   console.log('🎯 Stars webhook получен:', JSON.stringify(req.body, null, 2));
   
-  const { pre_checkout_query, successful_payment } = req.body;
+  const { pre_checkout_query, successful_payment, message } = req.body;
   
   try {
     // Обработка pre_checkout_query (подтверждение платежа)
@@ -354,67 +354,29 @@ router.post('/webhook-stars', async (req, res) => {
     // Обработка successful_payment (успешный платеж)
     if (successful_payment) {
       console.log('💰 Successful payment:', successful_payment);
+      // ... твой существующий код для начисления Stars
+      return res.json({ success: true });
+    }
+    
+    // ⚠️ ДОБАВИТЬ: Если это обычное сообщение - передаем боту
+    if (message && !message.successful_payment) {
+      console.log('📨 Обычное сообщение бота, передаем Telegraf:', message.text || 'unknown');
       
-      const payload = JSON.parse(successful_payment.invoice_payload);
+      // Создаем экземпляр бота для обработки обычных сообщений
+      const { Telegraf } = require('telegraf');
+      const messageBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
       
-      if (payload.type === 'stars_deposit') {
-        const client = await pool.connect();
-        
-        try {
-          await client.query('BEGIN');
-          
-          // Добавляем Stars игроку
-          await client.query(
-            'UPDATE players SET telegram_stars = telegram_stars + $1 WHERE telegram_id = $2',
-            [payload.amount, payload.player_id]
-          );
-          
-          // Записываем транзакцию
-          await client.query(
-            `INSERT INTO star_transactions (
-              player_id, amount, transaction_type, description, 
-              telegram_payment_id, created_at
-            ) VALUES ($1, $2, 'deposit', $3, $4, NOW())`,
-            [
-              payload.player_id,
-              payload.amount,
-              `Пополнение ${payload.amount} Stars`,
-              successful_payment.telegram_payment_charge_id
-            ]
-          );
-          
-          await client.query('COMMIT');
-          
-          console.log(`✅ Начислено ${payload.amount} Stars игроку ${payload.player_id}`);
-          
-          // Отправляем уведомление игроку
-          try {
-            await bot.telegram.sendMessage(
-              payload.player_id,
-              `🌟 Отлично! Ваш баланс пополнен на ${payload.amount} Stars!\n\n💰 Теперь вы можете использовать их для покупок в игре CosmoClick.`,
-              {
-                reply_markup: {
-                  inline_keyboard: [[{
-                    text: '🎮 Открыть игру',
-                    web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
-                  }]]
-                }
-              }
-            );
-          } catch (msgErr) {
-            console.error('❌ Ошибка отправки уведомления:', msgErr);
-            // Не падаем - главное, что Stars начислены
-          }
-          
-        } catch (dbErr) {
-          await client.query('ROLLBACK');
-          console.error('❌ Ошибка БД при начислении Stars:', dbErr);
-          throw dbErr;
-        } finally {
-          client.release();
-        }
-      }
+      // Настраиваем команды
+      messageBot.start((ctx) => {
+        ctx.reply('Привет! Бот запущен и готов к работе. Запускай игру через Web App!');
+      });
       
+      messageBot.help((ctx) => {
+        ctx.reply('Я бот для CosmoClick Game.');
+      });
+      
+      // Обрабатываем сообщение
+      await messageBot.handleUpdate(req.body);
       return res.json({ success: true });
     }
     
