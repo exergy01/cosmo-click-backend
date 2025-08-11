@@ -63,9 +63,6 @@ app.get('/webhook', (req, res, next) => {
   next();
 });
 
-// Telegram webhook
-app.use(bot.webhookCallback('/webhook'));
-
 // Обработка команд бота
 bot.start((ctx) => {
   ctx.reply('Привет! Бот запущен и готов к работе. Запускай игру через Web App!');
@@ -135,6 +132,21 @@ try {
 } catch (err) {
   console.error('Ошибка подключения Adsgram маршрутов:', err);
 }
+
+// 🔥 ИСПРАВЛЕНО: Telegram webhook для обычных сообщений бота (НЕ платежи Stars)
+app.post('/webhook', (req, res) => {
+  const { pre_checkout_query, successful_payment } = req.body;
+  
+  // Если это платеж Stars - игнорируем здесь (обрабатывается в /api/wallet/webhook-stars)
+  if (pre_checkout_query || successful_payment) {
+    console.log('💰 Stars платеж обнаружен, но обрабатывается в /api/wallet/webhook-stars');
+    return res.json({ success: true });
+  }
+  
+  // Обычные сообщения бота (/start, /help и т.д.) обрабатываем через Telegraf
+  console.log('📨 Обычное сообщение бота:', req.body?.message?.text || 'unknown');
+  bot.handleUpdate(req.body, res);
+});
 
 // Базовые API маршруты
 app.get('/api/time', (req, res) => {
@@ -215,12 +227,13 @@ const cleanupExpiredPremium = async () => {
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
 
-  // Установка webhook
+  // 🔥 ИСПРАВЛЕНО: Webhook установлен правильно на Stars эндпоинт
   const webhookUrl = `https://cosmoclick-backend.onrender.com/api/wallet/webhook-stars`;
   
   try {
     const success = await bot.telegram.setWebhook(webhookUrl);
     console.log(`Webhook установлен: ${success ? 'Успешно' : 'Ошибка'}`);
+    console.log(`Webhook URL: ${webhookUrl}`);
   } catch (error) {
     console.error('Ошибка установки webhook:', error.message);
   }
