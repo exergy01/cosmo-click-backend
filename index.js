@@ -231,7 +231,10 @@ app.listen(PORT, async () => {
   const webhookUrl = `https://cosmoclick-backend.onrender.com/api/wallet/webhook-stars`;
   
   try {
-    const success = await bot.telegram.setWebhook(webhookUrl);
+    const success = await bot.telegram.setWebhook(webhookUrl, {
+      allowed_updates: ['message', 'callback_query', 'pre_checkout_query', 'successful_payment']
+    });
+    
     console.log(`Webhook установлен: ${success ? 'Успешно' : 'Ошибка'}`);
     console.log(`Webhook URL: ${webhookUrl}`);
   } catch (error) {
