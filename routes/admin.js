@@ -137,11 +137,11 @@ router.get('/stats/:telegramId', async (req, res) => {
       SELECT 
         COUNT(*) as total_players,
         COUNT(CASE WHEN verified = true THEN 1 END) as verified_players,
-        COUNT(CASE WHEN ${activityField} > NOW() - INTERVAL '24 hours' THEN 1 END) as active_24h,
-        COUNT(CASE WHEN ${activityField} > NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
+        COUNT(CASE WHEN created_at > NOW() - INTERVAL '24 hours' THEN 1 END) as active_24h,
+        COUNT(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 END) as active_7d
       FROM players
     `);
-    
+        
     // 2. Статистика валют - остается без изменений
     const currencyStats = await pool.query(`
       SELECT 
