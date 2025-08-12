@@ -11,7 +11,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
 // ===== ДОБАВИТЬ В НАЧАЛО routes/wallet.js =====
-const { notifyStarsDeposit, notifyTonDeposit, notifyWithdrawalRequest } = require('../telegramBot');
+const { notifyStarsDeposit, notifyTonDeposit, notifyWithdrawalRequest } = require('./telegramBot');
 
 // POST /api/wallet/connect - Подключение кошелька через TON Connect
 router.post('/connect', async (req, res) => {

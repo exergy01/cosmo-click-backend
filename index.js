@@ -152,6 +152,15 @@ try {
   console.error('Ошибка подключения Adsgram маршрутов:', err);
 }
 
+// Добавить в index.js после других роутов:
+try {
+  const testRoutes = require('./routes/test');
+  app.use('/api/test', testRoutes);
+  console.log('✅ Тестовые роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения тестовых роутов:', err);
+}
+
 // 🔥 ИСПРАВЛЕНО: Telegram webhook для обычных сообщений бота (НЕ платежи Stars)
 app.post('/webhook', (req, res) => {
   const { pre_checkout_query, successful_payment } = req.body;
