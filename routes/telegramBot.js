@@ -575,6 +575,60 @@ const handleFullStats = async (chatId, messageId) => {
   }
 };
 
+// ===== ДОБАВИТЬ В routes/telegramBot.js =====
+
+// 📱 Функция для отправки сообщений игрокам
+const sendTelegramMessage = async (telegramId, message) => {
+  try {
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    
+    if (!BOT_TOKEN) {
+      throw new Error('TELEGRAM_BOT_TOKEN не установлен');
+    }
+    
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    
+    const payload = {
+      chat_id: telegramId,
+      text: message,
+      parse_mode: 'HTML', // Поддержка HTML разметки
+      disable_web_page_preview: true
+    };
+    
+    console.log(`📤 Отправляем сообщение в Telegram: ${telegramId}`);
+    
+    const response = await axios.post(url, payload);
+    
+    if (response.data.ok) {
+      console.log(`✅ Сообщение отправлено успешно: ${telegramId}`);
+      return response.data;
+    } else {
+      throw new Error(`Telegram API ошибка: ${response.data.description}`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Ошибка отправки сообщения в Telegram (${telegramId}):`, error.message);
+    
+    // Обрабатываем специфичные ошибки Telegram
+    if (error.response?.data?.error_code === 403) {
+      throw new Error('Пользователь заблокировал бота');
+    } else if (error.response?.data?.error_code === 400) {
+      throw new Error('Неверный chat_id или сообщение');
+    } else if (error.response?.data?.error_code === 429) {
+      throw new Error('Превышен лимит запросов Telegram API');
+    } else {
+      throw new Error(error.message || 'Неизвестная ошибка отправки');
+    }
+  }
+};
+
+// ===== ДОБАВИТЬ В КОНЕЦ ФАЙЛА ПЕРЕД module.exports =====
+module.exports = {
+  sendDailySummary,
+  sendAdminNotification,
+  sendTelegramMessage // НОВЫЙ ЭКСПОРТ
+};
+
 // 🔄 ЭКСПОРТ ДОПОЛНИТЕЛЬНЫХ ФУНКЦИЙ
 module.exports = { 
   sendNotification,

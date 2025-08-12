@@ -770,4 +770,174 @@ router.get('/debug/:telegramId', (req, res) => {
   res.json(debugInfo);
 });
 
+// ===== ДОБАВИТЬ В routes/admin.js ПЕРЕД module.exports =====
+
+// 📱 POST /api/admin/send-message/:telegramId - отправка сообщения игроку
+router.post('/send-message/:telegramId', async (req, res) => {
+  const { playerId, message } = req.body;
+  
+  if (!playerId || !message?.trim()) {
+    return res.status(400).json({ error: 'Player ID and message are required' });
+  }
+  
+  try {
+    console.log(`📱 Отправка сообщения игроку ${playerId}: "${message}"`);
+    
+    // Проверяем, что игрок существует
+    const player = await getPlayer(playerId);
+    if (!player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+    
+    // Отправляем сообщение через Telegram Bot API
+    const { sendTelegramMessage } = require('./telegramBot');
+    
+    const fullMessage = `💬 <b>Сообщение от администрации CosmoClick</b>\n\n${message}\n\n🕐 Отправлено: ${new Date().toLocaleString('ru-RU')}`;
+    
+    await sendTelegramMessage(playerId, fullMessage);
+    
+    // Логируем отправку (если таблица существует)
+    try {
+      await pool.query(`
+        INSERT INTO player_actions (telegram_id, action_type, details)
+        VALUES ($1, $2, $3)
+      `, [
+        playerId,
+        'admin_message_sent',
+        JSON.stringify({
+          admin_id: req.params.telegramId,
+          message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+          timestamp: new Date().toISOString()
+        })
+      ]);
+    } catch (logError) {
+      console.log('⚠️ Не удалось логировать отправку сообщения:', logError.message);
+    }
+    
+    console.log(`✅ Сообщение отправлено игроку ${playerId} (${player.first_name || player.username})`);
+    
+    res.json({
+      success: true,
+      message: 'Сообщение отправлено успешно',
+      player: {
+        telegram_id: playerId,
+        first_name: player.first_name,
+        username: player.username
+      }
+    });
+    
+  } catch (err) {
+    console.error('❌ Ошибка отправки сообщения игроку:', err);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: err.message 
+    });
+  }
+});
+
+// 📢 POST /api/admin/broadcast-message/:telegramId - рассылка всем игрокам
+router.post('/broadcast-message/:telegramId', async (req, res) => {
+  const { message, onlyVerified = false } = req.body;
+  
+  if (!message?.trim()) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  
+  try {
+    console.log(`📢 Начинаем рассылку всем игрокам${onlyVerified ? ' (только верифицированным)' : ''}: "${message}"`);
+    
+    // Получаем список игроков для рассылки
+    const playersQuery = onlyVerified 
+      ? 'SELECT telegram_id, first_name, username FROM players WHERE verified = true ORDER BY created_at DESC'
+      : 'SELECT telegram_id, first_name, username FROM players ORDER BY created_at DESC';
+      
+    const playersResult = await pool.query(playersQuery);
+    const players = playersResult.rows;
+    
+    if (players.length === 0) {
+      return res.status(400).json({ error: 'Нет игроков для рассылки' });
+    }
+    
+    console.log(`📊 Найдено ${players.length} игроков для рассылки`);
+    
+    // Формируем сообщение для рассылки
+    const { sendTelegramMessage } = require('./telegramBot');
+    
+    const fullMessage = `📢 <b>Рассылка от администрации CosmoClick</b>\n\n${message}\n\n🕐 Отправлено: ${new Date().toLocaleString('ru-RU')}`;
+    
+    // Счетчики для статистики
+    let sentCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    
+    // Отправляем сообщения с задержкой чтобы не превысить лимиты Telegram
+    for (let i = 0; i < players.length; i++) {
+      const player = players[i];
+      
+      try {
+        await sendTelegramMessage(player.telegram_id, fullMessage);
+        sentCount++;
+        console.log(`✅ Отправлено ${i + 1}/${players.length}: ${player.telegram_id}`);
+        
+        // Задержка 50ms между сообщениями (20 сообщений в секунду)
+        if (i < players.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+      } catch (sendError) {
+        errorCount++;
+        errors.push({
+          player_id: player.telegram_id,
+          player_name: player.first_name || player.username,
+          error: sendError.message
+        });
+        console.error(`❌ Ошибка отправки ${i + 1}/${players.length} (${player.telegram_id}):`, sendError.message);
+      }
+    }
+    
+    // Логируем рассылку (если таблица существует)
+    try {
+      await pool.query(`
+        INSERT INTO player_actions (telegram_id, action_type, details)
+        VALUES ($1, $2, $3)
+      `, [
+        req.params.telegramId,
+        'admin_broadcast_sent',
+        JSON.stringify({
+          admin_id: req.params.telegramId,
+          message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+          total_players: players.length,
+          sent_count: sentCount,
+          error_count: errorCount,
+          only_verified: onlyVerified,
+          timestamp: new Date().toISOString()
+        })
+      ]);
+    } catch (logError) {
+      console.log('⚠️ Не удалось логировать рассылку:', logError.message);
+    }
+    
+    console.log(`✅ Рассылка завершена. Отправлено: ${sentCount}, ошибок: ${errorCount}`);
+    
+    res.json({
+      success: true,
+      message: 'Рассылка завершена',
+      statistics: {
+        total_players: players.length,
+        sent_count: sentCount,
+        error_count: errorCount,
+        success_rate: Math.round((sentCount / players.length) * 100)
+      },
+      errors: errorCount > 0 ? errors.slice(0, 10) : [] // Показываем первые 10 ошибок
+    });
+    
+  } catch (err) {
+    console.error('❌ Ошибка рассылки сообщений:', err);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: err.message 
+    });
+  }
+});
+
 module.exports = router;
