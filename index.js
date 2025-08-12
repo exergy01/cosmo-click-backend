@@ -10,7 +10,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
 const cron = require('node-cron');
-const { sendDailySummary } = require('./telegramBot');
+const { sendDailySummary } = require('./routes/telegramBot');
 
 // 📊 НАСТРОЙКА ЕЖЕДНЕВНОЙ СВОДКИ В 12:00 ПО МОСКОВСКОМУ ВРЕМЕНИ
 cron.schedule('0 12 * * *', async () => {
