@@ -773,10 +773,17 @@ router.get('/debug/:telegramId', (req, res) => {
 // ===== ДОБАВИТЬ В routes/admin.js ПЕРЕД module.exports =====
 
 // 📱 POST /api/admin/send-message/:telegramId - отправка сообщения игроку
+// ===== ЗАМЕНИТЬ endpoint send-message в routes/admin.js =====
+
+// 📱 POST /api/admin/send-message/:telegramId - отправка сообщения игроку (с отладкой)
 router.post('/send-message/:telegramId', async (req, res) => {
   const { playerId, message } = req.body;
   
+  console.log('🔍 === ОТЛАДКА ОТПРАВКИ СООБЩЕНИЯ ===');
+  console.log('📦 Полученные данные:', { playerId, message, adminId: req.params.telegramId });
+  
   if (!playerId || !message?.trim()) {
+    console.log('❌ Отсутствуют обязательные поля');
     return res.status(400).json({ error: 'Player ID and message are required' });
   }
   
@@ -784,17 +791,73 @@ router.post('/send-message/:telegramId', async (req, res) => {
     console.log(`📱 Отправка сообщения игроку ${playerId}: "${message}"`);
     
     // Проверяем, что игрок существует
+    console.log('🔍 Проверяем существование игрока...');
     const player = await getPlayer(playerId);
+    console.log('👤 Данные игрока:', player ? {
+      telegram_id: player.telegram_id,
+      username: player.username,
+      first_name: player.first_name
+    } : 'НЕ НАЙДЕН');
+    
     if (!player) {
+      console.log('❌ Игрок не найден в базе данных');
       return res.status(404).json({ error: 'Player not found' });
     }
     
-    // Отправляем сообщение через Telegram Bot API
-    const { sendTelegramMessage } = require('./telegramBot');
-    
+    // Формируем сообщение
     const fullMessage = `💬 <b>Сообщение от администрации CosmoClick</b>\n\n${message}\n\n🕐 Отправлено: ${new Date().toLocaleString('ru-RU')}`;
+    console.log('📝 Сформированное сообщение:', fullMessage);
     
-    await sendTelegramMessage(playerId, fullMessage);
+    // Пытаемся отправить через разные способы
+    console.log('📤 Начинаем отправку сообщения...');
+    
+    // Способ 1: Через существующую функцию (если есть)
+    try {
+      const { sendTelegramMessage } = require('./telegramBot');
+      console.log('✅ Функция sendTelegramMessage найдена, используем её');
+      await sendTelegramMessage(playerId, fullMessage);
+      console.log('✅ Сообщение отправлено через sendTelegramMessage');
+    } catch (telegramBotError) {
+      console.log('⚠️ Ошибка через telegramBot:', telegramBotError.message);
+      
+      // Способ 2: Прямой вызов Telegram API
+      console.log('🔄 Пробуем прямой вызов Telegram API...');
+      
+      const axios = require('axios');
+      const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+      
+      if (!BOT_TOKEN) {
+        throw new Error('TELEGRAM_BOT_TOKEN не установлен в переменных окружения');
+      }
+      
+      console.log('🔑 BOT_TOKEN найден:', BOT_TOKEN ? 'ДА (длина: ' + BOT_TOKEN.length + ')' : 'НЕТ');
+      
+      const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+      const payload = {
+        chat_id: playerId,
+        text: fullMessage,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      };
+      
+      console.log('🌐 URL для запроса:', telegramUrl.replace(BOT_TOKEN, 'HIDDEN_TOKEN'));
+      console.log('📦 Payload для Telegram:', { ...payload, text: payload.text.substring(0, 50) + '...' });
+      
+      const telegramResponse = await axios.post(telegramUrl, payload, {
+        timeout: 10000 // 10 секунд таймаут
+      });
+      
+      console.log('📥 Ответ от Telegram API:', {
+        ok: telegramResponse.data.ok,
+        message_id: telegramResponse.data.result?.message_id,
+        error_code: telegramResponse.data.error_code,
+        description: telegramResponse.data.description
+      });
+      
+      if (!telegramResponse.data.ok) {
+        throw new Error(`Telegram API ошибка: ${telegramResponse.data.description} (код: ${telegramResponse.data.error_code})`);
+      }
+    }
     
     // Логируем отправку (если таблица существует)
     try {
@@ -807,14 +870,16 @@ router.post('/send-message/:telegramId', async (req, res) => {
         JSON.stringify({
           admin_id: req.params.telegramId,
           message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          success: true
         })
       ]);
+      console.log('📝 Действие залогировано в базу данных');
     } catch (logError) {
       console.log('⚠️ Не удалось логировать отправку сообщения:', logError.message);
     }
     
-    console.log(`✅ Сообщение отправлено игроку ${playerId} (${player.first_name || player.username})`);
+    console.log(`✅ Сообщение успешно отправлено игроку ${playerId} (${player.first_name || player.username})`);
     
     res.json({
       success: true,
@@ -823,14 +888,36 @@ router.post('/send-message/:telegramId', async (req, res) => {
         telegram_id: playerId,
         first_name: player.first_name,
         username: player.username
+      },
+      debug: {
+        message_length: message.length,
+        full_message_length: fullMessage.length,
+        timestamp: new Date().toISOString()
       }
     });
     
   } catch (err) {
-    console.error('❌ Ошибка отправки сообщения игроку:', err);
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА отправки сообщения игроку:', err);
+    console.error('❌ Stack trace:', err.stack);
+    
+    // Дополнительная диагностика
+    console.log('🔍 Дополнительная диагностика:');
+    console.log('- Player ID тип:', typeof playerId);
+    console.log('- Player ID значение:', playerId);
+    console.log('- Message тип:', typeof message);
+    console.log('- Message длина:', message?.length);
+    console.log('- BOT_TOKEN установлен:', !!process.env.TELEGRAM_BOT_TOKEN);
+    console.log('- Текущее время:', new Date().toISOString());
+    
     res.status(500).json({ 
       error: 'Internal server error', 
-      details: err.message 
+      details: err.message,
+      debug: {
+        player_id: playerId,
+        message_length: message?.length,
+        error_type: err.constructor.name,
+        bot_token_exists: !!process.env.TELEGRAM_BOT_TOKEN
+      }
     });
   }
 });

@@ -115,6 +115,98 @@ router.post('/notify-ton', adminAuth, async (req, res) => {
   }
 });
 
+// ===== ДОБАВИТЬ В routes/test.js для тестирования =====
+
+// 🧪 POST /api/test/send-player-message - тестовая отправка сообщения игроку
+router.post('/send-player-message', async (req, res) => {
+  try {
+    const { playerId, message } = req.body;
+    
+    console.log('🧪 === ТЕСТОВАЯ ОТПРАВКА СООБЩЕНИЯ ИГРОКУ ===');
+    console.log('📋 Параметры:', { playerId, message });
+    
+    if (!playerId || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Необходимы playerId и message' 
+      });
+    }
+    
+    // Проверяем игрока в базе
+    const pool = require('../db');
+    const playerResult = await pool.query(
+      'SELECT telegram_id, username, first_name FROM players WHERE telegram_id = $1',
+      [playerId]
+    );
+    
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Игрок не найден в базе данных',
+        player_id: playerId
+      });
+    }
+    
+    const player = playerResult.rows[0];
+    console.log('👤 Найден игрок:', player);
+    
+    // Отправляем сообщение
+    const axios = require('axios');
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    
+    if (!BOT_TOKEN) {
+      return res.status(500).json({
+        success: false,
+        error: 'TELEGRAM_BOT_TOKEN не настроен'
+      });
+    }
+    
+    const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const testMessage = `🧪 <b>Тестовое сообщение от CosmoClick</b>\n\n${message}\n\n⏰ ${new Date().toLocaleString('ru-RU')}`;
+    
+    console.log('📤 Отправляем в Telegram:', {
+      url: telegramUrl.replace(BOT_TOKEN, 'HIDDEN'),
+      chat_id: playerId,
+      message_preview: testMessage.substring(0, 100)
+    });
+    
+    const telegramResponse = await axios.post(telegramUrl, {
+      chat_id: playerId,
+      text: testMessage,
+      parse_mode: 'HTML'
+    });
+    
+    console.log('📥 Ответ Telegram:', telegramResponse.data);
+    
+    if (telegramResponse.data.ok) {
+      res.json({
+        success: true,
+        message: 'Тестовое сообщение отправлено успешно',
+        player: player,
+        telegram_response: {
+          message_id: telegramResponse.data.result.message_id,
+          chat_id: telegramResponse.data.result.chat.id
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: `Telegram API ошибка: ${telegramResponse.data.description}`,
+        error_code: telegramResponse.data.error_code,
+        player: player
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка тестовой отправки:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 // 💸 Тестовое уведомление о заявке на вывод
 router.post('/notify-withdrawal', adminAuth, async (req, res) => {
   try {
