@@ -9,6 +9,25 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 // Инициализируем бота
 const bot = new Telegraf(BOT_TOKEN);
 
+const cron = require('node-cron');
+const { sendDailySummary } = require('./telegramBot');
+
+// 📊 НАСТРОЙКА ЕЖЕДНЕВНОЙ СВОДКИ В 12:00 ПО МОСКОВСКОМУ ВРЕМЕНИ
+cron.schedule('0 12 * * *', async () => {
+  console.log('📊 Запуск ежедневной сводки...');
+  try {
+    await sendDailySummary();
+    console.log('✅ Ежедневная сводка отправлена успешно');
+  } catch (error) {
+    console.error('❌ Ошибка отправки ежедневной сводки:', error);
+  }
+}, {
+  scheduled: true,
+  timezone: "Europe/Moscow" // Московское время
+});
+
+console.log('⏰ Cron задача для ежедневной сводки настроена на 12:00 МСК');
+
 // Middleware
 app.use(express.static('public'));
 app.use(cors({

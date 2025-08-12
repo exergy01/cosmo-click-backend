@@ -10,6 +10,9 @@ const router = express.Router();
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
+// ===== ДОБАВИТЬ В НАЧАЛО routes/wallet.js =====
+const { notifyStarsDeposit, notifyTonDeposit, notifyWithdrawalRequest } = require('../telegramBot');
+
 // POST /api/wallet/connect - Подключение кошелька через TON Connect
 router.post('/connect', async (req, res) => {
   const { telegram_id, wallet_address, signature } = req.body;
@@ -83,6 +86,7 @@ router.post('/disconnect', async (req, res) => {
 });
 
 // POST /api/wallet/prepare-withdrawal - Подготовка вывода средств
+// ===== ОБНОВИТЬ prepare-withdrawal ФУНКЦИЮ =====
 router.post('/prepare-withdrawal', async (req, res) => {
   const { telegram_id, amount } = req.body;
   
@@ -96,43 +100,30 @@ router.post('/prepare-withdrawal', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const player = await getPlayer(telegram_id);
-    if (!player) {
+    // Получаем данные игрока
+    const playerResult = await client.query(
+      'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+      [telegram_id]
+    );
+    
+    if (playerResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
 
+    const player = playerResult.rows[0];
     const playerBalance = parseFloat(player.ton || '0');
     const withdrawAmount = parseFloat(amount);
 
-    console.log('💰 Проверка баланса:', { playerBalance, withdrawAmount });
-
-    if (withdrawAmount <= 0) {
+    if (withdrawAmount <= 0 || withdrawAmount > playerBalance || withdrawAmount < 0.1) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
-    if (withdrawAmount > playerBalance) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Insufficient balance' });
-    }
-
-    // Минимальная сумма вывода
-    const MIN_WITHDRAWAL = 0.1;
-    if (withdrawAmount < MIN_WITHDRAWAL) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ 
-        error: `Minimum withdrawal amount is ${MIN_WITHDRAWAL} TON` 
-      });
-    }
-
-    // Создаем запись о предстоящем выводе
+    // Создаем заявку на вывод
     const withdrawalResult = await client.query(
       `INSERT INTO withdrawals (
-        player_id, 
-        amount, 
-        status, 
-        created_at
+        player_id, amount, status, created_at
       ) VALUES ($1, $2, 'pending', NOW()) 
       RETURNING id`,
       [telegram_id, withdrawAmount]
@@ -144,15 +135,93 @@ router.post('/prepare-withdrawal', async (req, res) => {
 
     console.log(`✅ Заявка на вывод создана: ${withdrawalId}`);
 
+    // 🔥 ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ АДМИНУ О ЗАЯВКЕ НА ВЫВОД
+    await notifyWithdrawalRequest(player, withdrawAmount, withdrawalId);
+
     res.json({
       success: true,
       withdrawal_id: withdrawalId,
       amount: withdrawAmount,
-      payload: Buffer.from(`withdrawal:${withdrawalId}`).toString('base64')
+      message: 'Заявка на вывод создана и отправлена администратору'
     });
 
   } catch (err) {
     console.error('❌ Ошибка подготовки вывода:', err);
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// ===== ДОБАВИТЬ process-deposit ФУНКЦИЮ С УВЕДОМЛЕНИЕМ =====
+router.post('/process-deposit', async (req, res) => {
+  const { player_id, amount, transaction_hash } = req.body;
+  
+  console.log('💰 Обработка пополнения TON:', { player_id, amount, transaction_hash });
+  
+  if (!player_id || !amount || !transaction_hash) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Проверяем дублирование
+    const existingTx = await client.query(
+      'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+      [transaction_hash]
+    );
+
+    if (existingTx.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Transaction already processed' });
+    }
+
+    // Получаем данные игрока ДЛЯ УВЕДОМЛЕНИЯ
+    const playerResult = await client.query(
+      'SELECT telegram_id, first_name, username FROM players WHERE telegram_id = $1',
+      [player_id]
+    );
+
+    if (playerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    const playerData = playerResult.rows[0];
+    const depositAmount = parseFloat(amount);
+
+    // Добавляем TON к балансу игрока
+    await client.query(
+      'UPDATE players SET ton = ton + $1 WHERE telegram_id = $2',
+      [depositAmount, player_id]
+    );
+
+    // Записываем транзакцию пополнения
+    await client.query(
+      `INSERT INTO ton_deposits (
+        player_id, amount, transaction_hash, status, created_at
+      ) VALUES ($1, $2, $3, 'completed', NOW())`,
+      [player_id, depositAmount, transaction_hash]
+    );
+
+    await client.query('COMMIT');
+
+    console.log(`✅ Пополнение обработано: ${player_id} +${depositAmount} TON`);
+
+    // 🔥 ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ АДМИНУ О ПОПОЛНЕНИИ TON
+    await notifyTonDeposit(playerData, depositAmount, transaction_hash);
+
+    res.json({
+      success: true,
+      message: 'Deposit processed successfully',
+      amount: depositAmount
+    });
+
+  } catch (err) {
+    console.error('❌ Ошибка обработки пополнения:', err);
     await client.query('ROLLBACK');
     res.status(500).json({ error: 'Internal server error' });
   } finally {
@@ -336,46 +405,121 @@ router.post('/create-stars-invoice', async (req, res) => {
 });
 
 // POST /api/wallet/webhook-stars - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ===== ЗАМЕНИТЬ webhook-stars ФУНКЦИЮ =====
 router.post('/webhook-stars', async (req, res) => {
   console.log('🎯 Stars webhook получен:', JSON.stringify(req.body, null, 2));
   
-  const { pre_checkout_query, successful_payment, message } = req.body;
+  const { pre_checkout_query, message } = req.body;
   
   try {
-    // Обработка pre_checkout_query (подтверждение платежа)
+    // Обработка pre_checkout_query
     if (pre_checkout_query) {
-      console.log('🔍 Pre-checkout query:', pre_checkout_query);
-      
       await bot.telegram.answerPreCheckoutQuery(pre_checkout_query.id, true);
       console.log('✅ Pre-checkout подтвержден');
       return res.json({ success: true });
     }
     
-    // Обработка successful_payment (успешный платеж)
-    if (successful_payment) {
-      console.log('💰 Successful payment:', successful_payment);
-      // ... твой существующий код для начисления Stars
+    // 🔥 ОБРАБОТКА УСПЕШНОГО ПЛАТЕЖА С УВЕДОМЛЕНИЕМ
+    if (message && message.successful_payment) {
+      const payment = message.successful_payment;
+      const payload = JSON.parse(payment.invoice_payload);
+      const playerId = payload.player_id;
+      const amount = payment.total_amount;
+      
+      console.log(`💰 Обрабатываем платеж: ${amount} Stars для игрока ${playerId}`);
+      
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // Проверяем дублирование
+        const existingTx = await client.query(
+          'SELECT id FROM star_transactions WHERE telegram_payment_id = $1',
+          [payment.telegram_payment_charge_id]
+        );
+        
+        if (existingTx.rows.length > 0) {
+          console.log('⚠️ Транзакция уже была обработана');
+          await client.query('ROLLBACK');
+          return res.json({ success: true, message: 'Already processed' });
+        }
+        
+        // Получаем данные игрока ДЛЯ УВЕДОМЛЕНИЯ
+        const playerResult = await client.query(
+          'SELECT telegram_id, first_name, username FROM players WHERE telegram_id = $1',
+          [playerId]
+        );
+        
+        if (playerResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Player not found' });
+        }
+        
+        const playerData = playerResult.rows[0];
+        
+        // Начисляем Stars
+        await client.query(
+          'UPDATE players SET telegram_stars = COALESCE(telegram_stars, 0) + $1 WHERE telegram_id = $2',
+          [amount, playerId]
+        );
+        
+        // Записываем транзакцию
+        await client.query(
+          `INSERT INTO star_transactions (
+            player_id, amount, transaction_type, description,
+            telegram_payment_id, status, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [
+            playerId,
+            amount,
+            'deposit',
+            `Stars purchase: ${amount} stars`,
+            payment.telegram_payment_charge_id,
+            'completed'
+          ]
+        );
+        
+        await client.query('COMMIT');
+        
+        console.log(`✅ Начислено ${amount} Stars игроку ${playerId}`);
+        
+        // 🔥 ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ АДМИНУ
+        await notifyStarsDeposit(playerData, amount);
+        
+        // Уведомляем игрока
+        try {
+          await bot.telegram.sendMessage(
+            playerId,
+            `🎉 Поздравляем! Ваш баланс пополнен на ${amount} ⭐ Stars!`,
+            {
+              reply_markup: {
+                inline_keyboard: [[{
+                  text: '🎮 Открыть игру',
+                  web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
+                }]]
+              }
+            }
+          );
+        } catch (msgErr) {
+          console.error('❌ Ошибка уведомления игрока:', msgErr);
+        }
+        
+      } catch (dbErr) {
+        console.error('❌ Ошибка БД при обработке Stars:', dbErr);
+        await client.query('ROLLBACK');
+        throw dbErr;
+      } finally {
+        client.release();
+      }
+      
       return res.json({ success: true });
     }
     
-    // ⚠️ ДОБАВИТЬ: Если это обычное сообщение - передаем боту
+    // Обработка обычных сообщений
     if (message && !message.successful_payment) {
-      console.log('📨 Обычное сообщение бота, передаем Telegraf:', message.text || 'unknown');
-      
-      // Создаем экземпляр бота для обработки обычных сообщений
-      const { Telegraf } = require('telegraf');
+      console.log('📨 Обычное сообщение бота:', message.text || 'unknown');
       const messageBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-      
-      // Настраиваем команды
-      messageBot.start((ctx) => {
-        ctx.reply('Привет! Бот запущен и готов к работе. Запускай игру через Web App!');
-      });
-      
-      messageBot.help((ctx) => {
-        ctx.reply('Я бот для CosmoClick Game.');
-      });
-      
-      // Обрабатываем сообщение
+      messageBot.start((ctx) => ctx.reply('Привет! Бот запущен и готов к работе.'));
       await messageBot.handleUpdate(req.body);
       return res.json({ success: true });
     }
