@@ -420,6 +420,85 @@ cron.schedule('0 * * * *', async () => {
 
 console.log('⏰ UNIFIED Cron задача для очистки премиума настроена на каждый час');
 
+// Добавляем НОВЫЙ CRON JOB в index.js (после существующих cron jobs)
+
+// 🔄 НОВЫЙ CRON JOB: Ежедневный сброс счетчиков рекламы заданий в полночь МСК
+cron.schedule('0 0 * * *', async () => {
+  console.log('🔄 === ЕЖЕДНЕВНЫЙ СБРОС РЕКЛАМЫ ЗАДАНИЙ ===');
+  console.log('⏰ Время:', new Date().toISOString());
+  
+  try {
+    // Получаем игроков, у которых нужно сбросить счетчик
+    const playersToResetResult = await pool.query(`
+      SELECT telegram_id, quest_ad_views, first_name, username
+      FROM players 
+      WHERE quest_ad_views > 0 
+         OR quest_ad_last_reset::date < CURRENT_DATE
+         OR quest_ad_last_reset IS NULL
+    `);
+    
+    const playersToReset = playersToResetResult.rows;
+    console.log(`📊 Игроков для сброса: ${playersToReset.length}`);
+    
+    if (playersToReset.length > 0) {
+      // Сбрасываем счетчики
+      const resetResult = await pool.query(`
+        UPDATE players 
+        SET quest_ad_views = 0, 
+            quest_ad_last_reset = NOW()
+        WHERE quest_ad_views > 0 
+           OR quest_ad_last_reset::date < CURRENT_DATE
+           OR quest_ad_last_reset IS NULL
+      `);
+      
+      console.log(`✅ Сброшено счетчиков рекламы заданий: ${resetResult.rowCount}`);
+      console.log(`📋 Игроки: ${playersToReset.slice(0, 10).map(p => 
+        `${p.telegram_id}(${p.first_name || p.username})`
+      ).join(', ')}${playersToReset.length > 10 ? '...' : ''}`);
+      
+      // Отправляем уведомление админу о сбросе
+      try {
+        const { Telegraf } = require('telegraf');
+        const notifyBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+        const adminId = process.env.ADMIN_TELEGRAM_ID || '1222791281';
+        
+        await notifyBot.telegram.sendMessage(
+          adminId,
+          `🔄 Ежедневный сброс рекламы заданий выполнен!\n\n📊 Сброшено у ${resetResult.rowCount} игроков\n⏰ ${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}`
+        );
+      } catch (adminNotifyError) {
+        console.error('⚠️ Не удалось уведомить админа о сбросе:', adminNotifyError.message);
+      }
+    } else {
+      console.log('✅ Все счетчики рекламы заданий уже актуальны');
+    }
+    
+    console.log('🏁 Ежедневный сброс рекламы заданий завершен успешно');
+    
+  } catch (error) {
+    console.error('❌ ОШИБКА ежедневного сброса рекламы заданий:', error);
+    
+    // Уведомляем админа об ошибке
+    try {
+      const { Telegraf } = require('telegraf');
+      const errorBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+      const adminId = process.env.ADMIN_TELEGRAM_ID || '1222791281';
+      
+      await errorBot.telegram.sendMessage(
+        adminId,
+        `🚨 ОШИБКА сброса рекламы заданий!\n\n${error.message}\n\n⏰ ${new Date().toLocaleString('ru-RU')}`
+      );
+    } catch (adminErrorNotify) {
+      console.error('❌ Не удалось уведомить админа об ошибке сброса:', adminErrorNotify.message);
+    }
+  }
+}, {
+  scheduled: true,
+  timezone: "Europe/Moscow"
+});
+
+console.log('⏰ НОВЫЙ Cron задача для ежедневного сброса рекламы заданий настроена на 00:00 МСК');
+
 // Запуск сервера
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);

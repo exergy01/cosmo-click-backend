@@ -3,6 +3,9 @@ const router = express.Router();
 const pool = require('../db');
 
 // GET /api/quests/:telegramId - получить задания для игрока
+// В quests.js - ИСПРАВЛЯЕМ функцию GET /api/quests/:telegramId
+// Заменяем существующую логику проверки сброса рекламы:
+
 router.get('/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
@@ -21,23 +24,36 @@ router.get('/:telegramId', async (req, res) => {
     const registrationLanguage = player.registration_language || 'en';
     const questLinkStates = player.quest_link_states || {};
     
-    // ✅ ДОБАВЛЕНО: Проверка сброса рекламы при каждом запросе заданий
+    // ✅ ИСПРАВЛЕНО: Более надежная проверка сброса рекламы
     const currentTime = new Date();
     const today = currentTime.toDateString();
-    const lastResetDate = player.quest_ad_last_reset ? new Date(player.quest_ad_last_reset).toDateString() : null;
     
     let questAdViews = player.quest_ad_views || 0;
+    let needsReset = false;
     
-    // Если новый день - сбрасываем счетчик
-    if (lastResetDate !== today) {
+    // Проверяем нужен ли сброс
+    if (!player.quest_ad_last_reset) {
+      // Если никогда не было сброса
+      needsReset = true;
+      console.log(`🔄 Первый сброс рекламы заданий для игрока ${telegramId}`);
+    } else {
+      const lastResetDate = new Date(player.quest_ad_last_reset).toDateString();
+      if (lastResetDate !== today) {
+        needsReset = true;
+        console.log(`🔄 Сброс рекламы заданий для игрока ${telegramId} (${lastResetDate} → ${today})`);
+      }
+    }
+    
+    // Если нужен сброс - выполняем
+    if (needsReset) {
       questAdViews = 0;
-      console.log(`🔄 Сброс счетчика рекламы заданий для игрока ${telegramId} (${lastResetDate} → ${today})`);
       
-      // Обновляем в базе данных
       await pool.query(
         'UPDATE players SET quest_ad_views = 0, quest_ad_last_reset = $1 WHERE telegram_id = $2',
         [currentTime, telegramId]
       );
+      
+      console.log(`✅ Сброс рекламы заданий выполнен для игрока ${telegramId}`);
     }
     
     // Получаем все активные задания
@@ -92,7 +108,7 @@ router.get('/:telegramId', async (req, res) => {
     res.json({ 
       success: true, 
       quests,
-      quest_ad_views: questAdViews // Добавляем актуальный счетчик
+      quest_ad_views: questAdViews // Актуальный счетчик после возможного сброса
     });
     
   } catch (error) {
@@ -100,6 +116,149 @@ router.get('/:telegramId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
+
+// Добавляем в quests.js - ТЕСТОВЫЙ endpoint для проверки сброса
+// (удалите после тестирования)
+
+// POST /api/quests/test-daily-reset - ТЕСТОВЫЙ сброс рекламы заданий
+router.post('/test-daily-reset', async (req, res) => {
+  try {
+    const { telegramId, adminId } = req.body;
+    
+    // Проверяем админа
+    if (!adminId || adminId !== '1222791281') {
+      return res.status(403).json({ error: 'Access denied - admin only' });
+    }
+    
+    console.log('🧪 ТЕСТОВЫЙ сброс рекламы заданий запущен админом:', adminId);
+    
+    if (telegramId) {
+      // Сброс для конкретного игрока
+      const beforeResult = await pool.query(
+        'SELECT telegram_id, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
+        [telegramId]
+      );
+      
+      if (beforeResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Player not found' });
+      }
+      
+      const before = beforeResult.rows[0];
+      
+      await pool.query(
+        'UPDATE players SET quest_ad_views = 0, quest_ad_last_reset = NOW() WHERE telegram_id = $1',
+        [telegramId]
+      );
+      
+      const afterResult = await pool.query(
+        'SELECT telegram_id, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
+        [telegramId]
+      );
+      
+      const after = afterResult.rows[0];
+      
+      res.json({
+        success: true,
+        message: 'Test reset completed for specific player',
+        before: before,
+        after: after
+      });
+      
+    } else {
+      // Сброс для всех игроков (как в cron job)
+      const beforeStats = await pool.query(
+        'SELECT COUNT(*) as total, SUM(quest_ad_views) as total_views FROM players WHERE quest_ad_views > 0'
+      );
+      
+      const resetResult = await pool.query(`
+        UPDATE players 
+        SET quest_ad_views = 0, 
+            quest_ad_last_reset = NOW()
+        WHERE quest_ad_views > 0 
+           OR quest_ad_last_reset::date < CURRENT_DATE
+           OR quest_ad_last_reset IS NULL
+      `);
+      
+      const afterStats = await pool.query(
+        'SELECT COUNT(*) as total_with_views FROM players WHERE quest_ad_views > 0'
+      );
+      
+      res.json({
+        success: true,
+        message: 'Test reset completed for all players',
+        before_stats: beforeStats.rows[0],
+        reset_count: resetResult.rowCount,
+        after_stats: afterStats.rows[0]
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка тестового сброса:', error);
+    res.status(500).json({ 
+      error: 'Test reset failed', 
+      details: error.message 
+    });
+  }
+});
+
+// GET /api/quests/check-reset-status/:telegramId - проверка статуса сброса
+router.get('/check-reset-status/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    
+    const result = await pool.query(
+      'SELECT telegram_id, quest_ad_views, quest_ad_last_reset, first_name FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+    
+    const player = result.rows[0];
+    const currentTime = new Date();
+    const today = currentTime.toDateString();
+    
+    let resetStatus = 'up_to_date';
+    let shouldReset = false;
+    
+    if (!player.quest_ad_last_reset) {
+      resetStatus = 'never_reset';
+      shouldReset = true;
+    } else {
+      const lastResetDate = new Date(player.quest_ad_last_reset).toDateString();
+      if (lastResetDate !== today) {
+        resetStatus = 'needs_reset';
+        shouldReset = true;
+      }
+    }
+    
+    res.json({
+      success: true,
+      player: {
+        telegram_id: player.telegram_id,
+        name: player.first_name,
+        quest_ad_views: player.quest_ad_views,
+        quest_ad_last_reset: player.quest_ad_last_reset
+      },
+      current_time: currentTime.toISOString(),
+      today: today,
+      last_reset_date: player.quest_ad_last_reset ? new Date(player.quest_ad_last_reset).toDateString() : null,
+      reset_status: resetStatus,
+      should_reset: shouldReset
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка проверки статуса:', error);
+    res.status(500).json({ error: 'Check failed', details: error.message });
+  }
+});
+
+
+
+
 
 // POST /api/quests/click_link - обработка клика по ссылке задания
 router.post('/click_link', async (req, res) => {
