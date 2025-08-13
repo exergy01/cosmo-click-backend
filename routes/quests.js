@@ -524,6 +524,247 @@ router.post('/complete', async (req, res) => {
   }
 });
 
+// Добавляем в quests.js - НОВЫЙ API для тестирования мультиязычных заданий
+
+// GET /api/quests/v2/:telegramId - новая версия с мультиязычностью
+router.get('/v2/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    const { force_language } = req.query; // для тестирования принудительный язык
+    
+    console.log(`🆕 V2 API: Загрузка заданий для игрока ${telegramId}`);
+    
+    // Получаем игрока с его данными
+    const playerResult = await pool.query(
+      'SELECT registration_language, language, quest_link_states, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+    
+    const player = playerResult.rows[0];
+    
+    // Определяем язык игрока (с возможностью принудительного изменения для тестов)
+    let userLanguage = force_language || player.registration_language || player.language || 'en';
+    console.log(`🌍 Язык игрока: ${userLanguage} ${force_language ? '(принудительно)' : ''}`);
+    
+    // Проверяем сброс рекламы (как в старом API)
+    const currentTime = new Date();
+    const today = currentTime.toDateString();
+    let questAdViews = player.quest_ad_views || 0;
+    let needsReset = false;
+    
+    if (!player.quest_ad_last_reset) {
+      needsReset = true;
+    } else {
+      const lastResetDate = new Date(player.quest_ad_last_reset).toDateString();
+      if (lastResetDate !== today) {
+        needsReset = true;
+      }
+    }
+    
+    if (needsReset) {
+      questAdViews = 0;
+      await pool.query(
+        'UPDATE players SET quest_ad_views = 0, quest_ad_last_reset = $1 WHERE telegram_id = $2',
+        [currentTime, telegramId]
+      );
+      console.log(`🔄 V2: Сброс рекламы для игрока ${telegramId}`);
+    }
+    
+    // 🆕 НОВАЯ ЛОГИКА: Загружаем задания из новых таблиц
+    const questsResult = await pool.query(`
+      SELECT 
+        qt.id,
+        qt.quest_key,
+        qt.quest_type,
+        qt.reward_cs,
+        qt.quest_data,
+        qt.target_languages,
+        qt.is_active,
+        qt.sort_order,
+        -- Пытаемся получить перевод на нужном языке
+        COALESCE(
+          qtr_user.quest_name, 
+          qtr_en.quest_name, 
+          qt.quest_key
+        ) as quest_name,
+        COALESCE(
+          qtr_user.description, 
+          qtr_en.description, 
+          'No description available'
+        ) as description,
+        COALESCE(
+          qtr_user.manual_check_user_instructions, 
+          qtr_en.manual_check_user_instructions
+        ) as manual_check_user_instructions,
+        -- Информация о языке перевода
+        CASE 
+          WHEN qtr_user.language_code IS NOT NULL THEN qtr_user.language_code
+          WHEN qtr_en.language_code IS NOT NULL THEN qtr_en.language_code
+          ELSE 'no_translation'
+        END as used_language
+      FROM quest_templates qt
+      -- Перевод на языке пользователя
+      LEFT JOIN quest_translations qtr_user ON qt.quest_key = qtr_user.quest_key 
+        AND qtr_user.language_code = $1
+      -- Резервный английский перевод
+      LEFT JOIN quest_translations qtr_en ON qt.quest_key = qtr_en.quest_key 
+        AND qtr_en.language_code = 'en'
+      WHERE qt.is_active = true
+        AND (
+          qt.target_languages IS NULL 
+          OR $1 = ANY(qt.target_languages)
+        )
+      ORDER BY qt.sort_order, qt.id
+    `, [userLanguage]);
+    
+    // Получаем выполненные задания игрока
+    const completedResult = await pool.query(
+      'SELECT quest_id, quest_key FROM player_quests WHERE telegram_id = $1 AND completed = true',
+      [telegramId]
+    );
+    
+    const completedQuestIds = completedResult.rows.map(row => row.quest_id);
+    const completedQuestKeys = completedResult.rows.map(row => row.quest_key).filter(Boolean);
+    
+    // Обрабатываем состояния таймеров (как в старом API)
+    const questLinkStates = player.quest_link_states || {};
+    const updatedLinkStates = { ...questLinkStates };
+    
+    Object.keys(updatedLinkStates).forEach(questId => {
+      const state = updatedLinkStates[questId];
+      if (state.clicked_at) {
+        const clickedTime = new Date(state.clicked_at);
+        const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
+        const isCompleted = elapsedSeconds >= 30;
+        
+        updatedLinkStates[questId] = {
+          ...state,
+          timer_remaining: Math.max(0, 30 - elapsedSeconds),
+          can_claim: isCompleted
+        };
+      }
+    });
+    
+    // Объединяем данные
+    const quests = questsResult.rows.map(quest => ({
+      // Для совместимости со старым API
+      quest_id: quest.id,
+      quest_name: quest.quest_name,
+      quest_type: quest.quest_type,
+      description: quest.description,
+      reward_cs: quest.reward_cs,
+      quest_data: quest.quest_data,
+      completed: completedQuestIds.includes(quest.id) || completedQuestKeys.includes(quest.quest_key),
+      
+      // Новые поля
+      quest_key: quest.quest_key,
+      target_languages: quest.target_languages,
+      used_language: quest.used_language,
+      manual_check_user_instructions: quest.manual_check_user_instructions
+    }));
+    
+    const stats = {
+      total_quests: quests.length,
+      completed_quests: quests.filter(q => q.completed).length,
+      available_quests: quests.filter(q => !q.completed).length,
+      by_type: quests.reduce((acc, quest) => {
+        acc[quest.quest_type] = (acc[quest.quest_type] || 0) + 1;
+        return acc;
+      }, {}),
+      by_language: quests.reduce((acc, quest) => {
+        acc[quest.used_language] = (acc[quest.used_language] || 0) + 1;
+        return acc;
+      }, {})
+    };
+    
+    console.log(`🎯 V2: Загружено ${quests.length} заданий для игрока ${telegramId} (язык: ${userLanguage})`);
+    console.log(`📊 V2: Статистика:`, stats);
+    
+    res.json({ 
+      success: true, 
+      version: 'v2',
+      user_language: userLanguage,
+      quests,
+      quest_ad_views: questAdViews,
+      stats
+    });
+    
+  } catch (error) {
+    console.error('❌ V2 Error fetching quests:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+// GET /api/quests/test-languages/:telegramId - тест всех языков
+router.get('/test-languages/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    const supportedLanguages = ['en', 'ru', 'es', 'fr', 'de', 'zh', 'ja'];
+    
+    const results = {};
+    
+    for (const lang of supportedLanguages) {
+      try {
+        // Делаем запрос к V2 API с принудительным языком
+        const questsResult = await pool.query(`
+          SELECT 
+            qt.quest_key,
+            qt.quest_type,
+            qt.target_languages,
+            COALESCE(
+              qtr_user.quest_name, 
+              qtr_en.quest_name, 
+              qt.quest_key
+            ) as quest_name,
+            CASE 
+              WHEN qtr_user.language_code IS NOT NULL THEN qtr_user.language_code
+              WHEN qtr_en.language_code IS NOT NULL THEN qtr_en.language_code
+              ELSE 'no_translation'
+            END as used_language
+          FROM quest_templates qt
+          LEFT JOIN quest_translations qtr_user ON qt.quest_key = qtr_user.quest_key 
+            AND qtr_user.language_code = $1
+          LEFT JOIN quest_translations qtr_en ON qt.quest_key = qtr_en.quest_key 
+            AND qtr_en.language_code = 'en'
+          WHERE qt.is_active = true
+            AND (
+              qt.target_languages IS NULL 
+              OR $1 = ANY(qt.target_languages)
+            )
+          ORDER BY qt.sort_order
+        `, [lang]);
+        
+        results[lang] = {
+          total_quests: questsResult.rows.length,
+          quests: questsResult.rows.map(q => ({
+            quest_key: q.quest_key,
+            quest_name: q.quest_name,
+            used_language: q.used_language,
+            target_languages: q.target_languages
+          }))
+        };
+        
+      } catch (langError) {
+        results[lang] = { error: langError.message };
+      }
+    }
+    
+    res.json({
+      success: true,
+      player_id: telegramId,
+      language_test_results: results
+    });
+    
+  } catch (error) {
+    console.error('❌ Error testing languages:', error);
+    res.status(500).json({ error: 'Language test failed', details: error.message });
+  }
+});
+
 // ВРЕМЕННЫЙ ЭНДПОИНТ ДЛЯ ОТЛАДКИ - удалите после исправления
 router.get('/debug/:telegramId/:questId', async (req, res) => {
   try {
