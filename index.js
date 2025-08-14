@@ -499,6 +499,293 @@ cron.schedule('0 0 * * *', async () => {
 
 console.log('⏰ НОВЫЙ Cron задача для ежедневного сброса рекламы заданий настроена на 00:00 МСК');
 
+// ========================
+// 📅 ПЛАНИРОВЩИК ЗАДАНИЙ - CRON АВТОМАТИЗАЦИЯ
+// Добавить в index.js ПОСЛЕ существующих cron jobs
+// ========================
+
+// 📅 ФУНКЦИЯ АВТОМАТИЧЕСКОЙ АКТИВАЦИИ ЗАДАНИЙ
+const processScheduledQuests = async () => {
+  console.log('📅 === ЗАПУСК ПЛАНИРОВЩИКА ЗАДАНИЙ ===');
+  console.log('⏰ Время:', new Date().toISOString());
+  
+  try {
+    // Получаем задания готовые к активации
+    const readyQuests = await pool.query(`
+      SELECT 
+        id, quest_key, quest_type, reward_cs,
+        schedule_type, schedule_pattern, schedule_time,
+        schedule_start_date, schedule_end_date,
+        auto_activate, auto_deactivate,
+        schedule_metadata, next_scheduled_activation,
+        is_active
+      FROM quest_templates 
+      WHERE is_scheduled = true 
+        AND schedule_status = 'active'
+        AND next_scheduled_activation IS NOT NULL 
+        AND next_scheduled_activation <= NOW()
+      ORDER BY next_scheduled_activation ASC
+    `);
+    
+    if (readyQuests.rows.length === 0) {
+      console.log('📅 Нет заданий готовых к активации');
+      return { processed: 0, activated: 0, errors: 0 };
+    }
+    
+    console.log(`📋 Найдено заданий к обработке: ${readyQuests.rows.length}`);
+    
+    let processedCount = 0;
+    let activatedCount = 0;
+    let errorCount = 0;
+    
+    for (const quest of readyQuests.rows) {
+      try {
+        processedCount++;
+        
+        console.log(`🔄 Обрабатываем задание: ${quest.quest_key} (${quest.quest_type})`);
+        
+        await pool.query('BEGIN');
+        
+        // Проверяем не истекло ли расписание
+        if (quest.schedule_end_date && new Date(quest.schedule_end_date) < new Date()) {
+          console.log(`⏰ Расписание истекло для ${quest.quest_key}, деактивируем`);
+          
+          await pool.query(`
+            UPDATE quest_templates 
+            SET schedule_status = 'completed', 
+                next_scheduled_activation = NULL,
+                is_active = false
+            WHERE id = $1
+          `, [quest.id]);
+          
+          await pool.query(`
+            INSERT INTO quest_scheduler_history (
+              quest_key, quest_template_id, action_type, scheduled_time, 
+              status, details, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `, [
+            quest.quest_key, quest.id, 'expired', quest.next_scheduled_activation,
+            'completed', JSON.stringify({ reason: 'schedule_expired' }), 'system'
+          ]);
+          
+          await pool.query('COMMIT');
+          continue;
+        }
+        
+        // Активируем задание если нужно
+        if (quest.auto_activate && !quest.is_active) {
+          await pool.query(
+            'UPDATE quest_templates SET is_active = true WHERE id = $1',
+            [quest.id]
+          );
+          
+          activatedCount++;
+          console.log(`✅ Активировано задание: ${quest.quest_key}`);
+          
+          // Логируем активацию
+          await pool.query(`
+            INSERT INTO quest_scheduler_history (
+              quest_key, quest_template_id, action_type, scheduled_time, 
+              status, details, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `, [
+            quest.quest_key, quest.id, 'activated', quest.next_scheduled_activation,
+            'completed', JSON.stringify({ auto_activated: true }), 'system'
+          ]);
+        }
+        
+        // Вычисляем следующую активацию
+        const nextActivation = calculateNextActivationForQuest(quest);
+        
+        await pool.query(`
+          UPDATE quest_templates 
+          SET last_scheduled_activation = NOW(),
+              next_scheduled_activation = $1
+          WHERE id = $2
+        `, [nextActivation, quest.id]);
+        
+        console.log(`🔄 Следующая активация ${quest.quest_key}: ${nextActivation || 'не запланирована'}`);
+        
+        await pool.query('COMMIT');
+        
+      } catch (questError) {
+        await pool.query('ROLLBACK');
+        errorCount++;
+        
+        console.error(`❌ Ошибка обработки ${quest.quest_key}:`, questError);
+        
+        // Логируем ошибку
+        try {
+          await pool.query(`
+            INSERT INTO quest_scheduler_history (
+              quest_key, quest_template_id, action_type, scheduled_time, 
+              status, error_message, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `, [
+            quest.quest_key, quest.id, 'error', quest.next_scheduled_activation,
+            'failed', questError.message, 'system'
+          ]);
+        } catch (logError) {
+          console.error('❌ Не удалось залогировать ошибку:', logError);
+        }
+      }
+    }
+    
+    const result = {
+      processed: processedCount,
+      activated: activatedCount,
+      errors: errorCount,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('📊 === РЕЗУЛЬТАТЫ ПЛАНИРОВЩИКА ===');
+    console.log(`✅ Обработано заданий: ${processedCount}`);
+    console.log(`🚀 Активировано заданий: ${activatedCount}`);
+    console.log(`❌ Ошибок: ${errorCount}`);
+    console.log('🏁 Планировщик заданий завершен');
+    
+    // Уведомляем админа при ошибках
+    if (errorCount > 0) {
+      try {
+        const { Telegraf } = require('telegraf');
+        const notifyBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+        const adminId = process.env.ADMIN_TELEGRAM_ID || '1222791281';
+        
+        await notifyBot.telegram.sendMessage(
+          adminId,
+          `⚠️ ПЛАНИРОВЩИК ЗАДАНИЙ\n\n📊 Обработано: ${processedCount}\n✅ Активировано: ${activatedCount}\n❌ Ошибок: ${errorCount}\n\n⏰ ${new Date().toLocaleString('ru-RU')}`
+        );
+      } catch (notifyError) {
+        console.error('❌ Не удалось уведомить админа:', notifyError);
+      }
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА планировщика заданий:', error);
+    
+    // Критическое уведомление админа
+    try {
+      const { Telegraf } = require('telegraf');
+      const errorBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+      const adminId = process.env.ADMIN_TELEGRAM_ID || '1222791281';
+      
+      await errorBot.telegram.sendMessage(
+        adminId,
+        `🚨 КРИТИЧЕСКАЯ ОШИБКА ПЛАНИРОВЩИКА!\n\n${error.message}\n\n⏰ ${new Date().toLocaleString('ru-RU')}`
+      );
+    } catch (notifyError) {
+      console.error('❌ Не удалось уведомить админа о критической ошибке:', notifyError);
+    }
+    
+    throw error;
+  }
+};
+
+// 📅 ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ РАСЧЕТА СЛЕДУЮЩЕЙ АКТИВАЦИИ
+function calculateNextActivationForQuest(quest) {
+  const now = new Date();
+  const { schedule_pattern, schedule_time, schedule_end_date, schedule_metadata } = quest;
+  
+  if (!schedule_pattern) return null;
+  
+  // Парсим время активации
+  const [hours, minutes] = (schedule_time || '09:00').split(':').map(Number);
+  
+  let nextDate = new Date();
+  nextDate.setHours(hours, minutes, 0, 0);
+  
+  switch (schedule_pattern) {
+    case 'daily':
+      // Каждый день
+      nextDate.setDate(nextDate.getDate() + 1);
+      break;
+      
+    case 'weekly':
+      // Каждую неделю в тот же день
+      nextDate.setDate(nextDate.getDate() + 7);
+      break;
+      
+    case 'weekdays':
+      // Только будние дни
+      do {
+        nextDate.setDate(nextDate.getDate() + 1);
+      } while (nextDate.getDay() === 0 || nextDate.getDay() === 6);
+      break;
+      
+    case 'weekends':
+      // Только выходные
+      do {
+        nextDate.setDate(nextDate.getDate() + 1);
+      } while (nextDate.getDay() !== 0 && nextDate.getDay() !== 6);
+      break;
+      
+    case 'monthly':
+      // Каждый месяц в тот же день
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      break;
+      
+    case 'one_time':
+      // Одноразовое задание
+      return null;
+      
+    default:
+      // По умолчанию - ежедневно
+      nextDate.setDate(nextDate.getDate() + 1);
+      break;
+  }
+  
+  // Проверяем не превышает ли дата окончания
+  if (schedule_end_date && nextDate > new Date(schedule_end_date)) {
+    return null;
+  }
+  
+  return nextDate;
+}
+
+// 📅 НОВЫЙ CRON JOB: Планировщик заданий (каждые 5 минут)
+cron.schedule('*/5 * * * *', async () => {
+  console.log('📅 Запуск CRON: Планировщик заданий');
+  try {
+    await processScheduledQuests();
+  } catch (error) {
+    console.error('❌ CRON планировщика failed:', error);
+  }
+}, {
+  scheduled: true,
+  timezone: "Europe/Moscow"
+});
+
+console.log('⏰ НОВЫЙ Cron задача планировщика заданий настроена на каждые 5 минут');
+
+// 📅 ENDPOINT ДЛЯ РУЧНОГО ЗАПУСКА ПЛАНИРОВЩИКА
+app.post('/api/admin/manual-run-scheduler', async (req, res) => {
+  const { admin_id } = req.body;
+  
+  // Проверяем админа
+  if (admin_id !== process.env.ADMIN_TELEGRAM_ID && admin_id !== '1222791281') {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  
+  try {
+    console.log('🔧 Ручной запуск планировщика заданий админом:', admin_id);
+    const result = await processScheduledQuests();
+    
+    res.json({
+      success: true,
+      message: 'Manual scheduler run completed',
+      ...result
+    });
+  } catch (error) {
+    console.error('❌ Ошибка ручного запуска планировщика:', error);
+    res.status(500).json({ 
+      error: 'Manual scheduler run failed', 
+      details: error.message 
+    });
+  }
+});
+
 // Запуск сервера
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
