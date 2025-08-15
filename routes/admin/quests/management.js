@@ -1,7 +1,7 @@
 // routes/admin/quests/management.js - Модуль управления заданиями
 const express = require('express');
 const pool = require('../../../db');
-const { isAdmin } = require('../auth');
+const { adminAuth } = require('../auth');
 
 const router = express.Router();
 
