@@ -164,7 +164,8 @@ try {
 
 // 🔥 ДОБАВЛЯЕМ АДМИНСКИЕ РОУТЫ
 try {
-  const adminRoutes = require('./routes/admin');
+  const adminRoutes = require('./routes/admin/index');
+  
   app.use('/api/admin', adminRoutes);
   console.log('✅ Админские роуты подключены');
 } catch (err) {
