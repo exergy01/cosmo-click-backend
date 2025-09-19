@@ -436,6 +436,333 @@ router.post('/check-deposit-by-address', async (req, res) => {
   }
 });
 
+// Добавить в routes/wallet.js - УЛУЧШЕННЫЙ ENDPOINT ДЛЯ ПРОВЕРКИ ДЕПОЗИТОВ
+
+// POST /api/wallet/check-all-deposits - УНИВЕРСАЛЬНЫЙ ПОИСК ВСЕХ ДЕПОЗИТОВ
+router.post('/check-all-deposits', async (req, res) => {
+  const { player_id, sender_address } = req.body;
+  
+  console.log('🔍 УНИВЕРСАЛЬНЫЙ ПОИСК ДЕПОЗИТОВ:', { player_id, sender_address });
+  
+  if (!player_id) {
+    return res.status(400).json({ error: 'Player ID is required' });
+  }
+
+  try {
+    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
+    
+    console.log('🔍 Получаем транзакции с игрового кошелька:', gameWalletAddress);
+    
+    // Получаем больше транзакций для поиска
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWalletAddress,
+        limit: 100, // Увеличиваем лимит
+        archival: false
+      },
+      timeout: 15000
+    });
+
+    if (!response.data.ok) {
+      console.log('❌ Ошибка TON API');
+      return res.json({ success: false, error: 'TON API error' });
+    }
+
+    const transactions = response.data.result;
+    console.log(`📊 Получено транзакций для анализа: ${transactions.length}`);
+    
+    let foundDeposits = [];
+    let totalProcessed = 0;
+    
+    for (const tx of transactions) {
+      // Пропускаем исходящие транзакции
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      
+      // Если указан sender_address, фильтруем по нему
+      if (sender_address && fromAddress !== sender_address) continue;
+      
+      // Пропускаем слишком маленькие транзакции
+      if (amount < 0.005) continue;
+      
+      console.log(`💰 Анализируем: ${amount} TON от ${fromAddress}`);
+
+      // Проверяем, не обрабатывали ли уже эту транзакцию
+      const existingTx = await pool.query(
+        'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+        [hash]
+      );
+
+      if (existingTx.rows.length > 0) {
+        console.log(`   ⚠️ Депозит уже был обработан ранее`);
+        continue;
+      }
+
+      // Попытаемся обработать депозит
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // Получаем данные игрока
+        const playerResult = await client.query(
+          'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+          [player_id]
+        );
+
+        if (playerResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          console.log(`   ❌ Игрок ${player_id} не найден`);
+          continue;
+        }
+
+        const playerData = playerResult.rows[0];
+        const currentBalance = parseFloat(playerData.ton || '0');
+        const newBalance = currentBalance + amount;
+
+        // Обновляем баланс игрока
+        await client.query(
+          'UPDATE players SET ton = $1 WHERE telegram_id = $2',
+          [newBalance, player_id]
+        );
+
+        // Записываем транзакцию депозита
+        await client.query(
+          `INSERT INTO ton_deposits (
+            player_id, amount, transaction_hash, status, created_at
+          ) VALUES ($1, $2, $3, 'completed', NOW())`,
+          [player_id, amount, hash]
+        );
+
+        // Записываем в историю баланса
+        await client.query(
+          `INSERT INTO balance_history (
+            telegram_id, currency, old_balance, new_balance, 
+            change_amount, reason, details, timestamp
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            player_id,
+            'ton',
+            currentBalance,
+            newBalance,
+            amount,
+            'auto_deposit_universal',
+            JSON.stringify({
+              transaction_hash: hash,
+              from_address: fromAddress,
+              auto_processed: true,
+              universal_check: true
+            })
+          ]
+        );
+
+        await client.query('COMMIT');
+        
+        foundDeposits.push({
+          amount: amount,
+          hash: hash,
+          from_address: fromAddress,
+          new_balance: newBalance
+        });
+        
+        totalProcessed++;
+        
+        console.log(`   ✅ ДЕПОЗИТ ОБРАБОТАН: ${amount} TON, новый баланс: ${newBalance}`);
+        
+        // Отправляем уведомление игроку
+        try {
+          await notifyTonDeposit(playerData, amount, hash);
+        } catch (notifyErr) {
+          console.error('⚠️ Ошибка уведомления:', notifyErr);
+        }
+
+      } catch (dbErr) {
+        await client.query('ROLLBACK');
+        console.error(`❌ Ошибка обработки депозита ${hash}:`, dbErr);
+      } finally {
+        client.release();
+      }
+    }
+
+    console.log(`🎯 РЕЗУЛЬТАТ УНИВЕРСАЛЬНОЙ ПРОВЕРКИ:`);
+    console.log(`   📊 Всего транзакций проанализировано: ${transactions.length}`);
+    console.log(`   ✅ Новых депозитов найдено и обработано: ${totalProcessed}`);
+    console.log(`   💰 Общая сумма зачислений: ${foundDeposits.reduce((sum, dep) => sum + dep.amount, 0).toFixed(8)} TON`);
+
+    if (totalProcessed > 0) {
+      const totalAmount = foundDeposits.reduce((sum, dep) => sum + dep.amount, 0);
+      
+      res.json({
+        success: true,
+        message: `Найдено и зачислено ${totalProcessed} депозитов`,
+        deposits_found: totalProcessed,
+        total_amount: totalAmount.toFixed(8),
+        deposits: foundDeposits.map(dep => ({
+          amount: dep.amount,
+          hash: dep.hash.substring(0, 10) + '...'
+        }))
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'Новых депозитов не обнаружено',
+        deposits_found: 0,
+        total_amount: '0'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка универсальной проверки депозитов:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/wallet/check-recent-deposits - ПРОВЕРКА ПОСЛЕДНИХ ДЕПОЗИТОВ (БЫСТРАЯ)
+router.post('/check-recent-deposits', async (req, res) => {
+  const { player_id, sender_address, minutes_back = 30 } = req.body;
+  
+  console.log('⚡ БЫСТРАЯ ПРОВЕРКА ПОСЛЕДНИХ ДЕПОЗИТОВ:', { 
+    player_id, 
+    sender_address, 
+    minutes_back 
+  });
+  
+  if (!player_id) {
+    return res.status(400).json({ error: 'Player ID is required' });
+  }
+
+  try {
+    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
+    
+    // Получаем только недавние транзакции
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWalletAddress,
+        limit: 20, // Меньше транзакций для быстроты
+        archival: false
+      },
+      timeout: 10000
+    });
+
+    if (!response.data.ok) {
+      return res.json({ success: false, error: 'TON API error' });
+    }
+
+    const transactions = response.data.result;
+    const cutoffTime = Date.now() - (minutes_back * 60 * 1000);
+    
+    console.log(`⚡ Анализируем ${transactions.length} транзакций за последние ${minutes_back} минут`);
+    
+    let foundDeposits = [];
+    
+    for (const tx of transactions) {
+      // Проверяем время транзакции
+      const txTime = tx.utime * 1000;
+      if (txTime < cutoffTime) continue;
+      
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      
+      // Фильтр по адресу отправителя
+      if (sender_address && fromAddress !== sender_address) continue;
+      
+      // Минимальная сумма
+      if (amount < 0.01) continue;
+
+      // Проверяем, не обрабатывали ли уже
+      const existingTx = await pool.query(
+        'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+        [hash]
+      );
+
+      if (existingTx.rows.length > 0) continue;
+
+      // Обрабатываем депозит (аналогично универсальной проверке)
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        const playerResult = await client.query(
+          'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+          [player_id]
+        );
+
+        if (playerResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          continue;
+        }
+
+        const playerData = playerResult.rows[0];
+        const currentBalance = parseFloat(playerData.ton || '0');
+        const newBalance = currentBalance + amount;
+
+        await client.query(
+          'UPDATE players SET ton = $1 WHERE telegram_id = $2',
+          [newBalance, player_id]
+        );
+
+        await client.query(
+          `INSERT INTO ton_deposits (
+            player_id, amount, transaction_hash, status, created_at
+          ) VALUES ($1, $2, $3, 'completed', NOW())`,
+          [player_id, amount, hash]
+        );
+
+        await client.query('COMMIT');
+        
+        foundDeposits.push({
+          amount: amount,
+          hash: hash,
+          from_address: fromAddress
+        });
+        
+        console.log(`✅ БЫСТРО ОБРАБОТАН ДЕПОЗИТ: ${amount} TON`);
+        
+      } catch (dbErr) {
+        await client.query('ROLLBACK');
+        console.error('Ошибка быстрой обработки:', dbErr);
+      } finally {
+        client.release();
+      }
+    }
+
+    console.log(`⚡ РЕЗУЛЬТАТ БЫСТРОЙ ПРОВЕРКИ: найдено ${foundDeposits.length} депозитов`);
+
+    if (foundDeposits.length > 0) {
+      const totalAmount = foundDeposits.reduce((sum, dep) => sum + dep.amount, 0);
+      
+      res.json({
+        success: true,
+        message: `Найдено ${foundDeposits.length} недавних депозитов`,
+        deposits_found: foundDeposits.length,
+        total_amount: totalAmount.toFixed(8)
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'Недавних депозитов не найдено',
+        deposits_found: 0
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка быстрой проверки депозитов:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // POST /api/wallet/prepare-withdrawal - ОБНОВИТЬ prepare-withdrawal ФУНКЦИЯ
 router.post('/prepare-withdrawal', async (req, res) => {
   const { telegram_id, amount } = req.body;
