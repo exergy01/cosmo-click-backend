@@ -257,6 +257,185 @@ router.post('/check-deposit', async (req, res) => {
   }
 });
 
+// ДОБАВЬТЕ ЭТОТ ENDPOINT в ваш wallet.js после существующего /check-deposit
+
+// POST /api/wallet/check-deposit-by-address - Проверка депозита по адресу отправителя
+router.post('/check-deposit-by-address', async (req, res) => {
+  const { player_id, expected_amount, sender_address, game_wallet } = req.body;
+  
+  console.log('🔍 Проверка депозита по адресу:', { 
+    player_id, 
+    expected_amount, 
+    sender_address, 
+    game_wallet 
+  });
+  
+  if (!player_id || !expected_amount || !sender_address) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const gameWalletAddress = game_wallet || process.env.GAME_WALLET_ADDRESS;
+    
+    // Получаем последние транзакции игрового кошелька
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWalletAddress,
+        limit: 50, // больше транзакций для поиска
+        archival: false
+      },
+      timeout: 10000
+    });
+
+    if (!response.data.ok) {
+      console.log('❌ Ошибка TON API');
+      return res.json({ success: false, error: 'TON API error' });
+    }
+
+    const transactions = response.data.result;
+    console.log(`📊 Получено транзакций для анализа: ${transactions.length}`);
+    
+    let foundDeposit = null;
+    
+    for (const tx of transactions) {
+      // Пропускаем исходящие транзакции
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      
+      console.log(`💰 Анализируем: ${amount} TON от ${fromAddress}`);
+
+      // Проверяем сумму (с погрешностью 0.001)
+      if (Math.abs(amount - expected_amount) > 0.001) {
+        console.log(`   ❌ Сумма не совпадает: ожидали ${expected_amount}, получили ${amount}`);
+        continue;
+      }
+
+      // Проверяем адрес отправителя
+      if (fromAddress !== sender_address) {
+        console.log(`   ❌ Адрес не совпадает: ожидали ${sender_address}, получили ${fromAddress}`);
+        continue;
+      }
+
+      // Проверяем, не обрабатывали ли уже
+      const existingTx = await pool.query(
+        'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+        [hash]
+      );
+
+      if (existingTx.rows.length > 0) {
+        console.log('   ✅ Депозит уже был обработан ранее');
+        return res.json({ success: true, message: 'Deposit already processed' });
+      }
+
+      foundDeposit = {
+        amount: amount,
+        hash: hash,
+        from_address: fromAddress,
+        player_id: player_id
+      };
+      
+      console.log(`   ✅ НАЙДЕН ПОДХОДЯЩИЙ ДЕПОЗИТ!`);
+      break;
+    }
+
+    if (!foundDeposit) {
+      console.log('❌ Подходящий депозит не найден');
+      return res.json({ success: false, message: 'Deposit not found yet' });
+    }
+
+    // Обрабатываем найденный депозит
+    console.log(`💰 Обрабатываем депозит: ${foundDeposit.amount} TON для игрока ${foundDeposit.player_id}`);
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Получаем данные игрока
+      const playerResult = await client.query(
+        'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+        [foundDeposit.player_id]
+      );
+
+      if (playerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.json({ success: false, error: 'Player not found' });
+      }
+
+      const playerData = playerResult.rows[0];
+      const currentBalance = parseFloat(playerData.ton || '0');
+      const newBalance = currentBalance + foundDeposit.amount;
+
+      // Обновляем баланс игрока
+      await client.query(
+        'UPDATE players SET ton = $1 WHERE telegram_id = $2',
+        [newBalance, foundDeposit.player_id]
+      );
+
+      // Записываем транзакцию
+      await client.query(
+        `INSERT INTO ton_deposits (
+          player_id, amount, transaction_hash, status, created_at
+        ) VALUES ($1, $2, $3, 'completed', NOW())`,
+        [foundDeposit.player_id, foundDeposit.amount, foundDeposit.hash]
+      );
+
+      // Записываем в историю баланса
+      await client.query(
+        `INSERT INTO balance_history (
+          telegram_id, currency, old_balance, new_balance, 
+          change_amount, reason, details, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          foundDeposit.player_id,
+          'ton',
+          currentBalance,
+          newBalance,
+          foundDeposit.amount,
+          'auto_deposit_by_address',
+          JSON.stringify({
+            transaction_hash: foundDeposit.hash,
+            from_address: foundDeposit.from_address,
+            auto_processed: true
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      console.log(`✅ Депозит зачислен: ${foundDeposit.player_id} +${foundDeposit.amount} TON`);
+      console.log(`💰 Новый баланс: ${currentBalance} → ${newBalance}`);
+
+      // Уведомляем игрока
+      try {
+        await notifyTonDeposit(playerData, foundDeposit.amount, foundDeposit.hash);
+      } catch (notifyErr) {
+        console.error('❌ Ошибка уведомления:', notifyErr);
+      }
+
+      res.json({
+        success: true,
+        message: 'Deposit processed successfully',
+        amount: foundDeposit.amount,
+        new_balance: newBalance
+      });
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('❌ Ошибка обработки депозита:', err);
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки депозита по адресу:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // POST /api/wallet/prepare-withdrawal - ОБНОВИТЬ prepare-withdrawal ФУНКЦИЯ
 router.post('/prepare-withdrawal', async (req, res) => {
   const { telegram_id, amount } = req.body;
