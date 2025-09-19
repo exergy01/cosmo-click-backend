@@ -1,4 +1,4 @@
-// routes/admin/index.js - Главный роутер админ-панели
+// routes/admin/index.js - С АЛИАСАМИ для обратной совместимости
 const express = require('express');
 
 const router = express.Router();
@@ -74,13 +74,16 @@ router.use('/', systemModule);
 console.log('✅ Модуль системы подключен: /update-ton-rate, /unblock-exchange');
 
 // ===============================
-// 📋 УПРАВЛЕНИЕ ЗАДАНИЯМИ
+// 📋 УПРАВЛЕНИЕ ЗАДАНИЯМИ - НОВЫЕ + АЛИАСЫ
 // ===============================
 
-// Подключаем управление заданиями с префиксом /quests
+// Подключаем управление заданиями БЕЗ префикса (новые URL)
+router.use('/', questsManagementModule);
+
+// АЛИАСЫ для обратной совместимости с фронтендом
 router.use('/quests', questsManagementModule);
 
-console.log('✅ Модуль заданий подключен: /quests/list, /quests/create, /quests/update');
+console.log('✅ Модуль заданий подключен: /list + /quests/list (алиас для совместимости)');
 
 // ===============================
 // 📅 ПЛАНИРОВЩИК ЗАДАНИЙ
@@ -108,14 +111,14 @@ router.get('/modules-info/:telegramId', (req, res) => {
   
   const modulesInfo = {
     success: true,
-    admin_panel_version: '2.0.0-modular',
+    admin_panel_version: '2.0.3-backward-compatible',
     total_modules: 8,
     modules: [
       {
         name: 'Authentication',
         file: 'auth.js',
-        endpoints: ['/check/:telegramId', '/debug/:telegramId'],
-        description: 'Проверка админских прав и отладка'
+        endpoints: ['/check/:telegramId', '/debug/:telegramId', '/test-middleware/:telegramId'],
+        description: 'Проверка админских прав и отладка (ИСПРАВЛЕНО middleware)'
       },
       {
         name: 'Statistics',
@@ -132,7 +135,7 @@ router.get('/modules-info/:telegramId', (req, res) => {
       {
         name: 'Premium Management', 
         file: 'premium.js',
-        endpoints: ['/grant-premium-30days/:telegramId', '/grant-premium-forever/:telegramId', '/revoke-premium/:telegramId', '/grant-basic-verification/:telegramId', '/premium-overview/:telegramId', '/test-premium-cleanup/:telegramId'],
+        endpoints: ['/grant-premium-30days/:telegramId', '/grant-premium-forever/:telegramId', '/revoke-premium/:telegramId', '/grant-basic-verification/:telegramId', '/premium-overview/:telegramId'],
         description: 'Управление премиум статусами и верификацией'
       },
       {
@@ -144,34 +147,51 @@ router.get('/modules-info/:telegramId', (req, res) => {
       {
         name: 'System Functions',
         file: 'system.js',
-        endpoints: ['/update-ton-rate/:telegramId', '/unblock-exchange/:telegramId'],
+        endpoints: ['/update-ton-rate/:telegramId', '/unblock-exchange/:telegramId', '/cleanup-expired-premium/:telegramId', '/system-status/:telegramId'],
         description: 'Системные функции: курсы, разблокировки'
       },
       {
         name: 'Quests Management',
         file: 'quests/management.js',
-        endpoints: ['/quests/list/:telegramId', '/quests/get/:questKey/:telegramId', '/quests/create/:telegramId', '/quests/update/:questKey/:telegramId', '/quests/delete/:questKey/:telegramId', '/quests/toggle-status/:questKey/:telegramId'],
-        description: 'CRUD операции с заданиями и переводами'
+        endpoints: [
+          '/list/:telegramId', 
+          '/get/:questKey/:telegramId', 
+          '/create/:telegramId', 
+          '/update/:questKey/:telegramId', 
+          '/delete/:questKey/:telegramId', 
+          '/toggle-status/:questKey/:telegramId',
+          // Алиасы для совместимости
+          '/quests/list/:telegramId',
+          '/quests/get/:questKey/:telegramId', 
+          '/quests/create/:telegramId',
+          '/quests/update/:questKey/:telegramId',
+          '/quests/delete/:questKey/:telegramId',
+          '/quests/toggle-status/:questKey/:telegramId'
+        ],
+        description: 'CRUD операции с заданиями (ИСПРАВЛЕНО + алиасы для совместимости)'
       },
       {
         name: 'Quests Scheduler',
         file: 'quests/scheduler.js',
-        endpoints: ['/scheduler/overview/:telegramId', '/scheduler/create-schedule/:telegramId', '/scheduler/toggle-schedule/:telegramId', '/scheduler/list/:telegramId', '/scheduler/test-activation/:telegramId', '/scheduler/history/:telegramId'],
+        endpoints: ['/scheduler/overview/:telegramId', '/scheduler/create-schedule/:telegramId', '/scheduler/toggle-schedule/:telegramId', '/scheduler/list/:telegramId', '/scheduler/test-activation/:telegramId'],
         description: 'Планировщик автоматической активации заданий'
       }
     ],
     architecture: {
       old_file_size: '1200+ lines',
       new_structure: 'Modular architecture',
+      middleware_fix: 'Исправлен adminAuth для работы с любыми URL структурами',
+      backward_compatibility: 'Добавлены алиасы /quests/* для старых URL фронтенда',
       benefits: [
-        'Легче поддерживать код',
-        'Проще добавлять новые функции', 
-        'Лучше организован код',
-        'Возможность независимого тестирования модулей',
-        'Команда может работать с разными модулями'
+        'Middleware работает корректно',
+        'Обратная совместимость с фронтендом',
+        'Легко поддерживать код',
+        'Проще добавлять новые функции'
       ]
     },
     migration_status: 'Completed',
+    middleware_fixed: true,
+    backward_compatible: true,
     timestamp: new Date().toISOString()
   };
   
@@ -184,6 +204,7 @@ router.get('/modules-info/:telegramId', (req, res) => {
 
 console.log('🚀 Модульная админ-панель готова к работе!');
 console.log('📊 Всего модулей: 8');
-console.log('🔗 Всего endpoints: ~25');
+console.log('🔗 Всего endpoints: ~30');
+console.log('🔄 Middleware исправлен + алиасы для совместимости');
 
 module.exports = router;

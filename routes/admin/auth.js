@@ -1,4 +1,4 @@
-// routes/admin/auth.js - Модуль аутентификации и проверки прав
+// routes/admin/auth.js - Модуль аутентификации и проверки прав (ИСПРАВЛЕНО)
 const express = require('express');
 const router = express.Router();
 
@@ -7,10 +7,27 @@ const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID;
 
 console.log('🔧 Модуль аутентификации загружен. ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, 'тип:', typeof ADMIN_TELEGRAM_ID);
 
-// 🛡️ Middleware для проверки админских прав
+// 🛡️ Middleware для проверки админских прав - ИСПРАВЛЕНО
 const adminAuth = (req, res, next) => {
-  // Получаем telegramId из параметров URL
-  const telegramId = req.params.telegramId;
+  // ИСПРАВЛЕНО: Ищем telegramId в разных местах URL
+  let telegramId = req.params.telegramId;
+  
+  // Если не найден в прямых параметрах, ищем в разных частях URL
+  if (!telegramId) {
+    const urlParts = req.url.split('/');
+    // Ищем число в URL (telegram ID всегда числовой)
+    for (const part of urlParts) {
+      if (/^\d+$/.test(part)) {
+        telegramId = part;
+        break;
+      }
+    }
+  }
+  
+  // Если всё ещё не найден, пробуем альтернативные параметры
+  if (!telegramId) {
+    telegramId = req.params.adminId || req.query.telegramId || req.body.telegramId;
+  }
   
   console.log('🔐 Проверка админских прав:', { 
     telegramId, 
@@ -21,13 +38,23 @@ const adminAuth = (req, res, next) => {
     adminIdStr: String(ADMIN_TELEGRAM_ID),
     stringMatch: String(telegramId) === String(ADMIN_TELEGRAM_ID),
     urlParams: req.params,
+    urlPath: req.url,
     method: req.method,
-    url: req.url
+    allUrlParts: req.url.split('/')
   });
   
   if (!telegramId) {
-    console.log('🚫 Telegram ID не предоставлен в URL параметрах');
-    return res.status(400).json({ error: 'Telegram ID is required' });
+    console.log('🚫 Telegram ID не предоставлен ни в URL параметрах, ни в частях URL');
+    return res.status(400).json({ 
+      error: 'Telegram ID is required',
+      debug: {
+        url: req.url,
+        params: req.params,
+        method: req.method,
+        urlParts: req.url.split('/'),
+        help: 'Убедитесь что URL содержит telegram ID'
+      }
+    });
   }
   
   // Приводим оба значения к строкам для правильного сравнения
@@ -40,15 +67,28 @@ const adminAuth = (req, res, next) => {
       expected: adminIdStr,
       match: telegramIdStr === adminIdStr
     });
-    return res.status(403).json({ error: 'Access denied' });
+    return res.status(403).json({ 
+      error: 'Access denied',
+      debug: {
+        receivedId: telegramIdStr,
+        expectedId: adminIdStr.substring(0, 4) + '***', // Частично скрываем ID в логах
+        isMatch: telegramIdStr === adminIdStr
+      }
+    });
   }
   
   console.log('✅ Админ права подтверждены для ID:', telegramIdStr);
+  
+  // ИСПРАВЛЕНО: Сохраняем найденный telegramId в req.params для дальнейшего использования
+  req.params.telegramId = telegramIdStr;
+  
   next();
 };
 
 // 🔍 Функция проверки админа (без middleware)
 const isAdmin = (telegramId) => {
+  if (!telegramId) return false;
+  
   const telegramIdStr = String(telegramId).trim();
   const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
   return telegramIdStr === adminIdStr;
@@ -97,12 +137,29 @@ router.get('/debug/:telegramId', (req, res) => {
       NODE_ENV: process.env.NODE_ENV,
       ADMIN_TELEGRAM_ID: process.env.ADMIN_TELEGRAM_ID
     },
+    url_info: {
+      full_url: req.url,
+      params: req.params,
+      query: req.query,
+      method: req.method
+    },
     timestamp: new Date().toISOString()
   };
   
   console.log('🔧 Debug запрос:', debugInfo);
   
   res.json(debugInfo);
+});
+
+// 🧪 GET /test-middleware/:telegramId - тест middleware
+router.get('/test-middleware/:telegramId', adminAuth, (req, res) => {
+  console.log('🧪 Тест middleware прошел успешно');
+  res.json({
+    success: true,
+    message: 'Middleware test passed',
+    telegramId: req.params.telegramId,
+    timestamp: new Date().toISOString()
+  });
 });
 
 module.exports = {

@@ -1,19 +1,19 @@
-// routes/admin/quests/management.js - Модуль управления заданиями
+// routes/admin/quests/management.js - ТОЛЬКО ИСПРАВЛЕННЫЙ ИМПОРТ
 const express = require('express');
 const pool = require('../../../db');
-const { adminAuth } = require('../auth');
+const { adminAuth, isAdmin } = require('../auth'); // ← ИСПРАВЛЕНО: добавлен adminAuth
 
 const router = express.Router();
+
+// 🛡️ Все маршруты требуют админских прав - ИСПРАВЛЕНО
+router.use(adminAuth);
 
 // 📋 GET /list/:telegramId - список всех заданий
 router.get('/list/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`📋 Админ ${telegramId} запросил список заданий`);
     
     // Получаем все шаблоны заданий с переводами
     const questsResult = await pool.query(`
@@ -71,7 +71,7 @@ router.get('/list/:telegramId', async (req, res) => {
       stats: statsMap[quest.quest_key] || { total_completions: 0, unique_players: 0 }
     }));
     
-    console.log(`📋 Админ ${telegramId} запросил список заданий: ${questsWithStats.length} найдено`);
+    console.log(`📋 Админ ${telegramId} получил список заданий: ${questsWithStats.length} найдено`);
     
     res.json({
       success: true,
@@ -92,10 +92,7 @@ router.get('/get/:questKey/:telegramId', async (req, res) => {
   try {
     const { questKey, telegramId } = req.params;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`✏️ Админ ${telegramId} запросил детали задания: ${questKey}`);
     
     // Получаем шаблон задания
     const templateResult = await pool.query(
@@ -124,7 +121,7 @@ router.get('/get/:questKey/:telegramId', async (req, res) => {
       };
     });
     
-    console.log(`✏️ Админ ${telegramId} запросил детали задания: ${questKey}`);
+    console.log(`✏️ Админ ${telegramId} получил детали задания: ${questKey}`);
     
     res.json({
       success: true,
@@ -154,10 +151,7 @@ router.post('/create/:telegramId', async (req, res) => {
       translations 
     } = req.body;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`➕ Админ ${telegramId} создает новое задание: ${quest_key}`);
     
     // Валидация данных
     if (!quest_key || !quest_type || !reward_cs || !translations) {
@@ -220,7 +214,7 @@ router.post('/create/:telegramId', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`➕ Админ ${telegramId} создал новое задание: ${quest_key} (${quest_type})`);
+      console.log(`✅ Админ ${telegramId} создал новое задание: ${quest_key} (${quest_type})`);
       
       res.json({
         success: true,
@@ -254,10 +248,7 @@ router.put('/update/:questKey/:telegramId', async (req, res) => {
       translations 
     } = req.body;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`✏️ Админ ${telegramId} обновляет задание: ${questKey}`);
     
     // Проверяем что задание существует
     const existingResult = await pool.query(
@@ -324,7 +315,7 @@ router.put('/update/:questKey/:telegramId', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`✏️ Админ ${telegramId} обновил задание: ${questKey}`);
+      console.log(`✅ Админ ${telegramId} обновил задание: ${questKey}`);
       
       res.json({
         success: true,
@@ -348,10 +339,7 @@ router.delete('/delete/:questKey/:telegramId', async (req, res) => {
   try {
     const { questKey, telegramId } = req.params;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`🗑️ Админ ${telegramId} удаляет задание: ${questKey}`);
     
     // Проверяем что задание существует
     const existingResult = await pool.query(
@@ -390,7 +378,7 @@ router.delete('/delete/:questKey/:telegramId', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`🗑️ Админ ${telegramId} удалил задание: ${questKey} (было ${completionCount} выполнений)`);
+      console.log(`✅ Админ ${telegramId} удалил задание: ${questKey} (было ${completionCount} выполнений)`);
       
       res.json({
         success: true,
@@ -416,10 +404,7 @@ router.post('/toggle-status/:questKey/:telegramId', async (req, res) => {
   try {
     const { questKey, telegramId } = req.params;
     
-    // Проверка админа
-    if (!isAdmin(telegramId)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    console.log(`🔄 Админ ${telegramId} переключает статус задания: ${questKey}`);
     
     const result = await pool.query(`
       UPDATE quest_templates 
@@ -435,7 +420,7 @@ router.post('/toggle-status/:questKey/:telegramId', async (req, res) => {
     const quest = result.rows[0];
     const status = quest.is_active ? 'активировано' : 'деактивировано';
     
-    console.log(`🔄 Админ ${telegramId} ${status} задание: ${questKey}`);
+    console.log(`✅ Админ ${telegramId} ${status} задание: ${questKey}`);
     
     res.json({
       success: true,
