@@ -1,8 +1,9 @@
-// routes/wallet.js - ИСПРАВЛЕННАЯ ВЕРСИЯ - ЧАСТЬ 1
+// routes/wallet.js - ПОЛНАЯ ВЕРСИЯ С НОВЫМ ENDPOINT ДЛЯ ПРОВЕРКИ ДЕПОЗИТОВ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
 const { Telegraf } = require('telegraf');
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -82,6 +83,177 @@ router.post('/disconnect', async (req, res) => {
   } catch (err) {
     console.error('❌ Ошибка отключения кошелька:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 🔥 НОВЫЙ ENDPOINT: Проверка конкретного депозита
+router.post('/check-deposit', async (req, res) => {
+  const { player_id, expected_amount, wallet_address } = req.body;
+  
+  console.log('🔍 Проверка депозита:', { player_id, expected_amount, wallet_address });
+  
+  if (!player_id || !expected_amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const gameWallet = process.env.GAME_WALLET_ADDRESS || wallet_address;
+    
+    // Получаем последние транзакции из блокчейна TON
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWallet,
+        limit: 20, // проверяем последние 20 транзакций
+        archival: false
+      },
+      timeout: 10000
+    });
+
+    if (!response.data.ok) {
+      console.log('❌ Ошибка API TON Center');
+      return res.json({ success: false, error: 'TON API error' });
+    }
+
+    const transactions = response.data.result;
+    console.log(`📊 Получено транзакций: ${transactions.length}`);
+    
+    let foundDeposit = null;
+    
+    for (const tx of transactions) {
+      // Пропускаем исходящие транзакции
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+
+      const amount = parseFloat(tx.in_msg.value) / 1000000000; // конвертируем в TON
+      const hash = tx.transaction_id.hash;
+      
+      console.log(`💰 Транзакция: ${amount} TON, комментарий: "${tx.in_msg.message || 'нет'}"`);
+
+      // Проверяем сумму (с погрешностью 0.001)
+      if (Math.abs(amount - expected_amount) > 0.001) continue;
+
+      // Извлекаем telegram_id из комментария
+      let commentPlayerId = null;
+      if (tx.in_msg.message) {
+        const match = tx.in_msg.message.match(/(\d{8,12})/);
+        if (match) {
+          commentPlayerId = match[1];
+        }
+      }
+
+      // Проверяем что это наш игрок
+      if (commentPlayerId !== player_id) continue;
+
+      // Проверяем, не обрабатывали ли уже эту транзакцию
+      const existingTx = await pool.query(
+        'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+        [hash]
+      );
+
+      if (existingTx.rows.length > 0) {
+        console.log('✅ Депозит уже был обработан ранее');
+        return res.json({ success: true, message: 'Deposit already processed' });
+      }
+
+      foundDeposit = {
+        amount: amount,
+        hash: hash,
+        player_id: commentPlayerId
+      };
+      break;
+    }
+
+    if (!foundDeposit) {
+      console.log('❌ Депозит не найден в блокчейне');
+      return res.json({ success: false, message: 'Deposit not found yet' });
+    }
+
+    // Обрабатываем найденный депозит
+    console.log(`✅ Найден депозит: ${foundDeposit.amount} TON для игрока ${foundDeposit.player_id}`);
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Получаем данные игрока для уведомления
+      const playerResult = await client.query(
+        'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+        [foundDeposit.player_id]
+      );
+
+      if (playerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.json({ success: false, error: 'Player not found' });
+      }
+
+      const playerData = playerResult.rows[0];
+      const currentBalance = parseFloat(playerData.ton || '0');
+      const newBalance = currentBalance + foundDeposit.amount;
+
+      // Обновляем баланс игрока
+      await client.query(
+        'UPDATE players SET ton = $1 WHERE telegram_id = $2',
+        [newBalance, foundDeposit.player_id]
+      );
+
+      // Записываем транзакцию депозита
+      await client.query(
+        `INSERT INTO ton_deposits (
+          player_id, amount, transaction_hash, status, created_at
+        ) VALUES ($1, $2, $3, 'completed', NOW())`,
+        [foundDeposit.player_id, foundDeposit.amount, foundDeposit.hash]
+      );
+
+      // Записываем в историю баланса
+      await client.query(
+        `INSERT INTO balance_history (
+          telegram_id, currency, old_balance, new_balance, 
+          change_amount, reason, details, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          foundDeposit.player_id,
+          'ton',
+          currentBalance,
+          newBalance,
+          foundDeposit.amount,
+          'auto_deposit_check',
+          JSON.stringify({
+            transaction_hash: foundDeposit.hash,
+            auto_processed: true,
+            check_triggered: true
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      console.log(`✅ Депозит успешно обработан: ${foundDeposit.player_id} +${foundDeposit.amount} TON`);
+      console.log(`💰 Баланс обновлен: ${currentBalance} → ${newBalance}`);
+
+      // Отправляем уведомление игроку
+      try {
+        await notifyTonDeposit(playerData, foundDeposit.amount, foundDeposit.hash);
+      } catch (notifyErr) {
+        console.error('❌ Ошибка отправки уведомления:', notifyErr);
+      }
+
+      res.json({
+        success: true,
+        message: 'Deposit processed successfully',
+        amount: foundDeposit.amount,
+        new_balance: newBalance
+      });
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('❌ Ошибка обработки депозита:', err);
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки депозита:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -168,7 +340,7 @@ router.post('/process-deposit', async (req, res) => {
     await client.query('BEGIN');
 
     // Проверяем дублирование
-    const existingTx = await client.query(
+    const existingTx = await pool.query(
       'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
       [transaction_hash]
     );
@@ -227,6 +399,7 @@ router.post('/process-deposit', async (req, res) => {
     client.release();
   }
 });
+
 // routes/wallet.js - ИСПРАВЛЕННАЯ ВЕРСИЯ - ЧАСТЬ 2
 
 // POST /api/wallet/confirm-withdrawal - Подтверждение вывода после транзакции
@@ -558,6 +731,7 @@ router.get('/stars-history/:telegramId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 // routes/wallet.js - ИСПРАВЛЕННАЯ ВЕРСИЯ - ЧАСТЬ 3 (ПРЕМИУМ с unified verification)
 
 // ========================
@@ -774,7 +948,7 @@ router.post('/purchase-premium', async (req, res) => {
         JSON.stringify({
           subscription_id: subscriptionResult.rows[0].id,
           purchase_timestamp: new Date().toISOString(),
-          verified_granted: true // 🔥 ОТМЕЧАЕМ что verified был выдан
+          verified_granted: true // 🔥 ОТМЕЧЕМ что verified был выдан
         })
       ]
     );
@@ -803,7 +977,7 @@ router.post('/purchase-premium', async (req, res) => {
         JSON.stringify({
           package_type,
           subscription_id: subscriptionResult.rows[0].id,
-          verified_granted: true // 🔥 ОТМЕЧАЕМ что verified был выдан
+          verified_granted: true // 🔥 ОТМЕЧЕМ что verified был выдан
         })
       ]
     );
@@ -820,7 +994,7 @@ router.post('/purchase-premium', async (req, res) => {
       success: true,
       message: successMessage,
       subscription_id: subscriptionResult.rows[0].id,
-      verified_granted: true // 🔥 ВОЗВРАЩАЕМ информацию о verified
+      verified_granted: true // 🔥 ВОЗВРАЩЕМ информацию о verified
     });
 
     // Отправляем уведомление игроку
@@ -843,7 +1017,7 @@ router.post('/purchase-premium', async (req, res) => {
       );
     } catch (msgErr) {
       console.error('❌ Ошибка отправки уведомления о премиуме:', msgErr);
-      // Не падаем - главное, что премиум активирован
+      // НЕ падаем - главное, что премиум активирован
     }
 
   } catch (err) {
@@ -921,7 +1095,7 @@ router.post('/cleanup-expired-premium', async (req, res) => {
   try {
     console.log('🧹 Начинаем очистку истекших премиум подписок...');
 
-    // Обновляем статус истекших подписок
+    // Обновляем статус истекших подписок в таблице premium_subscriptions
     const expiredSubscriptions = await pool.query(
       `UPDATE premium_subscriptions 
        SET status = 'expired' 
@@ -931,7 +1105,7 @@ router.post('/cleanup-expired-premium', async (req, res) => {
        RETURNING telegram_id`
     );
 
-    // 🔥 ГЛАВНОЕ ИЗМЕНЕНИЕ: Очищаем премиум статус И VERIFIED у игроков с истекшими подписками
+    // 🔥 ГЛАВНОЕ ИЗМЕНЕНИЕ: Очищаем премиум поля И СБРАСЫВАЕМ VERIFIED
     const cleanedPlayers = await pool.query(
       `UPDATE players 
        SET premium_no_ads_until = NULL,
@@ -939,13 +1113,14 @@ router.post('/cleanup-expired-premium', async (req, res) => {
        WHERE premium_no_ads_until IS NOT NULL 
          AND premium_no_ads_until < NOW()
          AND premium_no_ads_forever = FALSE
-       RETURNING telegram_id`
+       RETURNING telegram_id, first_name, username`
     );
 
-    console.log(`✅ Очистка истекших премиум подписок выполнена:`);
-    console.log(`   - Истекших подписок: ${expiredSubscriptions.rows.length}`);
-    console.log(`   - Очищенных игроков: ${cleanedPlayers.rows.length}`);
-    console.log(`   - Verified сброшен у игроков: ${cleanedPlayers.rows.map(p => p.telegram_id).join(', ')}`);
+    console.log('📊 === РЕЗУЛЬТАТЫ UNIFIED ОЧИСТКИ ===');
+    console.log(`✅ Истекших подписок обновлено: ${expiredSubscriptions.rows.length}`);
+    console.log(`✅ Игроков очищено: ${cleanedPlayers.rows.length}`);
+    console.log(`✅ Verified статус сброшен у: ${cleanedPlayers.rows.length} игроков`);
+    console.log('🏁 UNIFIED очистка истекших премиум подписок завершена успешно');
 
     res.json({
       success: true,
