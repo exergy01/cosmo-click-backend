@@ -128,41 +128,88 @@ async function testTonApis() {
   
   const gameWallet = 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
   
-  const apis = [
+// Замените массив apis в функции check-deposit-by-address на этот:
+
+const apis = [
     {
-      name: 'TON Center API',
-      test: async () => {
+      name: 'TonScan API',
+      getData: async () => {
+        logDeposit('INFO', 'Запрос к TonScan API', { gameWalletAddress });
+        const response = await axios.get(`https://tonscan.org/api/v2/getTransactions?address=${gameWalletAddress}&limit=50`, {
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; CosmoClick/1.0)'
+          }
+        });
+        
+        if (response.data && response.data.result) {
+          logDeposit('SUCCESS', 'TonScan API успешный ответ', { 
+            transactions_count: response.data.result.length 
+          });
+          return response.data.result;
+        }
+        throw new Error('Invalid response format');
+      }
+    },
+    {
+      name: 'TON Center API (backup)',
+      getData: async () => {
+        logDeposit('INFO', 'Запрос к TON Center API (backup)', { gameWalletAddress });
+        
+        // Используем публичный endpoint без ключа
         const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-          params: { address: gameWallet, limit: 5 },
-          timeout: 10000
+          params: {
+            address: gameWalletAddress,
+            limit: 50,
+            archival: false
+          },
+          timeout: 20000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; CosmoClick/1.0)'
+          }
         });
-        return response.data.ok ? `✅ Работает (${response.data.result.length} tx)` : '❌ Ошибка API';
+  
+        if (response.data && response.data.result) {
+          logDeposit('SUCCESS', 'TON Center API (backup) успешный ответ', { 
+            transactions_count: response.data.result.length 
+          });
+          return response.data.result;
+        }
+        throw new Error(response.data.error || 'API Error');
       }
     },
     {
-      name: 'TONHub API',
-      test: async () => {
-        const response = await axios.post('https://api.tonhub.com/json-rpc', {
-          jsonrpc: '2.0',
-          id: 1,
+      name: 'Direct TON RPC',
+      getData: async () => {
+        logDeposit('INFO', 'Запрос к Direct TON RPC', { gameWalletAddress });
+        
+        const response = await axios.post('https://toncenter.com/api/v2/jsonRPC', {
           method: 'getTransactions',
-          params: { address: gameWallet, limit: 5 }
-        }, { timeout: 10000 });
-        return response.data.result ? `✅ Работает (${response.data.result.transactions.length} tx)` : '❌ Ошибка API';
-      }
-    },
-    {
-      name: 'TON API v2',
-      test: async () => {
-        const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWallet}/transactions?limit=5`, {
-          timeout: 10000,
-          headers: { 'Authorization': 'Bearer AQAAAAAAAAAAAM4AAAAAAAAAUgCddMzOCYSr3kJO8YCcBJJmJXGMAAAAFWMGJjvIcFLl6ggACtBdkLn7vf4_TK_0' }
+          params: {
+            address: gameWalletAddress,
+            limit: 50
+          },
+          id: 1,
+          jsonrpc: '2.0'
+        }, {
+          timeout: 20000,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (compatible; CosmoClick/1.0)'
+          }
         });
-        return response.data.transactions ? `✅ Работает (${response.data.transactions.length} tx)` : '❌ Ошибка API';
+        
+        if (response.data && response.data.result) {
+          logDeposit('SUCCESS', 'Direct TON RPC успешный ответ', { 
+            transactions_count: response.data.result.length 
+          });
+          return response.data.result;
+        }
+        throw new Error('RPC Error');
       }
     }
   ];
-  
+    
   for (const api of apis) {
     try {
       const result = await api.test();
