@@ -1,4 +1,4 @@
-// routes/wallet.js - ВЕРСИЯ С ПОДРОБНЫМ ЛОГИРОВАНИЕМ И РАБОЧИМ API
+// routes/wallet.js - ПОЛНАЯ РАБОЧАЯ ВЕРСИЯ
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -13,31 +13,110 @@ const bot = new Telegraf(BOT_TOKEN);
 const { notifyStarsDeposit, notifyTonDeposit, notifyWithdrawalRequest } = require('./telegramBot');
 
 // ======================
-// ЛОГИРОВАНИЕ СИСТЕМА
+// СИСТЕМА ЛОГИРОВАНИЯ
 // ======================
 const logDeposit = (level, message, data = {}) => {
   const timestamp = new Date().toISOString();
-  const logData = {
-    timestamp,
-    level,
-    message,
-    ...data
-  };
-  
-  console.log(`[${timestamp}] [${level.toUpperCase()}] DEPOSIT: ${message}`);
-  if (Object.keys(data).length > 0) {
-    console.log(`[${timestamp}] [DATA]:`, JSON.stringify(data, null, 2));
+  console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}`);
+  if (level === 'ERROR' && Object.keys(data).length > 0) {
+    console.log(`[${timestamp}] [ERROR_DATA]:`, JSON.stringify(data, null, 2));
   }
 };
+
+// ======================
+// ПРИОРИТЕТНЫЙ СПИСОК TON API
+// ======================
+const getTonTransactions = async (gameWalletAddress, limit = 50) => {
+  logDeposit('INFO', `Получение транзакций для ${gameWalletAddress}`);
+  
+  // 1. Пробуем TON Center с API ключом
+  if (process.env.TONCENTER_API_KEY) {
+    try {
+      logDeposit('INFO', 'Пробуем TON Center с API ключом...');
+      const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+        params: {
+          address: gameWalletAddress,
+          limit: Math.min(limit, 100),
+          archival: false
+        },
+        headers: {
+          'X-API-Key': process.env.TONCENTER_API_KEY
+        },
+        timeout: 20000
+      });
+
+      if (response.data.ok && response.data.result) {
+        logDeposit('SUCCESS', `TON Center с API ключом работает! Получено: ${response.data.result.length} транзакций`);
+        return response.data.result;
+      }
+      throw new Error(response.data.error || 'TON Center API error');
+    } catch (error) {
+      logDeposit('ERROR', `TON Center с API ключом недоступен`, { error: error.message });
+    }
+  }
+
+  // 2. Пробуем TONAPI.io
+  try {
+    logDeposit('INFO', 'Пробуем TON API v2...');
+    const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
+      params: { limit: Math.min(limit, 50) },
+      headers: {
+        'Authorization': `Bearer ${process.env.TONAPI_TOKEN || ''}`,
+        'User-Agent': 'CosmoClick-Game/1.0'
+      },
+      timeout: 15000
+    });
+
+    if (response.data && response.data.transactions) {
+      const transactions = response.data.transactions.map(tx => ({
+        transaction_id: { hash: tx.hash },
+        utime: tx.utime,
+        in_msg: tx.in_msg
+      }));
+      logDeposit('SUCCESS', `TON API v2 работает! Получено: ${transactions.length} транзакций`);
+      return transactions;
+    }
+    throw new Error('TON API v2 error');
+  } catch (error) {
+    logDeposit('ERROR', `TON API v2 недоступен`, { error: error.message });
+  }
+
+  // 3. Пробуем TON Center без ключа (лимит 1 запрос/сек)
+  try {
+    logDeposit('INFO', 'Пробуем TON Center без ключа (медленно)...');
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWalletAddress,
+        limit: Math.min(limit, 10),
+        archival: false
+      },
+      timeout: 30000
+    });
+
+    if (response.data.ok && response.data.result) {
+      logDeposit('SUCCESS', `TON Center без ключа работает! Получено: ${response.data.result.length} транзакций`);
+      return response.data.result;
+    }
+    throw new Error(response.data.error || 'TON Center API error');
+  } catch (error) {
+    logDeposit('ERROR', `TON Center без ключа недоступен`, { error: error.message });
+  }
+
+  // 4. Все API недоступны
+  throw new Error('Все TON API недоступны');
+};
+
+// ======================
+// ПОДКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ КОШЕЛЬКА
+// ======================
 
 // POST /api/wallet/connect - Подключение кошелька через TON Connect
 router.post('/connect', async (req, res) => {
   const { telegram_id, wallet_address, signature } = req.body;
   
-  logDeposit('INFO', 'Подключение кошелька', { telegram_id, wallet_address, signature });
+  logDeposit('INFO', 'Подключение кошелька', { telegram_id, wallet_address });
   
   if (!telegram_id || !wallet_address) {
-    logDeposit('ERROR', 'Отсутствуют обязательные поля', { telegram_id, wallet_address });
     return res.status(400).json({ error: 'Telegram ID and wallet address are required' });
   }
 
@@ -48,7 +127,6 @@ router.post('/connect', async (req, res) => {
     const player = await getPlayer(telegram_id);
     if (!player) {
       await client.query('ROLLBACK');
-      logDeposit('ERROR', 'Игрок не найден', { telegram_id });
       return res.status(404).json({ error: 'Player not found' });
     }
 
@@ -59,8 +137,6 @@ router.post('/connect', async (req, res) => {
 
     await client.query('COMMIT');
     
-    logDeposit('SUCCESS', 'Кошелек успешно подключен', { telegram_id, wallet_address });
-    
     res.json({
       success: true,
       message: 'Wallet connected successfully',
@@ -68,8 +144,8 @@ router.post('/connect', async (req, res) => {
     });
     
   } catch (err) {
-    logDeposit('ERROR', 'Ошибка подключения кошелька', { error: err.message, telegram_id });
     await client.query('ROLLBACK');
+    logDeposit('ERROR', 'Ошибка подключения кошелька', { error: err.message });
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
@@ -79,8 +155,6 @@ router.post('/connect', async (req, res) => {
 // POST /api/wallet/disconnect - Отключение кошелька
 router.post('/disconnect', async (req, res) => {
   const { telegram_id } = req.body;
-  
-  logDeposit('INFO', 'Отключение кошелька', { telegram_id });
   
   if (!telegram_id) {
     return res.status(400).json({ error: 'Telegram ID is required' });
@@ -92,166 +166,47 @@ router.post('/disconnect', async (req, res) => {
       [telegram_id]
     );
 
-    logDeposit('SUCCESS', 'Кошелек отключен', { telegram_id });
-
     res.json({
       success: true,
       message: 'Wallet disconnected successfully'
     });
     
   } catch (err) {
-    logDeposit('ERROR', 'Ошибка отключения кошелька', { error: err.message, telegram_id });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Функция получения транзакций через публичные TON API (без тестовых данных)
-const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
-  logDeposit('INFO', 'Запрос к публичным TON API', { gameWalletAddress, limit });
-  
-  // Список публичных API без авторизации
-  const apis = [
-    {
-      name: 'TON Center (без ключа)',
-      getData: async () => {
-        logDeposit('INFO', 'Пробуем TON Center без авторизации...', {});
-        const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-          params: {
-            address: gameWalletAddress,
-            limit: Math.min(limit, 10),
-            archival: false
-          },
-          timeout: 15000
-        });
+// ======================
+// ОСНОВНЫЕ ФУНКЦИИ ДЕПОЗИТОВ TON
+// ======================
 
-        if (response.data.ok && response.data.result) {
-          return response.data.result;
-        }
-        throw new Error(response.data.error || 'TON Center API error');
-      }
-    },
-    {
-      name: 'TONHub API',
-      getData: async () => {
-        logDeposit('INFO', 'Пробуем TONHub API...', {});
-        const response = await axios.post('https://api.tonhub.com/json-rpc', {
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getTransactions',
-          params: {
-            address: gameWalletAddress,
-            limit: Math.min(limit, 10),
-            archival: false
-          }
-        }, {
-          timeout: 15000,
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (response.data.result && response.data.result.transactions) {
-          return response.data.result.transactions;
-        }
-        throw new Error('Invalid TONHub response');
-      }
-    },
-    {
-      name: 'TON API v2 (без токена)',
-      getData: async () => {
-        logDeposit('INFO', 'Пробуем TON API v2 без токена...', {});
-        const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
-          params: { limit: Math.min(limit, 10) },
-          timeout: 15000
-        });
-
-        if (response.data && response.data.transactions) {
-          // Преобразуем формат для совместимости
-          return response.data.transactions.map(tx => ({
-            transaction_id: { hash: tx.hash },
-            utime: tx.utime,
-            in_msg: tx.in_msg
-          }));
-        }
-        throw new Error('TON API v2 error');
-      }
-    }
-  ];
-
-  let lastError = null;
-  
-  // Пробуем API по очереди
-  for (const api of apis) {
-    try {
-      logDeposit('INFO', `Пробуем ${api.name}...`, {});
-      const transactions = await api.getData();
-      logDeposit('SUCCESS', `${api.name} работает!`, { 
-        transactions_received: transactions.length 
-      });
-      return transactions;
-    } catch (apiError) {
-      logDeposit('ERROR', `${api.name} не работает`, { 
-        error: apiError.message,
-        status: apiError.response?.status
-      });
-      lastError = apiError;
-      continue;
-    }
-  }
-
-  // Если все API не работают
-  logDeposit('ERROR', 'ВСЕ TON API НЕДОСТУПНЫ', { 
-    last_error: lastError?.message 
-  });
-  
-  throw new Error('All TON APIs are temporarily unavailable. ' + lastError?.message);
-};
-
-// POST /api/wallet/check-deposit-by-address - ОСНОВНАЯ ФУНКЦИЯ ПРОВЕРКИ ДЕПОЗИТОВ
+// POST /api/wallet/check-deposit-by-address - Проверка депозитов по адресу
 router.post('/check-deposit-by-address', async (req, res) => {
   const { player_id, expected_amount, sender_address, game_wallet } = req.body;
   
-  logDeposit('INFO', 'НАЧАЛО ПРОВЕРКИ ДЕПОЗИТ ПО АДРЕСУ', {
-    player_id, 
-    expected_amount, 
-    sender_address, 
-    game_wallet 
-  });
+  logDeposit('INFO', 'Проверка депозитов по адресу', { player_id, expected_amount, sender_address });
   
   if (!player_id) {
-    logDeposit('ERROR', 'Player ID не указан', {});
     return res.status(400).json({ error: 'Player ID is required' });
   }
 
   try {
     const gameWalletAddress = game_wallet || process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
     
-    logDeposit('INFO', 'Используемые адреса', {
-      gameWalletAddress,
-      senderAddress: sender_address || 'любой'
-    });
-    
-    // ИСПОЛЬЗУЕМ ТОЛЬКО РАБОЧИЙ API
+    // Получаем транзакции через улучшенную систему
     let transactions = [];
-    
     try {
-      logDeposit('INFO', 'Запрос к рабочему TON API v2...', {});
-      transactions = await getTransactionsFromTonApi(gameWalletAddress, 50);
-      logDeposit('SUCCESS', 'Рабочий API вернул транзакции!', { 
-        transactions_received: transactions.length 
-      });
+      transactions = await getTonTransactions(gameWalletAddress, 50);
     } catch (apiError) {
-      logDeposit('ERROR', 'Рабочий API недоступен', { 
-        error: apiError.message
-      });
+      logDeposit('ERROR', 'Все TON API недоступны', { error: apiError.message });
       return res.json({ 
         success: false, 
-        error: 'TON API temporarily unavailable',
-        details: apiError.message
+        error: 'TON API временно недоступны',
+        details: 'Попробуйте через несколько минут или обратитесь к администратору'
       });
     }
 
-    logDeposit('INFO', 'Начинаем анализ транзакций', { 
-      total_transactions: transactions.length 
-    });
+    logDeposit('INFO', `Анализируем ${transactions.length} транзакций`);
     
     let foundDeposits = [];
     let totalProcessed = 0;
@@ -270,64 +225,35 @@ router.post('/check-deposit-by-address', async (req, res) => {
       const txTime = new Date(tx.utime * 1000);
       const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
       
-      logDeposit('INFO', `Анализируем транзакцию #${i+1}`, {
-        amount: amount,
-        from: fromAddress,
-        hash: hash.substring(0, 20) + '...',
-        minutes_ago: minutesAgo
-      });
-      
       // Пропускаем слишком маленькие транзакции
-      if (amount < 0.005) {
-        logDeposit('DEBUG', 'Пропуск: слишком маленькая сумма', { amount });
-        continue;
-      }
+      if (amount < 0.005) continue;
       
       // Если указана ожидаемая сумма - проверяем
-      if (expected_amount && Math.abs(amount - expected_amount) > 0.001) {
-        logDeposit('DEBUG', 'Пропуск: сумма не совпадает', { 
-          expected: expected_amount, 
-          actual: amount 
-        });
-        continue;
-      }
+      if (expected_amount && Math.abs(amount - expected_amount) > 0.001) continue;
       
       // Если указан адрес отправителя - проверяем
-      if (sender_address && fromAddress !== sender_address) {
-        logDeposit('DEBUG', 'Пропуск: адрес не совпадает', { 
-          expected: sender_address, 
-          actual: fromAddress 
-        });
-        continue;
-      }
+      if (sender_address && fromAddress !== sender_address) continue;
       
       // Проверяем, не обрабатывали ли уже эту транзакцию
-      logDeposit('INFO', 'Проверяем, не обработана ли уже эта транзакция...', { hash });
       const existingTx = await pool.query(
         'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
         [hash]
       );
 
       if (existingTx.rows.length > 0) {
-        logDeposit('WARNING', 'Транзакция уже была обработана ранее', { hash });
         if (foundDeposits.length === 0) {
           return res.json({ success: true, message: 'Deposit already processed' });
         }
         continue;
       }
 
-      logDeposit('SUCCESS', 'НОВАЯ ТРАНЗАКЦИЯ! Начинаем обработку...', { 
-        amount, 
-        from: fromAddress, 
-        hash 
-      });
+      logDeposit('SUCCESS', 'НОВАЯ ТРАНЗАКЦИЯ! Начинаем обработку...', { amount, hash: hash.substring(0, 20) });
       
       // Обрабатываем найденный депозит
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
         
-        logDeposit('INFO', `Получаем данные игрока ${player_id}...`, {});
         const playerResult = await client.query(
           'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
           [player_id]
@@ -335,7 +261,7 @@ router.post('/check-deposit-by-address', async (req, res) => {
 
         if (playerResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          logDeposit('ERROR', `Игрок ${player_id} не найден в базе`, {});
+          logDeposit('ERROR', `Игрок ${player_id} не найден в базе`);
           continue;
         }
 
@@ -343,12 +269,6 @@ router.post('/check-deposit-by-address', async (req, res) => {
         const currentBalance = parseFloat(playerData.ton || '0');
         const newBalance = currentBalance + amount;
         
-        logDeposit('INFO', 'Обновляем баланс игрока', {
-          current_balance: currentBalance,
-          adding: amount,
-          new_balance: newBalance
-        });
-
         // Обновляем баланс игрока
         await client.query(
           'UPDATE players SET ton = $1 WHERE telegram_id = $2',
@@ -356,7 +276,6 @@ router.post('/check-deposit-by-address', async (req, res) => {
         );
 
         // Записываем транзакцию депозита
-        logDeposit('INFO', 'Записываем депозит в базу данных...', {});
         await client.query(
           `INSERT INTO ton_deposits (
             player_id, amount, transaction_hash, status, created_at
@@ -365,7 +284,6 @@ router.post('/check-deposit-by-address', async (req, res) => {
         );
 
         // Записываем в историю баланса
-        logDeposit('INFO', 'Записываем в историю баланса...', {});
         await client.query(
           `INSERT INTO balance_history (
             telegram_id, currency, old_balance, new_balance, 
@@ -407,31 +325,19 @@ router.post('/check-deposit-by-address', async (req, res) => {
         
         // Отправляем уведомление игроку
         try {
-          logDeposit('INFO', 'Отправляем уведомление игроку...', {});
           await notifyTonDeposit(playerData, amount, hash);
-          logDeposit('SUCCESS', 'Уведомление отправлено', {});
         } catch (notifyErr) {
-          logDeposit('ERROR', 'Ошибка отправки уведомления', { 
-            error: notifyErr.message 
-          });
+          logDeposit('ERROR', 'Ошибка отправки уведомления', { error: notifyErr.message });
         }
 
       } catch (dbErr) {
         await client.query('ROLLBACK');
-        logDeposit('ERROR', 'Ошибка обработки депозита в БД', { 
-          error: dbErr.message 
-        });
+        logDeposit('ERROR', 'Ошибка обработки депозита в БД', { error: dbErr.message });
         throw dbErr;
       } finally {
         client.release();
       }
     }
-
-    logDeposit('INFO', 'ИТОГОВЫЙ РЕЗУЛЬТАТ', {
-      total_transactions_analyzed: transactions.length,
-      new_deposits_found: totalProcessed,
-      total_amount_credited: foundDeposits.reduce((sum, dep) => sum + dep.amount, 0).toFixed(8)
-    });
 
     if (totalProcessed > 0) {
       const totalAmount = foundDeposits.reduce((sum, dep) => sum + dep.amount, 0);
@@ -450,7 +356,6 @@ router.post('/check-deposit-by-address', async (req, res) => {
         }))
       });
     } else {
-      logDeposit('INFO', 'Подходящих депозитов не найдено', {});
       res.json({
         success: false,
         message: 'Deposit not found yet'
@@ -458,10 +363,7 @@ router.post('/check-deposit-by-address', async (req, res) => {
     }
 
   } catch (error) {
-    logDeposit('ERROR', 'КРИТИЧЕСКАЯ ОШИБКА', { 
-      error: error.message,
-      stack: error.stack 
-    });
+    logDeposit('ERROR', 'КРИТИЧЕСКАЯ ОШИБКА', { error: error.message });
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
@@ -470,14 +372,11 @@ router.post('/check-deposit-by-address', async (req, res) => {
   }
 });
 
-// POST /api/wallet/check-all-deposits - УНИВЕРСАЛЬНЫЙ ПОИСК ВСЕХ ДЕПОЗИТОВ
+// POST /api/wallet/check-all-deposits - Универсальный поиск всех депозитов
 router.post('/check-all-deposits', async (req, res) => {
   const { player_id, sender_address } = req.body;
   
-  logDeposit('INFO', 'УНИВЕРСАЛЬНЫЙ ПОИСК ДЕПОЗИТОВ - НАЧАЛО', { 
-    player_id, 
-    sender_address 
-  });
+  logDeposit('INFO', 'Универсальный поиск депозитов', { player_id, sender_address });
   
   if (!player_id) {
     return res.status(400).json({ error: 'Player ID is required' });
@@ -486,21 +385,12 @@ router.post('/check-all-deposits', async (req, res) => {
   try {
     const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
     
-    logDeposit('INFO', 'Игровой кошелек', { gameWalletAddress });
-    logDeposit('INFO', 'Фильтр по отправителю', { sender_filter: sender_address || 'отключен' });
-    
     // Получаем больше транзакций для поиска
-    logDeposit('INFO', 'Запрос к рабочему TON API (расширенный поиск)...', {});
-    
     let transactions = [];
     try {
-      transactions = await getTransactionsFromTonApi(gameWalletAddress, 100);
-      logDeposit('INFO', 'Получено транзакций для анализа', { 
-        transactions_count: transactions.length 
-      });
+      transactions = await getTonTransactions(gameWalletAddress, 100);
     } catch (apiError) {
-      logDeposit('ERROR', 'Ошибка API', { error: apiError.message });
-      return res.json({ success: false, error: 'TON API error' });
+      return res.json({ success: false, error: 'TON API недоступны' });
     }
     
     let foundDeposits = [];
@@ -518,11 +408,6 @@ router.post('/check-all-deposits', async (req, res) => {
       
       // Пропускаем слишком маленькие транзакции
       if (amount < 0.005) continue;
-      
-      logDeposit('DEBUG', 'Анализируем транзакцию', { 
-        amount: amount, 
-        from: fromAddress.substring(0, 10) + '...' 
-      });
 
       // Проверяем, не обрабатывали ли уже
       const existingTx = await pool.query(
@@ -530,13 +415,8 @@ router.post('/check-all-deposits', async (req, res) => {
         [hash]
       );
 
-      if (existingTx.rows.length > 0) {
-        logDeposit('DEBUG', 'Уже обработана', {});
-        continue;
-      }
+      if (existingTx.rows.length > 0) continue;
 
-      logDeposit('INFO', 'НОВАЯ! Обрабатываем...', {});
-      
       // Обрабатываем депозит
       const client = await pool.connect();
       try {
@@ -549,7 +429,6 @@ router.post('/check-all-deposits', async (req, res) => {
 
         if (playerResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          logDeposit('ERROR', 'Игрок не найден', {});
           continue;
         }
 
@@ -601,7 +480,6 @@ router.post('/check-all-deposits', async (req, res) => {
         });
         
         totalProcessed++;
-        logDeposit('SUCCESS', 'Обработан', { amount_ton: amount });
         
         // Уведомление
         try {
@@ -612,17 +490,11 @@ router.post('/check-all-deposits', async (req, res) => {
 
       } catch (dbErr) {
         await client.query('ROLLBACK');
-        logDeposit('ERROR', 'Ошибка DB', { error: dbErr.message });
+        logDeposit('ERROR', 'Ошибка БД', { error: dbErr.message });
       } finally {
         client.release();
       }
     }
-
-    logDeposit('INFO', 'УНИВЕРСАЛЬНЫЙ ПОИСК ЗАВЕРШЕН', {
-      transactions_analyzed: transactions.length,
-      new_deposits_found: totalProcessed,
-      total_amount: foundDeposits.reduce((sum, dep) => sum + dep.amount, 0).toFixed(8)
-    });
 
     if (totalProcessed > 0) {
       const totalAmount = foundDeposits.reduce((sum, dep) => sum + dep.amount, 0);
@@ -648,9 +520,7 @@ router.post('/check-all-deposits', async (req, res) => {
     }
 
   } catch (error) {
-    logDeposit('ERROR', 'Ошибка универсального поиска', { 
-      error: error.message 
-    });
+    logDeposit('ERROR', 'Ошибка универсального поиска', { error: error.message });
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
@@ -659,25 +529,162 @@ router.post('/check-all-deposits', async (req, res) => {
   }
 });
 
-// POST /api/wallet/manual-add-deposit - МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТ (для экстренных случаев)
+// ======================
+// ДИАГНОСТИКА ДЕПОЗИТОВ
+// ======================
+router.post('/debug-deposits', async (req, res) => {
+  const { player_id } = req.body;
+  
+  if (!player_id) {
+    return res.status(400).json({ error: 'Player ID is required' });
+  }
+
+  try {
+    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
+    
+    // 1. Проверяем игрока в базе
+    const playerResult = await pool.query(
+      'SELECT telegram_id, first_name, ton FROM players WHERE telegram_id = $1',
+      [player_id]
+    );
+    
+    if (playerResult.rows.length === 0) {
+      return res.json({ 
+        success: false, 
+        error: 'Player not found',
+        debug: { player_found: false }
+      });
+    }
+    
+    const player = playerResult.rows[0];
+    
+    // 2. Проверяем существующие депозиты в базе
+    const existingDeposits = await pool.query(
+      'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [player_id]
+    );
+    
+    // 3. Получаем транзакции из блокчейна через рабочий API
+    let transactions = [];
+    let apiStatus = 'unknown';
+    try {
+      transactions = await getTonTransactions(gameWalletAddress, 20);
+      apiStatus = 'working';
+    } catch (apiError) {
+      apiStatus = 'failed';
+      return res.json({ 
+        success: false, 
+        error: 'TON API error',
+        debug: { ton_api_error: true, error_details: apiError.message }
+      });
+    }
+    
+    // 4. Анализируем входящие транзакции
+    const incomingTransactions = [];
+    
+    for (const tx of transactions) {
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+      
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      const txTime = new Date(tx.utime * 1000);
+      
+      if (amount < 0.005) continue;
+      
+      incomingTransactions.push({
+        amount: amount.toFixed(8),
+        hash: hash.substring(0, 16) + '...',
+        from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
+        time: txTime.toISOString(),
+        minutes_ago: Math.floor((Date.now() - txTime.getTime()) / (1000 * 60))
+      });
+    }
+    
+    // 5. Проверяем историю баланса
+    const balanceHistory = await pool.query(
+      'SELECT * FROM balance_history WHERE telegram_id = $1 AND currency = $2 ORDER BY timestamp DESC LIMIT 5',
+      [player_id, 'ton']
+    );
+    
+    // 6. Формируем отчет
+    const debugReport = {
+      success: true,
+      player: {
+        telegram_id: player.telegram_id,
+        name: player.first_name,
+        current_ton_balance: parseFloat(player.ton || '0'),
+      },
+      game_wallet: gameWalletAddress,
+      api_status: apiStatus,
+      database_deposits: {
+        count: existingDeposits.rows.length,
+        deposits: existingDeposits.rows.map(dep => ({
+          amount: parseFloat(dep.amount),
+          status: dep.status,
+          created_at: dep.created_at,
+          hash: dep.transaction_hash ? dep.transaction_hash.substring(0, 16) + '...' : 'no_hash'
+        }))
+      },
+      blockchain_transactions: {
+        count: incomingTransactions.length,
+        recent_incoming: incomingTransactions.slice(0, 5)
+      },
+      balance_history: {
+        count: balanceHistory.rows.length,
+        recent: balanceHistory.rows.map(bh => ({
+          old_balance: parseFloat(bh.old_balance),
+          new_balance: parseFloat(bh.new_balance),
+          change: parseFloat(bh.change_amount),
+          reason: bh.reason,
+          timestamp: bh.timestamp
+        }))
+      },
+      recommendations: []
+    };
+    
+    // 7. Анализ и рекомендации
+    if (existingDeposits.rows.length === 0) {
+      debugReport.recommendations.push("❌ В базе нет записей о депозитах для этого игрока");
+    }
+    
+    if (incomingTransactions.length > 0 && existingDeposits.rows.length === 0) {
+      debugReport.recommendations.push("⚠️ В блокчейне есть транзакции, но в базе нет записей - проблема с обработкой");
+    }
+    
+    if (balanceHistory.rows.length === 0) {
+      debugReport.recommendations.push("❌ Нет записей об изменениях баланса TON");
+    }
+    
+    const recentTransactions = incomingTransactions.filter(tx => tx.minutes_ago <= 30);
+    if (recentTransactions.length > 0) {
+      debugReport.recommendations.push(`💡 Найдено ${recentTransactions.length} транзакций за последние 30 минут - попробуйте обработать`);
+    }
+    
+    res.json(debugReport);
+
+  } catch (error) {
+    logDeposit('ERROR', 'Ошибка диагностики', { error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Debug failed',
+      details: error.message 
+    });
+  }
+});
+
+// ======================
+// МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТА
+// ======================
 router.post('/manual-add-deposit', async (req, res) => {
   const { player_id, amount, transaction_hash, admin_key } = req.body;
   
-  logDeposit('INFO', 'МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТ', { 
-    player_id, 
-    amount, 
-    transaction_hash,
-    admin_key_provided: !!admin_key
-  });
-  
   // Простая проверка админ ключа
   if (admin_key !== 'cosmo_admin_2025') {
-    logDeposit('ERROR', 'Неверный админ ключ', {});
     return res.status(403).json({ error: 'Unauthorized' });
   }
   
   if (!player_id || !amount || !transaction_hash) {
-    logDeposit('ERROR', 'Отсутствуют обязательные поля', {});
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -693,7 +700,6 @@ router.post('/manual-add-deposit', async (req, res) => {
 
     if (existingTx.rows.length > 0) {
       await client.query('ROLLBACK');
-      logDeposit('ERROR', 'Транзакция уже обработана', { transaction_hash });
       return res.status(400).json({ error: 'Transaction already processed' });
     }
 
@@ -705,7 +711,6 @@ router.post('/manual-add-deposit', async (req, res) => {
 
     if (playerResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      logDeposit('ERROR', 'Игрок не найден', { player_id });
       return res.status(404).json({ error: 'Player not found' });
     }
 
@@ -713,12 +718,6 @@ router.post('/manual-add-deposit', async (req, res) => {
     const currentBalance = parseFloat(playerData.ton || '0');
     const depositAmount = parseFloat(amount);
     const newBalance = currentBalance + depositAmount;
-
-    logDeposit('INFO', 'Мануальное обновление баланса', {
-      current_balance: currentBalance,
-      deposit_amount: depositAmount,
-      new_balance: newBalance
-    });
 
     // Добавляем TON к балансу игрока
     await client.query(
@@ -757,16 +756,9 @@ router.post('/manual-add-deposit', async (req, res) => {
 
     await client.query('COMMIT');
 
-    logDeposit('SUCCESS', 'Мануальный депозит успешно добавлен', {
-      player_id,
-      amount: depositAmount,
-      new_balance: newBalance
-    });
-
     // Отправляем уведомление игроку
     try {
       await notifyTonDeposit(playerData, depositAmount, transaction_hash);
-      logDeposit('SUCCESS', 'Уведомление отправлено', {});
     } catch (notifyErr) {
       logDeposit('ERROR', 'Ошибка отправки уведомления', { error: notifyErr.message });
     }
@@ -786,6 +778,10 @@ router.post('/manual-add-deposit', async (req, res) => {
     client.release();
   }
 });
+
+// ======================
+// ВЫВОД TON
+// ======================
 
 // POST /api/wallet/prepare-withdrawal - Подготовка вывода
 router.post('/prepare-withdrawal', async (req, res) => {
@@ -830,8 +826,6 @@ router.post('/prepare-withdrawal', async (req, res) => {
 
     const withdrawalId = withdrawalResult.rows[0].id;
     await client.query('COMMIT');
-
-    logDeposit('SUCCESS', 'Заявка на вывод создана', { withdrawal_id: withdrawalId });
 
     await notifyWithdrawalRequest(player, withdrawAmount, withdrawalId);
 
@@ -901,8 +895,6 @@ router.post('/confirm-withdrawal', async (req, res) => {
 
     await client.query('COMMIT');
 
-    logDeposit('SUCCESS', 'Вывод подтвержден', { telegram_id, amount: withdrawAmount, new_balance: newBalance });
-
     res.json({
       success: true,
       message: 'Withdrawal confirmed',
@@ -917,6 +909,10 @@ router.post('/confirm-withdrawal', async (req, res) => {
     client.release();
   }
 });
+
+// ======================
+// STARS СИСТЕМА
+// ======================
 
 // POST /api/wallet/create-stars-invoice - Создание счета Stars
 router.post('/create-stars-invoice', async (req, res) => {
@@ -937,8 +933,6 @@ router.post('/create-stars-invoice', async (req, res) => {
     if (!player) {
       return res.status(404).json({ error: 'Player not found' });
     }
-
-    logDeposit('INFO', 'Создаем счет через Telegram Bot API...', {});
     
     const invoice = await bot.telegram.createInvoiceLink({
       title: `CosmoClick: ${amount} Stars`,
@@ -994,7 +988,6 @@ router.post('/webhook-stars', async (req, res) => {
   try {
     if (pre_checkout_query) {
       await bot.telegram.answerPreCheckoutQuery(pre_checkout_query.id, true);
-      logDeposit('SUCCESS', 'Pre-checkout подтвержден', {});
       return res.json({ success: true });
     }
     
@@ -1003,11 +996,6 @@ router.post('/webhook-stars', async (req, res) => {
       const payload = JSON.parse(payment.invoice_payload);
       const playerId = payload.player_id;
       const amount = payment.total_amount;
-      
-      logDeposit('INFO', 'Обрабатываем платеж Stars', { 
-        player_id: playerId, 
-        amount: amount 
-      });
       
       const client = await pool.connect();
       try {
@@ -1019,7 +1007,6 @@ router.post('/webhook-stars', async (req, res) => {
         );
         
         if (existingTx.rows.length > 0) {
-          logDeposit('WARNING', 'Транзакция уже была обработана', {});
           await client.query('ROLLBACK');
           return res.json({ success: true, message: 'Already processed' });
         }
@@ -1060,8 +1047,6 @@ router.post('/webhook-stars', async (req, res) => {
         
         await client.query('COMMIT');
         
-        logDeposit('SUCCESS', 'Начислено Stars', { player_id: playerId, amount: amount });
-        
         await notifyStarsDeposit(playerData, amount);
         
         try {
@@ -1082,8 +1067,8 @@ router.post('/webhook-stars', async (req, res) => {
         }
         
       } catch (dbErr) {
-        logDeposit('ERROR', 'Ошибка БД при обработке Stars', { error: dbErr.message });
         await client.query('ROLLBACK');
+        logDeposit('ERROR', 'Ошибка БД при обработке Stars', { error: dbErr.message });
         throw dbErr;
       } finally {
         client.release();
@@ -1093,7 +1078,6 @@ router.post('/webhook-stars', async (req, res) => {
     }
     
     if (message && !message.successful_payment) {
-      logDeposit('INFO', 'Обычное сообщение бота', { text: message.text || 'unknown' });
       const messageBot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
       messageBot.start((ctx) => ctx.reply('Привет! Бот запущен и готов к работе.'));
       await messageBot.handleUpdate(req.body);
@@ -1107,6 +1091,10 @@ router.post('/webhook-stars', async (req, res) => {
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
+
+// ======================
+// ПРЕМИУМ СИСТЕМА
+// ======================
 
 // GET /api/wallet/premium-status/:telegramId - Проверка премиум статуса
 router.get('/premium-status/:telegramId', async (req, res) => {
@@ -1153,15 +1141,12 @@ router.get('/premium-status/:telegramId', async (req, res) => {
       };
     }
 
-    logDeposit('INFO', 'Премиум статус проверен', { telegramId, premiumStatus });
-
     res.json({
       success: true,
       premium: premiumStatus
     });
 
   } catch (err) {
-    logDeposit('ERROR', 'Ошибка проверки премиум статуса', { error: err.message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1169,8 +1154,6 @@ router.get('/premium-status/:telegramId', async (req, res) => {
 // POST /api/wallet/purchase-premium - Покупка премиума
 router.post('/purchase-premium', async (req, res) => {
   const { telegram_id, package_type, payment_method, payment_amount } = req.body;
-  
-  logDeposit('INFO', 'Покупка премиума', { telegram_id, package_type, payment_method, payment_amount });
   
   if (!telegram_id || !package_type || !payment_method || !payment_amount) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -1293,14 +1276,6 @@ router.post('/purchase-premium', async (req, res) => {
       ? 'Поздравляем! Реклама отключена НАВСЕГДА! 🏆' 
       : 'Поздравляем! Реклама отключена на 30 дней! 🎉';
 
-    logDeposit('SUCCESS', 'Премиум куплен', { 
-      telegram_id, 
-      package_type, 
-      payment_amount, 
-      payment_method,
-      verified_granted: true
-    });
-
     res.json({
       success: true,
       message: successMessage,
@@ -1331,165 +1306,10 @@ router.post('/purchase-premium', async (req, res) => {
     }
 
   } catch (err) {
-    logDeposit('ERROR', 'Ошибка покупки премиума', { error: err.message });
     await client.query('ROLLBACK');
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
-  }
-});
-
-// POST /api/wallet/debug-deposits - ДИАГНОСТИКА ДЕПОЗИТОВ
-router.post('/debug-deposits', async (req, res) => {
-  const { player_id } = req.body;
-  
-  logDeposit('INFO', 'DEBUG: Диагностика депозитов', { player_id });
-  
-  if (!player_id) {
-    return res.status(400).json({ error: 'Player ID is required' });
-  }
-
-  try {
-    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
-    
-    // 1. Проверяем игрока в базе
-    logDeposit('INFO', 'Проверяем игрока в базе...', {});
-    const playerResult = await pool.query(
-      'SELECT telegram_id, first_name, ton FROM players WHERE telegram_id = $1',
-      [player_id]
-    );
-    
-    if (playerResult.rows.length === 0) {
-      logDeposit('ERROR', 'Игрок не найден в базе', {});
-      return res.json({ 
-        success: false, 
-        error: 'Player not found',
-        debug: { player_found: false }
-      });
-    }
-    
-    const player = playerResult.rows[0];
-    logDeposit('INFO', 'Игрок найден', { player });
-    
-    // 2. Проверяем существующие депозиты в базе
-    logDeposit('INFO', 'Проверяем записи депозитов в базе...', {});
-    const existingDeposits = await pool.query(
-      'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 10',
-      [player_id]
-    );
-    
-    logDeposit('INFO', `Найдено депозитов в базе: ${existingDeposits.rows.length}`, {});
-    
-    // 3. Получаем транзакции из блокчейна через РАБОЧИЙ API
-    logDeposit('INFO', 'Получаем транзакции из TON блокчейна через рабочий API...', {});
-    let transactions = [];
-    try {
-      transactions = await getTransactionsFromTonApi(gameWalletAddress, 20);
-      logDeposit('SUCCESS', `Получено транзакций из блокчейна: ${transactions.length}`, {});
-    } catch (apiError) {
-      logDeposit('ERROR', 'Ошибка рабочего API', { error: apiError.message });
-      return res.json({ 
-        success: false, 
-        error: 'TON API error',
-        debug: { ton_api_error: true, error_details: apiError.message }
-      });
-    }
-    
-    // 4. Анализируем входящие транзакции
-    const incomingTransactions = [];
-    
-    for (const tx of transactions) {
-      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
-      
-      const amount = parseFloat(tx.in_msg.value) / 1000000000;
-      const hash = tx.transaction_id.hash;
-      const fromAddress = tx.in_msg.source;
-      const txTime = new Date(tx.utime * 1000);
-      
-      if (amount < 0.005) continue;
-      
-      incomingTransactions.push({
-        amount: amount.toFixed(8),
-        hash: hash.substring(0, 16) + '...',
-        from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
-        time: txTime.toISOString(),
-        minutes_ago: Math.floor((Date.now() - txTime.getTime()) / (1000 * 60))
-      });
-    }
-    
-    logDeposit('INFO', `Найдено входящих транзакций: ${incomingTransactions.length}`, {});
-    
-    // 5. Проверяем историю баланса
-    const balanceHistory = await pool.query(
-      'SELECT * FROM balance_history WHERE telegram_id = $1 AND currency = $2 ORDER BY timestamp DESC LIMIT 5',
-      [player_id, 'ton']
-    );
-    
-    logDeposit('INFO', `Записей в истории баланса: ${balanceHistory.rows.length}`, {});
-    
-    // 6. Формируем отчет
-    const debugReport = {
-      success: true,
-      player: {
-        telegram_id: player.telegram_id,
-        name: player.first_name,
-        current_ton_balance: parseFloat(player.ton || '0'),
-      },
-      game_wallet: gameWalletAddress,
-      database_deposits: {
-        count: existingDeposits.rows.length,
-        deposits: existingDeposits.rows.map(dep => ({
-          amount: parseFloat(dep.amount),
-          status: dep.status,
-          created_at: dep.created_at,
-          hash: dep.transaction_hash ? dep.transaction_hash.substring(0, 16) + '...' : 'no_hash'
-        }))
-      },
-      blockchain_transactions: {
-        count: incomingTransactions.length,
-        recent_incoming: incomingTransactions.slice(0, 5)
-      },
-      balance_history: {
-        count: balanceHistory.rows.length,
-        recent: balanceHistory.rows.map(bh => ({
-          old_balance: parseFloat(bh.old_balance),
-          new_balance: parseFloat(bh.new_balance),
-          change: parseFloat(bh.change_amount),
-          reason: bh.reason,
-          timestamp: bh.timestamp
-        }))
-      },
-      recommendations: []
-    };
-    
-    // 7. Анализ и рекомендации
-    if (existingDeposits.rows.length === 0) {
-      debugReport.recommendations.push("❌ В базе нет записей о депозитах для этого игрока");
-    }
-    
-    if (incomingTransactions.length > 0 && existingDeposits.rows.length === 0) {
-      debugReport.recommendations.push("⚠️ В блокчейне есть транзакции, но в базе нет записей - проблема с обработкой");
-    }
-    
-    if (balanceHistory.rows.length === 0) {
-      debugReport.recommendations.push("❌ Нет записей об изменениях баланса TON");
-    }
-    
-    const recentTransactions = incomingTransactions.filter(tx => tx.minutes_ago <= 30);
-    if (recentTransactions.length > 0) {
-      debugReport.recommendations.push(`💡 Найдено ${recentTransactions.length} транзакций за последние 30 минут - попробуйте обработать`);
-    }
-    
-    logDeposit('SUCCESS', 'DEBUG ОТЧЕТ ГОТОВ', { recommendations_count: debugReport.recommendations.length });
-    res.json(debugReport);
-
-  } catch (error) {
-    logDeposit('ERROR', 'Ошибка диагностики', { error: error.message });
-    res.status(500).json({ 
-      success: false, 
-      error: 'Debug failed',
-      details: error.message 
-    });
   }
 });
 
