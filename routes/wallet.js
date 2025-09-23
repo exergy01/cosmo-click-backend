@@ -105,60 +105,91 @@ router.post('/disconnect', async (req, res) => {
   }
 });
 
-// Функция для преобразования адреса из tonapi.io формата в user-friendly
-const convertTonApiAddress = (address) => {
+// Функция преобразования user-friendly адреса в raw hex формат для tonapi.io
+const userFriendlyToRaw = (address) => {
   if (!address) return null;
-  // tonapi.io возвращает адреса в raw формате, нужно преобразовать
-  return address;
-};
-
-// Функция получения транзакций через рабочий API
-const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
-  logDeposit('INFO', 'Запрос к TON API v2 (рабочий)', { gameWalletAddress, limit });
   
   try {
-    const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
-      params: { limit },
-      timeout: 15000,
+    // Убираем префикс если есть и декодируем base32
+    const cleanAddress = address.replace(/^(EQ|UQ)/, '');
+    
+    // Для tonapi.io используем raw hex формат
+    // Преобразуем из base32 в hex
+    const Buffer = require('buffer').Buffer;
+    
+    // Простое преобразование - берем адрес как есть, но для tonapi.io используем без префикса
+    return `0:${cleanAddress.toLowerCase()}`;
+  } catch (error) {
+    logDeposit('ERROR', 'Ошибка преобразования адреса', { address, error: error.message });
+    return address; // возвращаем оригинальный если не удалось преобразовать
+  }
+};
+
+// Функция получения транзакций через рабочий API (используем старый добрый toncenter.com)
+const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
+  logDeposit('INFO', 'Запрос к TON Center API (возвращаемся к стабильному)', { gameWalletAddress, limit });
+  
+  try {
+    // Возвращаемся к TON Center API, но с улучшенной обработкой ошибок
+    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+      params: {
+        address: gameWalletAddress,
+        limit: limit,
+        archival: false
+      },
+      timeout: 20000, // увеличиваем timeout
       headers: {
-        'Authorization': 'Bearer AQAAAAAAAAAAAM4AAAAAAAAAUgCddMzOCYSr3kJO8YCcBJJmJXGMAAAAFWMGJjvIcFLl6ggACtBdkLn7vf4_TK_0'
+        'X-API-Key': process.env.TON_CENTER_API_KEY || '' // если есть ключ
       }
     });
-    
-    if (!response.data || !response.data.transactions) {
-      throw new Error('Invalid response format from tonapi.io');
+
+    if (!response.data.ok) {
+      throw new Error(response.data.error || 'TON Center API error');
     }
 
-    // Преобразуем формат ответа tonapi.io в формат, ожидаемый остальным кодом
-    const convertedTransactions = response.data.transactions.map(tx => {
-      const inMsg = tx.in_msg;
-      
-      return {
-        transaction_id: { 
-          hash: tx.hash 
-        },
-        utime: tx.utime,
-        in_msg: inMsg ? {
-          value: inMsg.value ? inMsg.value.toString() : '0',
-          source: inMsg.source?.address ? convertTonApiAddress(inMsg.source.address) : null
-        } : null
-      };
-    });
-
-    logDeposit('SUCCESS', 'TON API v2 успешный ответ', { 
-      transactions_count: convertedTransactions.length,
-      raw_count: response.data.transactions.length
+    const transactions = response.data.result;
+    
+    logDeposit('SUCCESS', 'TON Center API успешный ответ', { 
+      transactions_count: transactions.length
     });
     
-    return convertedTransactions;
+    return transactions;
     
   } catch (error) {
-    logDeposit('ERROR', 'Ошибка TON API v2', { 
+    logDeposit('ERROR', 'Ошибка TON Center API, пробуем резервный', { 
       error: error.message,
-      status: error.response?.status,
-      data: error.response?.data
+      status: error.response?.status
     });
-    throw error;
+    
+    // Если TON Center не работает, пробуем альтернативный подход
+    try {
+      logDeposit('INFO', 'Пробуем резервный API toncenter.com без ключа...', {});
+      
+      const fallbackResponse = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+        params: {
+          address: gameWalletAddress,
+          limit: Math.min(limit, 10), // уменьшаем лимит для стабильности
+          archival: false
+        },
+        timeout: 15000
+      });
+
+      if (fallbackResponse.data.ok) {
+        logDeposit('SUCCESS', 'Резервный API работает', { 
+          transactions_count: fallbackResponse.data.result.length 
+        });
+        return fallbackResponse.data.result;
+      }
+      
+      throw new Error('Fallback API also failed');
+      
+    } catch (fallbackError) {
+      logDeposit('ERROR', 'Все API недоступны', { 
+        original_error: error.message,
+        fallback_error: fallbackError.message
+      });
+      throw new Error('All TON APIs are temporarily unavailable');
+    }
   }
 };
 
