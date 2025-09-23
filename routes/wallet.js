@@ -105,12 +105,31 @@ router.post('/disconnect', async (req, res) => {
   }
 });
 
-// Функция получения транзакций через множественные API (все публичные, без ключей)
+// Функция получения транзакций через публичные TON API (без тестовых данных)
 const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
   logDeposit('INFO', 'Запрос к публичным TON API', { gameWalletAddress, limit });
   
   // Список публичных API без авторизации
   const apis = [
+    {
+      name: 'TON Center (без ключа)',
+      getData: async () => {
+        logDeposit('INFO', 'Пробуем TON Center без авторизации...', {});
+        const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+          params: {
+            address: gameWalletAddress,
+            limit: Math.min(limit, 10),
+            archival: false
+          },
+          timeout: 15000
+        });
+
+        if (response.data.ok && response.data.result) {
+          return response.data.result;
+        }
+        throw new Error(response.data.error || 'TON Center API error');
+      }
+    },
     {
       name: 'TONHub API',
       getData: async () => {
@@ -136,33 +155,11 @@ const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
       }
     },
     {
-      name: 'TON Center (без ключа)',
+      name: 'TON API v2 (без токена)',
       getData: async () => {
-        logDeposit('INFO', 'Пробуем TON Center без авторизации...', {});
-        const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-          params: {
-            address: gameWalletAddress,
-            limit: Math.min(limit, 10),
-            archival: false
-          },
-          timeout: 15000
-        });
-
-        if (response.data.ok && response.data.result) {
-          return response.data.result;
-        }
-        throw new Error(response.data.error || 'TON Center API error');
-      }
-    },
-    {
-      name: 'TONScan API',
-      getData: async () => {
-        logDeposit('INFO', 'Пробуем TONScan API...', {});
-        const response = await axios.get(`https://tonapi.io/v1/blockchain/getTransactions`, {
-          params: {
-            account: gameWalletAddress,
-            limit: Math.min(limit, 10)
-          },
+        logDeposit('INFO', 'Пробуем TON API v2 без токена...', {});
+        const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
+          params: { limit: Math.min(limit, 10) },
           timeout: 15000
         });
 
@@ -174,45 +171,7 @@ const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
             in_msg: tx.in_msg
           }));
         }
-        throw new Error('TONScan API error');
-      }
-    },
-    {
-      name: 'Резервный метод (мок данные для тестирования)',
-      getData: async () => {
-        logDeposit('WARNING', 'Используем тестовые данные для разработки...', {});
-        
-        // ВРЕМЕННЫЕ ТЕСТОВЫЕ ДАННЫЕ для игрока 850758749
-        // В реальности эти транзакции должны быть получены из блокчейна
-        if (gameWalletAddress === 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60') {
-          const mockTransactions = [
-            {
-              transaction_id: { hash: 'test_hash_1_' + Date.now() },
-              utime: Math.floor(Date.now() / 1000) - 300, // 5 минут назад
-              in_msg: {
-                value: '1200000000', // 1.2 TON
-                source: 'UQD4r7h8KvMIP8JpWw6LVgNi_fVDxD53Wp8kR1ZhGrcuI5nk'
-              }
-            },
-            {
-              transaction_id: { hash: 'test_hash_2_' + Date.now() },
-              utime: Math.floor(Date.now() / 1000) - 600, // 10 минут назад
-              in_msg: {
-                value: '2000000000', // 2.0 TON
-                source: 'UQD4r7h8KvMIP8JpWw6LVgNi_fVDxD53Wp8kR1ZhGrcuI5nk'
-              }
-            }
-          ];
-          
-          logDeposit('WARNING', 'Возвращаем мок данные для тестирования', { 
-            mock_transactions: mockTransactions.length,
-            total_amount: '3.2 TON'
-          });
-          
-          return mockTransactions;
-        }
-        
-        throw new Error('No mock data for this address');
+        throw new Error('TON API v2 error');
       }
     }
   ];
@@ -230,7 +189,8 @@ const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
       return transactions;
     } catch (apiError) {
       logDeposit('ERROR', `${api.name} не работает`, { 
-        error: apiError.message
+        error: apiError.message,
+        status: apiError.response?.status
       });
       lastError = apiError;
       continue;
