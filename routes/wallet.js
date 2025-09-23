@@ -1,4 +1,4 @@
-// routes/wallet.js - ПОЛНАЯ РАБОЧАЯ ВЕРСИЯ
+// routes/wallet.js - ПОЛНАЯ ВЕРСИЯ С TONAPI - ЧАСТЬ 1/4
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -24,12 +24,49 @@ const logDeposit = (level, message, data = {}) => {
 };
 
 // ======================
-// ПРИОРИТЕТНЫЙ СПИСОК TON API
+// ОБНОВЛЕННАЯ СИСТЕМА ПОЛУЧЕНИЯ ТРАНЗАКЦИЙ - TONAPI
 // ======================
 const getTonTransactions = async (gameWalletAddress, limit = 50) => {
-  logDeposit('INFO', `Получение транзакций для ${gameWalletAddress}`);
+  logDeposit('INFO', `Получение транзакций для ${gameWalletAddress} через TONAPI`);
   
-  // 1. Пробуем TON Center с API ключом
+  // 1. Пробуем TONAPI с токеном
+  if (process.env.TONAPI_TOKEN) {
+    try {
+      logDeposit('INFO', 'Пробуем TONAPI с токеном...');
+      const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
+        params: { 
+          limit: Math.min(limit, 100),
+          sort_order: 'desc'
+        },
+        headers: {
+          'Authorization': `Bearer ${process.env.TONAPI_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 20000
+      });
+
+      if (response.data && response.data.transactions) {
+        const transactions = response.data.transactions.map(tx => ({
+          transaction_id: { 
+            hash: tx.hash,
+            lt: tx.lt.toString()
+          },
+          utime: tx.utime,
+          in_msg: tx.in_msg ? {
+            source: tx.in_msg.source?.address || tx.in_msg.source,
+            value: tx.in_msg.value
+          } : null
+        }));
+        logDeposit('SUCCESS', `TONAPI работает! Получено: ${transactions.length} транзакций`);
+        return transactions;
+      }
+      throw new Error('TONAPI: Invalid response format');
+    } catch (error) {
+      logDeposit('ERROR', `TONAPI недоступен`, { error: error.message, status: error.response?.status });
+    }
+  }
+
+  // 2. Пробуем TON Center с API ключом (резерв)
   if (process.env.TONCENTER_API_KEY) {
     try {
       logDeposit('INFO', 'Пробуем TON Center с API ключом...');
@@ -37,7 +74,7 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
         params: {
           address: gameWalletAddress,
           limit: Math.min(limit, 100),
-          archival: false
+          archival: true
         },
         headers: {
           'X-API-Key': process.env.TONCENTER_API_KEY
@@ -46,49 +83,23 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
       });
 
       if (response.data.ok && response.data.result) {
-        logDeposit('SUCCESS', `TON Center с API ключом работает! Получено: ${response.data.result.length} транзакций`);
+        logDeposit('SUCCESS', `TON Center работает! Получено: ${response.data.result.length} транзакций`);
         return response.data.result;
       }
       throw new Error(response.data.error || 'TON Center API error');
     } catch (error) {
-      logDeposit('ERROR', `TON Center с API ключом недоступен`, { error: error.message });
+      logDeposit('ERROR', `TON Center недоступен`, { error: error.message });
     }
   }
 
-  // 2. Пробуем TONAPI.io
+  // 3. Последняя попытка - TON Center без ключа
   try {
-    logDeposit('INFO', 'Пробуем TON API v2...');
-    const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
-      params: { limit: Math.min(limit, 50) },
-      headers: {
-        'Authorization': `Bearer ${process.env.TONAPI_TOKEN || ''}`,
-        'User-Agent': 'CosmoClick-Game/1.0'
-      },
-      timeout: 15000
-    });
-
-    if (response.data && response.data.transactions) {
-      const transactions = response.data.transactions.map(tx => ({
-        transaction_id: { hash: tx.hash },
-        utime: tx.utime,
-        in_msg: tx.in_msg
-      }));
-      logDeposit('SUCCESS', `TON API v2 работает! Получено: ${transactions.length} транзакций`);
-      return transactions;
-    }
-    throw new Error('TON API v2 error');
-  } catch (error) {
-    logDeposit('ERROR', `TON API v2 недоступен`, { error: error.message });
-  }
-
-  // 3. Пробуем TON Center без ключа (лимит 1 запрос/сек)
-  try {
-    logDeposit('INFO', 'Пробуем TON Center без ключа (медленно)...');
+    logDeposit('INFO', 'Последняя попытка: TON Center без ключа...');
     const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
       params: {
         address: gameWalletAddress,
         limit: Math.min(limit, 10),
-        archival: false
+        archival: true
       },
       timeout: 30000
     });
@@ -102,9 +113,10 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
     logDeposit('ERROR', `TON Center без ключа недоступен`, { error: error.message });
   }
 
-  // 4. Все API недоступны
+  // Все API недоступны
   throw new Error('Все TON API недоступны');
 };
+// routes/wallet.js - ЧАСТЬ 2/4 - ПОДКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ КОШЕЛЬКА
 
 // ======================
 // ПОДКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ КОШЕЛЬКА
@@ -193,7 +205,7 @@ router.post('/check-deposit-by-address', async (req, res) => {
   try {
     const gameWalletAddress = game_wallet || process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
     
-    // Получаем транзакции через улучшенную систему
+    // Получаем транзакции через улучшенную систему с TONAPI
     let transactions = [];
     try {
       transactions = await getTonTransactions(gameWalletAddress, 50);
@@ -225,29 +237,53 @@ router.post('/check-deposit-by-address', async (req, res) => {
       const txTime = new Date(tx.utime * 1000);
       const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
       
+      logDeposit('INFO', `Анализируем транзакцию #${i+1}`, {
+        amount: amount,
+        from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
+        hash: hash.substring(0, 20) + '...',
+        minutes_ago: minutesAgo
+      });
+      
       // Пропускаем слишком маленькие транзакции
-      if (amount < 0.005) continue;
+      if (amount < 0.005) {
+        logDeposit('DEBUG', 'Пропуск: слишком маленькая сумма', { amount });
+        continue;
+      }
       
       // Если указана ожидаемая сумма - проверяем
-      if (expected_amount && Math.abs(amount - expected_amount) > 0.001) continue;
+      if (expected_amount && Math.abs(amount - expected_amount) > 0.001) {
+        logDeposit('DEBUG', 'Пропуск: сумма не совпадает', { 
+          expected: expected_amount, 
+          actual: amount 
+        });
+        continue;
+      }
       
       // Если указан адрес отправителя - проверяем
-      if (sender_address && fromAddress !== sender_address) continue;
+      if (sender_address && fromAddress !== sender_address) {
+        logDeposit('DEBUG', 'Пропуск: адрес не совпадает', { 
+          expected: sender_address, 
+          actual: fromAddress 
+        });
+        continue;
+      }
       
       // Проверяем, не обрабатывали ли уже эту транзакцию
+      logDeposit('INFO', 'Проверяем, не обработана ли уже эта транзакция...', { hash });
       const existingTx = await pool.query(
         'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
         [hash]
       );
 
       if (existingTx.rows.length > 0) {
+        logDeposit('WARNING', 'Транзакция уже была обработана ранее', { hash });
         if (foundDeposits.length === 0) {
           return res.json({ success: true, message: 'Deposit already processed' });
         }
         continue;
       }
 
-      logDeposit('SUCCESS', 'НОВАЯ ТРАНЗАКЦИЯ! Начинаем обработку...', { amount, hash: hash.substring(0, 20) });
+      logDeposit('SUCCESS', 'НОВАЯ ТРАНЗАКЦИЯ! Начинаем обработку...', { amount, hash });
       
       // Обрабатываем найденный депозит
       const client = await pool.connect();
@@ -269,6 +305,12 @@ router.post('/check-deposit-by-address', async (req, res) => {
         const currentBalance = parseFloat(playerData.ton || '0');
         const newBalance = currentBalance + amount;
         
+        logDeposit('INFO', 'Обновляем баланс игрока', {
+          current_balance: currentBalance,
+          adding: amount,
+          new_balance: newBalance
+        });
+
         // Обновляем баланс игрока
         await client.query(
           'UPDATE players SET ton = $1 WHERE telegram_id = $2',
@@ -339,6 +381,12 @@ router.post('/check-deposit-by-address', async (req, res) => {
       }
     }
 
+    logDeposit('INFO', 'ИТОГОВЫЙ РЕЗУЛЬТАТ', {
+      total_transactions_analyzed: transactions.length,
+      new_deposits_found: totalProcessed,
+      total_amount_credited: foundDeposits.reduce((sum, dep) => sum + dep.amount, 0).toFixed(8)
+    });
+
     if (totalProcessed > 0) {
       const totalAmount = foundDeposits.reduce((sum, dep) => sum + dep.amount, 0);
       const lastDeposit = foundDeposits[foundDeposits.length - 1];
@@ -352,7 +400,7 @@ router.post('/check-deposit-by-address', async (req, res) => {
         deposits: foundDeposits.map(dep => ({
           amount: dep.amount.toFixed(8),
           hash: dep.hash.substring(0, 16) + '...',
-          from: dep.from_address.substring(0, 10) + '...'
+          from: dep.from_address ? dep.from_address.substring(0, 10) + '...' : 'unknown'
         }))
       });
     } else {
@@ -371,6 +419,7 @@ router.post('/check-deposit-by-address', async (req, res) => {
     });
   }
 });
+// routes/wallet.js - ЧАСТЬ 3/4 - УНИВЕРСАЛЬНАЯ ПРОВЕРКА И МАНУАЛЬНЫЕ ДЕПОЗИТЫ
 
 // POST /api/wallet/check-all-deposits - Универсальный поиск всех депозитов
 router.post('/check-all-deposits', async (req, res) => {
@@ -416,6 +465,8 @@ router.post('/check-all-deposits', async (req, res) => {
       );
 
       if (existingTx.rows.length > 0) continue;
+
+      logDeposit('INFO', 'НОВАЯ! Обрабатываем...', { amount, hash: hash.substring(0, 20) });
 
       // Обрабатываем депозит
       const client = await pool.connect();
@@ -480,6 +531,7 @@ router.post('/check-all-deposits', async (req, res) => {
         });
         
         totalProcessed++;
+        logDeposit('SUCCESS', 'Обработан', { amount_ton: amount });
         
         // Уведомление
         try {
@@ -490,7 +542,7 @@ router.post('/check-all-deposits', async (req, res) => {
 
       } catch (dbErr) {
         await client.query('ROLLBACK');
-        logDeposit('ERROR', 'Ошибка БД', { error: dbErr.message });
+        logDeposit('ERROR', 'Ошибка DB', { error: dbErr.message });
       } finally {
         client.release();
       }
@@ -507,7 +559,7 @@ router.post('/check-all-deposits', async (req, res) => {
         deposits: foundDeposits.map(dep => ({
           amount: dep.amount.toFixed(8),
           hash: dep.hash.substring(0, 10) + '...',
-          from: dep.from_address.substring(0, 8) + '...'
+          from: dep.from_address ? dep.from_address.substring(0, 8) + '...' : 'unknown'
         }))
       });
     } else {
@@ -564,7 +616,7 @@ router.post('/debug-deposits', async (req, res) => {
       [player_id]
     );
     
-    // 3. Получаем транзакции из блокчейна через рабочий API
+    // 3. Получаем транзакции из блокчейна через TONAPI
     let transactions = [];
     let apiStatus = 'unknown';
     try {
@@ -778,6 +830,7 @@ router.post('/manual-add-deposit', async (req, res) => {
     client.release();
   }
 });
+// routes/wallet.js - ЧАСТЬ 4/4 - ВЫВОД, STARS, ПРЕМИУМ И ИСТОРИЯ
 
 // ======================
 // ВЫВОД TON
@@ -1310,6 +1363,123 @@ router.post('/purchase-premium', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+  }
+});
+
+// ======================
+// ИСТОРИЯ ТРАНЗАКЦИЙ
+// ======================
+
+// GET /api/wallet/history/:telegramId - История транзакций игрока
+router.get('/history/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  const { limit = 20, offset = 0 } = req.query;
+  
+  try {
+    // Депозиты TON
+    const tonDeposits = await pool.query(`
+      SELECT 
+        'deposit' as type,
+        'ton' as currency,
+        amount,
+        transaction_hash,
+        status,
+        created_at,
+        'Пополнение TON' as description
+      FROM ton_deposits 
+      WHERE player_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [telegramId, parseInt(limit), parseInt(offset)]);
+    
+    // Депозиты Stars
+    const starDeposits = await pool.query(`
+      SELECT 
+        'deposit' as type,
+        'stars' as currency,
+        amount,
+        telegram_payment_id as transaction_hash,
+        status,
+        created_at,
+        description
+      FROM star_transactions 
+      WHERE player_id = $1 AND transaction_type = 'deposit'
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [telegramId, parseInt(limit), parseInt(offset)]);
+    
+    // Выводы
+    const withdrawals = await pool.query(`
+      SELECT 
+        'withdrawal' as type,
+        'ton' as currency,
+        amount,
+        transaction_hash,
+        status,
+        created_at,
+        'Вывод TON' as description
+      FROM withdrawals 
+      WHERE player_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [telegramId, parseInt(limit), parseInt(offset)]);
+    
+    // Покупки премиума
+    const premiumPurchases = await pool.query(`
+      SELECT 
+        'premium' as type,
+        payment_method as currency,
+        payment_amount as amount,
+        transaction_id as transaction_hash,
+        'completed' as status,
+        created_at,
+        CASE 
+          WHEN subscription_type = 'no_ads_forever' THEN 'Премиум навсегда'
+          ELSE 'Премиум на 30 дней'
+        END as description
+      FROM premium_subscriptions 
+      WHERE telegram_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [telegramId, parseInt(limit), parseInt(offset)]);
+    
+    // Объединяем все транзакции
+    const allTransactions = [
+      ...tonDeposits.rows,
+      ...starDeposits.rows,
+      ...withdrawals.rows,
+      ...premiumPurchases.rows
+    ];
+    
+    // Сортируем по дате
+    allTransactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    // Ограничиваем результат
+    const limitedTransactions = allTransactions.slice(0, parseInt(limit));
+    
+    const formattedTransactions = limitedTransactions.map(tx => ({
+      type: tx.type,
+      currency: tx.currency,
+      amount: parseFloat(tx.amount),
+      hash: tx.transaction_hash ? tx.transaction_hash.substring(0, 16) + '...' : 'N/A',
+      full_hash: tx.transaction_hash,
+      status: tx.status,
+      date: tx.created_at,
+      description: tx.description || 'Транзакция',
+      formatted_date: new Date(tx.created_at).toLocaleString('ru-RU')
+    }));
+    
+    res.json({
+      success: true,
+      transactions: formattedTransactions,
+      total_count: allTransactions.length,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+    
+  } catch (err) {
+    logDeposit('ERROR', 'Ошибка получения истории', { error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
