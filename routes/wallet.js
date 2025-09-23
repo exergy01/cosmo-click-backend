@@ -1,4 +1,4 @@
-// routes/wallet.js - ВЕРСИЯ С ПОДРОБНЫМ ЛОГИРОВАНИЕМ
+// routes/wallet.js - ВЕРСИЯ С ПОДРОБНЫМ ЛОГИРОВАНИЕМ И РАБОЧИМ API
 const express = require('express');
 const pool = require('../db');
 const { getPlayer } = require('./shared/getPlayer');
@@ -105,11 +105,68 @@ router.post('/disconnect', async (req, res) => {
   }
 });
 
+// Функция для преобразования адреса из tonapi.io формата в user-friendly
+const convertTonApiAddress = (address) => {
+  if (!address) return null;
+  // tonapi.io возвращает адреса в raw формате, нужно преобразовать
+  return address;
+};
+
+// Функция получения транзакций через рабочий API
+const getTransactionsFromTonApi = async (gameWalletAddress, limit = 50) => {
+  logDeposit('INFO', 'Запрос к TON API v2 (рабочий)', { gameWalletAddress, limit });
+  
+  try {
+    const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
+      params: { limit },
+      timeout: 15000,
+      headers: {
+        'Authorization': 'Bearer AQAAAAAAAAAAAM4AAAAAAAAAUgCddMzOCYSr3kJO8YCcBJJmJXGMAAAAFWMGJjvIcFLl6ggACtBdkLn7vf4_TK_0'
+      }
+    });
+    
+    if (!response.data || !response.data.transactions) {
+      throw new Error('Invalid response format from tonapi.io');
+    }
+
+    // Преобразуем формат ответа tonapi.io в формат, ожидаемый остальным кодом
+    const convertedTransactions = response.data.transactions.map(tx => {
+      const inMsg = tx.in_msg;
+      
+      return {
+        transaction_id: { 
+          hash: tx.hash 
+        },
+        utime: tx.utime,
+        in_msg: inMsg ? {
+          value: inMsg.value ? inMsg.value.toString() : '0',
+          source: inMsg.source?.address ? convertTonApiAddress(inMsg.source.address) : null
+        } : null
+      };
+    });
+
+    logDeposit('SUCCESS', 'TON API v2 успешный ответ', { 
+      transactions_count: convertedTransactions.length,
+      raw_count: response.data.transactions.length
+    });
+    
+    return convertedTransactions;
+    
+  } catch (error) {
+    logDeposit('ERROR', 'Ошибка TON API v2', { 
+      error: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    throw error;
+  }
+};
+
 // POST /api/wallet/check-deposit-by-address - ОСНОВНАЯ ФУНКЦИЯ ПРОВЕРКИ ДЕПОЗИТОВ
 router.post('/check-deposit-by-address', async (req, res) => {
   const { player_id, expected_amount, sender_address, game_wallet } = req.body;
   
-  logDeposit('INFO', 'НАЧАЛО ПРОВЕРКИ ДЕПОЗИТА ПО АДРЕСУ', {
+  logDeposit('INFO', 'НАЧАЛО ПРОВЕРКИ ДЕПОЗИТ ПО АДРЕСУ', {
     player_id, 
     expected_amount, 
     sender_address, 
@@ -129,123 +186,23 @@ router.post('/check-deposit-by-address', async (req, res) => {
       senderAddress: sender_address || 'любой'
     });
     
+    // ИСПОЛЬЗУЕМ ТОЛЬКО РАБОЧИЙ API
     let transactions = [];
     
-    // ПРОБУЕМ РАЗНЫЕ API ПОСЛЕДОВАТЕЛЬНО С ЛОГИРОВАНИЕМ
-    const apis = [
-      {
-        name: 'TON Center API',
-        url: 'https://toncenter.com/api/v2/getTransactions',
-        getData: async () => {
-          logDeposit('INFO', 'Запрос к TON Center API', { gameWalletAddress });
-          const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-            params: {
-              address: gameWalletAddress,
-              limit: 50,
-              archival: false
-            },
-            timeout: 15000
-          });
-
-          if (response.data.ok && response.data.result) {
-            logDeposit('SUCCESS', 'TON Center API успешный ответ', { 
-              transactions_count: response.data.result.length 
-            });
-            return response.data.result;
-          }
-          throw new Error(response.data.error || 'API Error');
-        }
-      },
-      {
-        name: 'TONHub API',
-        url: 'https://api.tonhub.com/json-rpc',
-        getData: async () => {
-          logDeposit('INFO', 'Запрос к TONHub API', { gameWalletAddress });
-          const response = await axios.post('https://api.tonhub.com/json-rpc', {
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getTransactions',
-            params: {
-              address: gameWalletAddress,
-              limit: 50,
-              archival: false
-            }
-          }, {
-            timeout: 15000,
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (response.data.result && response.data.result.transactions) {
-            logDeposit('SUCCESS', 'TONHub API успешный ответ', { 
-              transactions_count: response.data.result.transactions.length 
-            });
-            return response.data.result.transactions;
-          }
-          throw new Error('Invalid response format');
-        }
-      },
-      {
-        name: 'TON API v2',
-        url: 'https://tonapi.io/v2/blockchain/accounts/',
-        getData: async () => {
-          logDeposit('INFO', 'Запрос к TON API v2', { gameWalletAddress });
-          const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions?limit=50`, {
-            timeout: 15000,
-            headers: {
-              'Authorization': 'Bearer AQAAAAAAAAAAAM4AAAAAAAAAUgCddMzOCYSr3kJO8YCcBJJmJXGMAAAAFWMGJjvIcFLl6ggACtBdkLn7vf4_TK_0'
-            }
-          });
-          
-          if (response.data.transactions) {
-            const convertedTxs = response.data.transactions.map(tx => ({
-              transaction_id: { hash: tx.hash },
-              utime: tx.utime,
-              in_msg: tx.in_msg ? {
-                value: tx.in_msg.value,
-                source: tx.in_msg.source?.address
-              } : null
-            }));
-            logDeposit('SUCCESS', 'TON API v2 успешный ответ', { 
-              transactions_count: convertedTxs.length 
-            });
-            return convertedTxs;
-          }
-          throw new Error('Invalid response format');
-        }
-      }
-    ];
-
-    // ПРОБУЕМ API ПО ОЧЕРЕДИ
-    let lastError = null;
-    for (const api of apis) {
-      try {
-        logDeposit('INFO', `Пробуем ${api.name}...`, {});
-        transactions = await api.getData();
-        logDeposit('SUCCESS', `${api.name} работает!`, { 
-          transactions_received: transactions.length 
-        });
-        break;
-      } catch (apiError) {
-        logDeposit('ERROR', `${api.name} не работает`, { 
-          error: apiError.message,
-          api_name: api.name
-        });
-        lastError = apiError;
-        continue;
-      }
-    }
-
-    // Если ни один API не сработал
-    if (!transactions || transactions.length === 0) {
-      logDeposit('ERROR', 'ВСЕ TON API НЕДОСТУПНЫ', { 
-        last_error: lastError?.message 
+    try {
+      logDeposit('INFO', 'Запрос к рабочему TON API v2...', {});
+      transactions = await getTransactionsFromTonApi(gameWalletAddress, 50);
+      logDeposit('SUCCESS', 'Рабочий API вернул транзакции!', { 
+        transactions_received: transactions.length 
+      });
+    } catch (apiError) {
+      logDeposit('ERROR', 'Рабочий API недоступен', { 
+        error: apiError.message
       });
       return res.json({ 
         success: false, 
         error: 'TON API temporarily unavailable',
-        details: lastError?.message
+        details: apiError.message
       });
     }
 
@@ -490,25 +447,18 @@ router.post('/check-all-deposits', async (req, res) => {
     logDeposit('INFO', 'Фильтр по отправителю', { sender_filter: sender_address || 'отключен' });
     
     // Получаем больше транзакций для поиска
-    logDeposit('INFO', 'Запрос к TON API (расширенный поиск)...', {});
-    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-      params: {
-        address: gameWalletAddress,
-        limit: 100, // Увеличиваем лимит
-        archival: false
-      },
-      timeout: 20000
-    });
-
-    if (!response.data.ok) {
-      logDeposit('ERROR', 'Ошибка TON API', {});
+    logDeposit('INFO', 'Запрос к рабочему TON API (расширенный поиск)...', {});
+    
+    let transactions = [];
+    try {
+      transactions = await getTransactionsFromTonApi(gameWalletAddress, 100);
+      logDeposit('INFO', 'Получено транзакций для анализа', { 
+        transactions_count: transactions.length 
+      });
+    } catch (apiError) {
+      logDeposit('ERROR', 'Ошибка API', { error: apiError.message });
       return res.json({ success: false, error: 'TON API error' });
     }
-
-    const transactions = response.data.result;
-    logDeposit('INFO', 'Получено транзакций для анализа', { 
-      transactions_count: transactions.length 
-    });
     
     let foundDeposits = [];
     let totalProcessed = 0;
@@ -666,11 +616,11 @@ router.post('/check-all-deposits', async (req, res) => {
   }
 });
 
-// POST /api/wallet/manual-add-deposit - МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТА (для экстренных случаев)
+// POST /api/wallet/manual-add-deposit - МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТ (для экстренных случаев)
 router.post('/manual-add-deposit', async (req, res) => {
   const { player_id, amount, transaction_hash, admin_key } = req.body;
   
-  logDeposit('INFO', 'МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТА', { 
+  logDeposit('INFO', 'МАНУАЛЬНОЕ ДОБАВЛЕНИЕ ДЕПОЗИТ', { 
     player_id, 
     amount, 
     transaction_hash,
@@ -1387,28 +1337,20 @@ router.post('/debug-deposits', async (req, res) => {
     
     logDeposit('INFO', `Найдено депозитов в базе: ${existingDeposits.rows.length}`, {});
     
-    // 3. Получаем транзакции из блокчейна
-    logDeposit('INFO', 'Получаем транзакции из TON блокчейна...', {});
-    const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-      params: {
-        address: gameWalletAddress,
-        limit: 20,
-        archival: false
-      },
-      timeout: 15000
-    });
-
-    if (!response.data.ok) {
-      logDeposit('ERROR', 'Ошибка TON API', {});
+    // 3. Получаем транзакции из блокчейна через РАБОЧИЙ API
+    logDeposit('INFO', 'Получаем транзакции из TON блокчейна через рабочий API...', {});
+    let transactions = [];
+    try {
+      transactions = await getTransactionsFromTonApi(gameWalletAddress, 20);
+      logDeposit('SUCCESS', `Получено транзакций из блокчейна: ${transactions.length}`, {});
+    } catch (apiError) {
+      logDeposit('ERROR', 'Ошибка рабочего API', { error: apiError.message });
       return res.json({ 
         success: false, 
         error: 'TON API error',
-        debug: { ton_api_error: true }
+        debug: { ton_api_error: true, error_details: apiError.message }
       });
     }
-
-    const transactions = response.data.result;
-    logDeposit('INFO', `Получено транзакций из блокчейна: ${transactions.length}`, {});
     
     // 4. Анализируем входящие транзакции
     const incomingTransactions = [];
@@ -1426,7 +1368,7 @@ router.post('/debug-deposits', async (req, res) => {
       incomingTransactions.push({
         amount: amount.toFixed(8),
         hash: hash.substring(0, 16) + '...',
-        from: fromAddress.substring(0, 10) + '...',
+        from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
         time: txTime.toISOString(),
         minutes_ago: Math.floor((Date.now() - txTime.getTime()) / (1000 * 60))
       });
