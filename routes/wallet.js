@@ -1,35 +1,53 @@
+// routes/wallet.js - ИСПРАВЛЕННЫЙ главный роутер кошелька
 const express = require('express');
 const router = express.Router();
 
-// Подключаем модули
-const tonDeposits = require('./wallet/ton-deposits');
-const walletConnection = require('./wallet/wallet-connection');
-const starsPayments = require('./wallet/stars-payments');
-const premiumSystem = require('./wallet/premium-system');
-const tonWithdrawals = require('./wallet/ton-withdrawals');
-const transactionHistory = require('./wallet/transaction-history');
+// Импортируем все подроутеры
+const tonDepositsRouter = require('./wallet/ton-deposits');
+const starsPaymentsRouter = require('./wallet/stars-payments');
+const premiumSystemRouter = require('./wallet/premium-system');
+const tonWithdrawalsRouter = require('./wallet/ton-withdrawals');
+const transactionHistoryRouter = require('./wallet/transaction-history');
+const walletConnectionRouter = require('./wallet/wallet-connection');
 
-// Маршруты
-router.use('/ton-deposits', tonDeposits);
-router.use('/wallet-connection', walletConnection);
-router.use('/stars-payments', starsPayments);
-router.use('/premium-system', premiumSystem);
-router.use('/ton-withdrawals', tonWithdrawals);
-router.use('/transaction-history', transactionHistory);
+// ИСПРАВЛЕНИЕ: Правильно подключаем все роутеры
+router.use('/ton-deposits', tonDepositsRouter);
+router.use('/stars-payments', starsPaymentsRouter);
+router.use('/premium-system', premiumSystemRouter);
+router.use('/ton-withdrawals', tonWithdrawalsRouter);
+router.use('/transaction-history', transactionHistoryRouter);
+router.use('/wallet-connection', walletConnectionRouter);
 
-// Совместимость со старыми маршрутами
-router.use('/connect', walletConnection);
-router.use('/disconnect', walletConnection);
-router.use('/check-deposit-by-address', tonDeposits);
-router.use('/check-all-deposits', tonDeposits);
-router.use('/debug-deposits', tonDeposits);
-router.use('/manual-add-deposit', tonDeposits);
-router.use('/prepare-withdrawal', tonWithdrawals);
-router.use('/confirm-withdrawal', tonWithdrawals);
-router.use('/create-stars-invoice', starsPayments);
-router.use('/webhook-stars', starsPayments);
-router.use('/premium-status', premiumSystem);
-router.use('/purchase-premium', premiumSystem);
-router.use('/history', transactionHistory);
+// LEGACY ENDPOINTS для обратной совместимости
+// Переадресация старых endpoint'ов на новые
+
+// Stars invoice creation (legacy)
+router.post('/create-stars-invoice', (req, res) => {
+  req.originalUrl = '/api/wallet/stars-payments/create-invoice';
+  starsPaymentsRouter(req, res);
+});
+
+// Stars webhook (legacy)
+router.post('/stars-webhook', (req, res) => {
+  req.originalUrl = '/api/wallet/stars-payments/webhook';
+  starsPaymentsRouter(req, res);
+});
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Wallet system is operational',
+    timestamp: new Date().toISOString(),
+    modules: [
+      'ton-deposits',
+      'stars-payments', 
+      'premium-system',
+      'ton-withdrawals',
+      'transaction-history',
+      'wallet-connection'
+    ]
+  });
+});
 
 module.exports = router;
