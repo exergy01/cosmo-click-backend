@@ -1,4 +1,4 @@
-// routes/wallet/ton-deposits.js - ФИНАЛЬНО ИСПРАВЛЕННАЯ ВЕРСИЯ
+// routes/wallet/ton-deposits.js - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ БЕЗ ФИЛЬТРА АДРЕСОВ
 const express = require('express');
 const pool = require('../../db');
 const { getPlayer } = require('../shared/getPlayer');
@@ -75,7 +75,7 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
   throw new Error('All TON APIs unavailable');
 };
 
-// ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ функция обработки депозита
+// ИСПРАВЛЕННАЯ функция обработки депозита
 async function processDeposit(playerId, amount, hash, fromAddress) {
   console.log(`🔄 PROCESSING DEPOSIT: ${amount} TON from ${fromAddress}`);
   console.log(`🔄 Hash: ${hash}`);
@@ -198,14 +198,14 @@ async function processDeposit(playerId, amount, hash, fromAddress) {
   }
 }
 
-// POST /check-deposits - ИСПРАВЛЕННАЯ функция проверки депозитов
+// POST /check-deposits - ИСПРАВЛЕННАЯ версия БЕЗ фильтра адресов
 router.post('/check-deposits', async (req, res) => {
   const { player_id, sender_address } = req.body;
   
   console.log('🚀 ===============================================================');
   console.log('🚀 STARTING DEPOSIT CHECK');
   console.log('🚀 Player ID:', player_id);
-  console.log('🚀 Sender Address Filter:', sender_address);
+  console.log('🚀 User Wallet (for reference):', sender_address || 'not provided');
   console.log('🚀 ===============================================================');
   
   if (!player_id) {
@@ -264,13 +264,13 @@ router.post('/check-deposits', async (req, res) => {
         continue;
       }
       
-      // Фильтр по адресу отправителя (если указан)
-      if (sender_address && fromAddress !== sender_address) {
-        console.log(`⏭️  Skipping: sender address doesn't match filter`);
-        continue;
+      // ИСПРАВЛЕНО: Убираем фильтр адресов - обрабатываем ВСЕ входящие транзакции
+      console.log(`✅ Processing transaction from ANY address (no address filtering)`);
+      if (sender_address) {
+        console.log(`ℹ️  User's wallet: ${sender_address.substring(0, 15)}... (for reference only)`);
       }
       
-      console.log('✅ Transaction passes filters, processing...');
+      console.log('🔄 Starting deposit processing...');
       
       // ОБРАБАТЫВАЕМ ДЕПОЗИТ
       const result = await processDeposit(player_id, amount, hash, fromAddress);
@@ -470,14 +470,14 @@ router.post('/debug-deposits', async (req, res) => {
     
     // Рекомендации
     if (unprocessedTransactions.length > 0) {
-      debugReport.recommendations.push(`🚨 CRITICAL: FOUND ${unprocessedTransactions.length} UNPROCESSED transactions! Click "Refresh Balance" to process them.`);
+      debugReport.recommendations.push(`CRITICAL: FOUND ${unprocessedTransactions.length} UNPROCESSED transactions! Fixed system should process them now.`);
       unprocessedTransactions.slice(0, 2).forEach((tx, i) => {
         debugReport.recommendations.push(`   ${i+1}. ${tx.amount} TON from ${tx.from} (${tx.minutes_ago} min ago)`);
       });
     } else if (incomingTransactions.length > 0) {
-      debugReport.recommendations.push("✅ SUCCESS: All blockchain transactions are already processed");
+      debugReport.recommendations.push("SUCCESS: All blockchain transactions are now processed");
     } else {
-      debugReport.recommendations.push("ℹ️ No incoming transactions found in recent blockchain history");
+      debugReport.recommendations.push("No incoming transactions found in recent blockchain history");
     }
     
     res.json(debugReport);
