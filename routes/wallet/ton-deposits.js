@@ -1,4 +1,4 @@
-// routes/wallet/ton-deposits.js - ИСПРАВЛЕННАЯ ВЕРСИЯ С РАБОЧЕЙ АВТООБРАБОТКОЙ
+// routes/wallet/ton-deposits.js - ФИНАЛЬНО ИСПРАВЛЕННАЯ ВЕРСИЯ
 const express = require('express');
 const pool = require('../../db');
 const { getPlayer } = require('../shared/getPlayer');
@@ -7,7 +7,7 @@ const axios = require('axios');
 
 const router = express.Router();
 
-// Упрощенная система получения транзакций
+// Получение транзакций TON
 const getTonTransactions = async (gameWalletAddress, limit = 50) => {
   console.log(`Getting TON transactions for ${gameWalletAddress}`);
   
@@ -47,7 +47,7 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
     }
   }
 
-  // Резерв: TON Center с ключом
+  // Резерв: TON Center
   if (process.env.TONCENTER_API_KEY) {
     try {
       console.log('Trying TON Center with API key...');
@@ -75,60 +75,76 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
   throw new Error('All TON APIs unavailable');
 };
 
-// ИСПРАВЛЕННАЯ функция обработки одного депозита
+// ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ функция обработки депозита
 async function processDeposit(playerId, amount, hash, fromAddress) {
-  console.log(`PROCESSING DEPOSIT: ${amount} TON from ${fromAddress} hash: ${hash.substring(0, 20)}...`);
+  console.log(`🔄 PROCESSING DEPOSIT: ${amount} TON from ${fromAddress}`);
+  console.log(`🔄 Hash: ${hash}`);
+  console.log(`🔄 Player ID: ${playerId}`);
   
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем дублирование ПОСЛЕ получения игрока
-    console.log(`Getting player data for: ${playerId}`);
+    // ШАГ 1: Проверяем существование игрока
+    console.log(`🔍 Step 1: Checking player exists...`);
     const playerResult = await client.query(
       'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
       [playerId]
     );
 
     if (playerResult.rows.length === 0) {
-      console.log(`ERROR: Player not found: ${playerId}`);
+      console.log(`❌ ERROR: Player ${playerId} not found in database`);
       await client.query('ROLLBACK');
       return { success: false, error: 'Player not found' };
     }
 
     const playerData = playerResult.rows[0];
     const currentBalance = parseFloat(playerData.ton || '0');
+    console.log(`✅ Player found: ${playerData.first_name}, current balance: ${currentBalance}`);
     
-    console.log(`Checking if transaction already processed: ${hash}`);
+    // ШАГ 2: Проверяем дублирование транзакции
+    console.log(`🔍 Step 2: Checking for duplicate transaction...`);
     const existingCheck = await client.query(
       'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
       [hash]
     );
 
     if (existingCheck.rows.length > 0) {
-      console.log(`SKIPPED: Transaction already processed: ${hash}`);
+      console.log(`⚠️ Transaction already processed, skipping: ${hash}`);
       await client.query('ROLLBACK');
       return { success: false, error: 'Transaction already processed', skipped: true };
     }
+    console.log(`✅ Transaction is new, proceeding...`);
     
+    // ШАГ 3: Обновляем баланс игрока
     const newBalance = currentBalance + amount;
-    console.log(`Balance update: ${currentBalance} + ${amount} = ${newBalance}`);
+    console.log(`💰 Step 3: Updating balance: ${currentBalance} + ${amount} = ${newBalance}`);
     
-    // Обновляем баланс игрока
-    await client.query(
-      'UPDATE players SET ton = $1 WHERE telegram_id = $2',
+    const updateResult = await client.query(
+      'UPDATE players SET ton = $1 WHERE telegram_id = $2 RETURNING ton',
       [newBalance, playerId]
     );
+    
+    if (updateResult.rows.length === 0) {
+      console.log(`❌ ERROR: Failed to update player balance`);
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Failed to update balance' };
+    }
+    console.log(`✅ Balance updated successfully to: ${updateResult.rows[0].ton}`);
 
-    // Записываем транзакцию депозита
-    await client.query(
+    // ШАГ 4: Записываем транзакцию депозита
+    console.log(`📝 Step 4: Recording deposit transaction...`);
+    const depositResult = await client.query(
       `INSERT INTO ton_deposits (
         player_id, amount, transaction_hash, status, created_at
-      ) VALUES ($1, $2, $3, 'completed', NOW())`,
+      ) VALUES ($1, $2, $3, 'completed', NOW()) 
+      RETURNING id`,
       [playerId, amount, hash]
     );
+    console.log(`✅ Deposit recorded with ID: ${depositResult.rows[0].id}`);
 
-    // Записываем в историю баланса
+    // ШАГ 5: Записываем в историю баланса
+    console.log(`📜 Step 5: Recording balance history...`);
     await client.query(
       `INSERT INTO balance_history (
         telegram_id, currency, old_balance, new_balance, 
@@ -140,26 +156,27 @@ async function processDeposit(playerId, amount, hash, fromAddress) {
         currentBalance,
         newBalance,
         amount,
-        'auto_deposit_fixed',
+        'auto_deposit_final_fix',
         JSON.stringify({
           transaction_hash: hash,
           from_address: fromAddress,
-          processed_by: 'fixed_system',
-          debug_info: 'auto_processed_after_fix'
+          processed_by: 'final_fixed_system',
+          timestamp: new Date().toISOString()
         })
       ]
     );
+    console.log(`✅ Balance history recorded`);
 
+    // ШАГ 6: Коммитим транзакцию
     await client.query('COMMIT');
+    console.log(`🎉 SUCCESS! Deposit fully processed: ${amount} TON for player ${playerId}`);
     
-    console.log(`SUCCESS! Deposit processed! New balance: ${newBalance}`);
-    
-    // Отправляем уведомление игроку
+    // ШАГ 7: Отправляем уведомление (не критично если не удастся)
     try {
       await notifyTonDeposit(playerData, amount, hash);
-      console.log(`Notification sent to player`);
+      console.log(`📧 Notification sent successfully`);
     } catch (notifyErr) {
-      console.log('Notification failed:', notifyErr.message);
+      console.log('⚠️ Notification failed (non-critical):', notifyErr.message);
     }
     
     return {
@@ -167,12 +184,14 @@ async function processDeposit(playerId, amount, hash, fromAddress) {
       amount,
       new_balance: newBalance,
       hash: hash.substring(0, 16) + '...',
-      old_balance: currentBalance
+      old_balance: currentBalance,
+      deposit_id: depositResult.rows[0].id
     };
     
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('CRITICAL ERROR in deposit processing:', error);
+    console.error('💥 CRITICAL ERROR in processDeposit:', error);
+    console.error('💥 Error stack:', error.stack);
     return { success: false, error: error.message };
   } finally {
     client.release();
@@ -183,10 +202,11 @@ async function processDeposit(playerId, amount, hash, fromAddress) {
 router.post('/check-deposits', async (req, res) => {
   const { player_id, sender_address } = req.body;
   
-  console.log('===============================================================');
-  console.log('STARTING DEPOSIT CHECK FOR PLAYER:', player_id);
-  console.log('SENDER ADDRESS FILTER:', sender_address);
-  console.log('===============================================================');
+  console.log('🚀 ===============================================================');
+  console.log('🚀 STARTING DEPOSIT CHECK');
+  console.log('🚀 Player ID:', player_id);
+  console.log('🚀 Sender Address Filter:', sender_address);
+  console.log('🚀 ===============================================================');
   
   if (!player_id) {
     return res.status(400).json({ error: 'Player ID is required' });
@@ -195,13 +215,13 @@ router.post('/check-deposits', async (req, res) => {
   try {
     const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
     
-    // Получаем транзакции
+    // Получаем транзакции из блокчейна
     let transactions = [];
     try {
       transactions = await getTonTransactions(gameWalletAddress, 100);
-      console.log(`Retrieved ${transactions.length} transactions from blockchain`);
+      console.log(`🔗 Retrieved ${transactions.length} transactions from blockchain`);
     } catch (apiError) {
-      console.error('All APIs failed:', apiError.message);
+      console.error('💥 All APIs failed:', apiError.message);
       return res.json({ 
         success: false, 
         error: 'TON API temporarily unavailable',
@@ -211,19 +231,19 @@ router.post('/check-deposits', async (req, res) => {
     
     const processed = [];
     let skippedCount = 0;
-    let totalAnalyzed = 0;
+    let errorCount = 0;
     
-    console.log('Starting transaction analysis...');
+    console.log('🔍 Starting transaction analysis...');
     
+    // Обрабатываем каждую транзакцию
     for (let i = 0; i < transactions.length; i++) {
       const tx = transactions[i];
-      totalAnalyzed++;
       
-      console.log(`\nTransaction ${i+1}/${transactions.length}:`);
+      console.log(`\n📋 Transaction ${i+1}/${transactions.length}:`);
       
       // Пропускаем исходящие транзакции
       if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') {
-        console.log('Skipping: outgoing or zero value transaction');
+        console.log('⏭️  Skipping: outgoing or zero value transaction');
         continue;
       }
 
@@ -233,61 +253,61 @@ router.post('/check-deposits', async (req, res) => {
       const txTime = new Date(tx.utime * 1000);
       const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
       
-      console.log(`Amount: ${amount} TON`);
-      console.log(`Hash: ${hash.substring(0, 20)}...`);
-      console.log(`From: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'unknown'}`);
-      console.log(`Time: ${minutesAgo} minutes ago`);
+      console.log(`💰 Amount: ${amount} TON`);
+      console.log(`🔗 Hash: ${hash.substring(0, 20)}...`);
+      console.log(`👤 From: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'unknown'}`);
+      console.log(`⏰ Time: ${minutesAgo} minutes ago`);
       
-      // ИСПРАВЛЕНО: Убираем слишком строгий фильтр минимальной суммы
+      // Фильтр минимальной суммы
       if (amount < 0.005) {
-        console.log('Skipping: amount too small (< 0.005 TON)');
+        console.log('⏭️  Skipping: amount too small (< 0.005 TON)');
         continue;
       }
       
       // Фильтр по адресу отправителя (если указан)
       if (sender_address && fromAddress !== sender_address) {
-        console.log(`Skipping: sender address doesn't match filter`);
-        console.log(`   Expected: ${sender_address}`);
-        console.log(`   Actual: ${fromAddress}`);
+        console.log(`⏭️  Skipping: sender address doesn't match filter`);
         continue;
       }
       
-      console.log('Transaction passes filters, attempting to process...');
+      console.log('✅ Transaction passes filters, processing...');
       
-      // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Обрабатываем депозит
+      // ОБРАБАТЫВАЕМ ДЕПОЗИТ
       const result = await processDeposit(player_id, amount, hash, fromAddress);
       
       if (result.success) {
         processed.push(result);
-        console.log(`SUCCESS! Processed deposit: ${amount} TON`);
+        console.log(`🎉 SUCCESS! Processed: ${amount} TON`);
       } else if (result.skipped) {
         skippedCount++;
-        console.log(`SKIPPED: ${result.error}`);
+        console.log(`⚠️  SKIPPED: ${result.error}`);
       } else {
-        console.log(`FAILED: ${result.error}`);
+        errorCount++;
+        console.log(`❌ FAILED: ${result.error}`);
       }
     }
     
-    console.log('\n=============================================================');
-    console.log('DEPOSIT CHECK COMPLETE');
-    console.log(`Transactions analyzed: ${totalAnalyzed}`);
-    console.log(`Successfully processed: ${processed.length}`);
-    console.log(`Already processed (skipped): ${skippedCount}`);
-    console.log('=============================================================');
+    console.log('\n🏁 ===============================================================');
+    console.log('🏁 DEPOSIT CHECK COMPLETE');
+    console.log(`🏁 Successfully processed: ${processed.length}`);
+    console.log(`🏁 Already processed (skipped): ${skippedCount}`);
+    console.log(`🏁 Errors: ${errorCount}`);
+    console.log('🏁 ===============================================================');
     
     if (processed.length > 0) {
       const totalAmount = processed.reduce((sum, dep) => sum + dep.amount, 0);
       
       res.json({
         success: true,
-        message: `Found and processed ${processed.length} new deposits`,
+        message: `SUCCESS! Found and processed ${processed.length} new deposits`,
         deposits_found: processed.length,
         total_amount: totalAmount.toFixed(8),
         deposits: processed.map(dep => ({
           amount: dep.amount.toFixed(8),
           hash: dep.hash,
           new_balance: dep.new_balance.toFixed(8),
-          old_balance: dep.old_balance.toFixed(8)
+          old_balance: dep.old_balance.toFixed(8),
+          deposit_id: dep.deposit_id
         }))
       });
     } else {
@@ -298,13 +318,13 @@ router.post('/check-deposits', async (req, res) => {
           'No new deposits found',
         deposits_found: 0,
         total_amount: '0',
-        analyzed: totalAnalyzed,
-        skipped: skippedCount
+        skipped: skippedCount,
+        errors: errorCount
       });
     }
 
   } catch (error) {
-    console.error('CRITICAL ERROR in deposit check:', error);
+    console.error('💥 CRITICAL ERROR in deposit check:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
@@ -313,7 +333,7 @@ router.post('/check-deposits', async (req, res) => {
   }
 });
 
-// POST /manual-add - Мануальное добавление депозита (только для админов)
+// POST /manual-add - Мануальное добавление депозита
 router.post('/manual-add', async (req, res) => {
   const { player_id, amount, transaction_hash, admin_key } = req.body;
   
@@ -323,16 +343,6 @@ router.post('/manual-add', async (req, res) => {
   
   if (!player_id || !amount || !transaction_hash) {
     return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  // Проверяем дублирование
-  const existingTx = await pool.query(
-    'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
-    [transaction_hash]
-  );
-
-  if (existingTx.rows.length > 0) {
-    return res.status(400).json({ error: 'Transaction already processed' });
   }
 
   const result = await processDeposit(player_id, parseFloat(amount), transaction_hash, 'manual_admin');
@@ -349,7 +359,7 @@ router.post('/manual-add', async (req, res) => {
   }
 });
 
-// POST /debug-deposits - Диагностика депозитов С ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИЕЙ
+// POST /debug-deposits - Диагностика депозитов
 router.post('/debug-deposits', async (req, res) => {
   const { player_id } = req.body;
   
@@ -378,7 +388,7 @@ router.post('/debug-deposits', async (req, res) => {
     
     // Проверяем существующие депозиты в базе
     const existingDeposits = await pool.query(
-      'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 10',
+      'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 15',
       [player_id]
     );
     
@@ -458,30 +468,16 @@ router.post('/debug-deposits', async (req, res) => {
       recommendations: []
     };
     
-    // РАСШИРЕННЫЕ рекомендации
-    if (existingDeposits.rows.length === 0) {
-      debugReport.recommendations.push("ERROR: No deposits found in database for this player");
-    }
-    
+    // Рекомендации
     if (unprocessedTransactions.length > 0) {
-      debugReport.recommendations.push(`CRITICAL: FOUND ${unprocessedTransactions.length} UNPROCESSED transactions! System should process these automatically.`);
+      debugReport.recommendations.push(`🚨 CRITICAL: FOUND ${unprocessedTransactions.length} UNPROCESSED transactions! Click "Refresh Balance" to process them.`);
       unprocessedTransactions.slice(0, 2).forEach((tx, i) => {
         debugReport.recommendations.push(`   ${i+1}. ${tx.amount} TON from ${tx.from} (${tx.minutes_ago} min ago)`);
       });
-    }
-    
-    if (incomingTransactions.length > 0 && unprocessedTransactions.length === 0) {
-      debugReport.recommendations.push("SUCCESS: All blockchain transactions are already processed in database");
-    }
-    
-    const recentTransactions = incomingTransactions.filter(tx => tx.minutes_ago <= 60);
-    if (recentTransactions.length > 0) {
-      debugReport.recommendations.push(`URGENT: Found ${recentTransactions.length} transactions in last hour - should be processed immediately`);
-    }
-    
-    // Проверяем, есть ли транзакции которые должны быть обработаны но не обработаны
-    if (apiStatus === 'working' && unprocessedTransactions.length > 0) {
-      debugReport.recommendations.push("SYSTEM BUG DETECTED: API working but transactions not auto-processed. Check deposit processing logic.");
+    } else if (incomingTransactions.length > 0) {
+      debugReport.recommendations.push("✅ SUCCESS: All blockchain transactions are already processed");
+    } else {
+      debugReport.recommendations.push("ℹ️ No incoming transactions found in recent blockchain history");
     }
     
     res.json(debugReport);
