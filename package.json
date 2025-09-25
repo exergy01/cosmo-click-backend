@@ -5,6 +5,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@ton/core": "^0.56.3",
     "axios": "^1.11.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
