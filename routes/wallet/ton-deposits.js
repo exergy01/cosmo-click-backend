@@ -112,84 +112,72 @@ ensureExpectedDepositsTable();
 
 // Функция проверки принадлежности депозита с временным окном
 const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
-  const txTime = new Date(tx.utime * 1000);
-  const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
-  const amount = parseFloat(tx.in_msg.value) / 1000000000;
-  
-  console.log(`🔍 Проверка депозита с временным окном:`);
-  console.log(`   - Сумма: ${amount} TON`);
-  console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
-  console.log(`   - Время: ${minutesAgo} минут назад`);
-  console.log(`   - Для игрока: ${playerId}`);
-  
-  try {
-    // ПРОВЕРЯЕМ ОЖИДАЕМЫЕ ДЕПОЗИТЫ
-    const expectedResult = await pool.query(
-      `SELECT id, amount, created_at FROM expected_deposits 
-       WHERE player_id = $1 
-       AND from_address = $2 
-       AND ABS(amount - $3) < 0.001
-       AND expires_at > NOW()
-       AND NOT processed
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [playerId, fromAddress, amount]
-    );
+    const txTime = new Date(tx.utime * 1000);
+    const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
+    const amount = parseFloat(tx.in_msg.value) / 1000000000;
     
-    if (expectedResult.rows.length > 0) {
-      const expectedDeposit = expectedResult.rows[0];
-      const expectedMinutesAgo = Math.floor((Date.now() - new Date(expectedDeposit.created_at).getTime()) / (1000 * 60));
-      
-      console.log(`✅ НАЙДЕН ОЖИДАЕМЫЙ ДЕПОЗИТ: ${expectedDeposit.amount} TON (${expectedMinutesAgo} мин назад)`);
-      
-      // Помечаем ожидаемый депозит как обработанный
-      await pool.query(
-        'UPDATE expected_deposits SET processed = true WHERE id = $1',
-        [expectedDeposit.id]
+    console.log(`🔍 Проверка депозита с временным окном:`);
+    console.log(`   - Сумма: ${amount} TON`);
+    console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
+    console.log(`   - Время: ${minutesAgo} минут назад`);
+    console.log(`   - Для игрока: ${playerId}`);
+    
+    try {
+      // ОСНОВНАЯ ПРОВЕРКА: Ищем ожидаемый депозит только по игроку и сумме (без адреса)
+      const expectedResult = await pool.query(
+        `SELECT id, amount, created_at, from_address FROM expected_deposits 
+         WHERE player_id = $1 
+         AND ABS(amount - $2) < 0.001
+         AND expires_at > NOW()
+         AND NOT processed
+         ORDER BY created_at DESC 
+         LIMIT 1`,
+        [playerId, amount]
       );
       
-      return {
-        valid: true,
-        method: 'expected_deposit',
-        details: `Найден ожидаемый депозит для игрока ${playerId}`
-      };
-    }
-    
-    // РЕЗЕРВНАЯ ПРОВЕРКА: Свежие транзакции (менее 3 минут) от того же адреса
-    if (minutesAgo < 3 && fromAddress) {
-      // Проверяем, нет ли других игроков с таким же адресом в последние 10 минут
-      const conflictResult = await pool.query(
-        `SELECT player_id FROM expected_deposits 
-         WHERE from_address = $1 
-         AND player_id != $2 
-         AND created_at > NOW() - INTERVAL '10 minutes'`,
-        [fromAddress, playerId]
-      );
-      
-      if (conflictResult.rows.length === 0) {
-        console.log(`⚠️ РАЗРЕШЕНО: Свежая транзакция без конфликтов (${minutesAgo} мин)`);
+      if (expectedResult.rows.length > 0) {
+        const expectedDeposit = expectedResult.rows[0];
+        const expectedMinutesAgo = Math.floor((Date.now() - new Date(expectedDeposit.created_at).getTime()) / (1000 * 60));
+        
+        console.log(`✅ НАЙДЕН ОЖИДАЕМЫЙ ДЕПОЗИТ: ${expectedDeposit.amount} TON (${expectedMinutesAgo} мин назад)`);
+        console.log(`   - Ожидался от: ${expectedDeposit.from_address}`);
+        console.log(`   - Пришел от: ${fromAddress}`);
+        
+        // Помечаем ожидаемый депозит как обработанный
+        await pool.query(
+          'UPDATE expected_deposits SET processed = true WHERE id = $1',
+          [expectedDeposit.id]
+        );
+        
         return {
           valid: true,
-          method: 'fallback_fresh',
-          details: `Свежая транзакция без конфликтов (${minutesAgo} мин назад)`
+          method: 'expected_deposit_by_amount',
+          details: `Найден ожидаемый депозит по сумме для игрока ${playerId}`
         };
-      } else {
-        console.log(`❌ КОНФЛИКТ: Адрес используется другим игроком`);
       }
+      
+      // РЕЗЕРВНАЯ ПРОВЕРКА: Очень свежие транзакции (менее 2 минут)
+      if (minutesAgo < 2) {
+        console.log(`⚠️ РАЗРЕШЕНО: Очень свежая транзакция (${minutesAgo} мин)`);
+        return {
+          valid: true,
+          method: 'fallback_very_fresh',
+          details: `Очень свежая транзакция (${minutesAgo} мин назад)`
+        };
+      }
+      
+    } catch (error) {
+      console.error('Ошибка проверки ожидаемых депозитов:', error);
     }
     
-  } catch (error) {
-    console.error('Ошибка проверки ожидаемых депозитов:', error);
-  }
-  
-  console.log(`❌ ОТКЛОНЕНО: Нет ожидаемого депозита для игрока ${playerId}`);
-  return {
-    valid: false,
-    method: 'no_expected_deposit',
-    details: 'Депозит не найден в ожидаемых или слишком старый'
+    console.log(`❌ ОТКЛОНЕНО: Нет ожидаемого депозита для игрока ${playerId}`);
+    return {
+      valid: false,
+      method: 'no_expected_deposit',
+      details: 'Депозит не найден в ожидаемых или слишком старый'
+    };
   };
-};
-
+  
 // Функция обработки депозита
 async function processDeposit(playerId, amount, hash, fromAddress, validationInfo) {
   console.log(`💰 ОБРАБОТКА ДЕПОЗИТА:`);
