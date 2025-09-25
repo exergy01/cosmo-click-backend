@@ -23,12 +23,14 @@ router.use('/wallet-connection', walletConnectionRouter);
 
 // Stars invoice creation (legacy)
 router.post('/create-stars-invoice', (req, res) => {
+  console.log('Legacy Stars endpoint called, redirecting...');
   req.originalUrl = '/api/wallet/stars-payments/create-invoice';
   starsPaymentsRouter(req, res);
 });
 
 // Stars webhook (legacy)
 router.post('/stars-webhook', (req, res) => {
+  console.log('Legacy Stars webhook called, redirecting...');
   req.originalUrl = '/api/wallet/stars-payments/webhook';
   starsPaymentsRouter(req, res);
 });
