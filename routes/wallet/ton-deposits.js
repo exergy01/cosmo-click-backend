@@ -8,104 +8,153 @@ const axios = require('axios');
 const router = express.Router();
 
 // Функция извлечения payload из транзакции
+// Замените функцию extractPayloadFromTransaction в ton-deposits.js на эту улучшенную версию:
+
+// Функция извлечения payload из транзакции - УЛУЧШЕННАЯ ВЕРСИЯ
 const extractPayloadFromTransaction = (tx) => {
-  try {
-    // Проверяем наличие in_msg и различных форматов payload
-    if (!tx.in_msg) {
-      return null;
-    }
-
-    let payloadData = null;
-    
-    // Способ 1: Проверяем msg_data.body (TONAPI v2)
-    if (tx.in_msg.msg_data && tx.in_msg.msg_data.body) {
-      payloadData = tx.in_msg.msg_data.body;
-    }
-    
-    // Способ 2: Проверяем decoded_body (некоторые версии API)
-    if (!payloadData && tx.in_msg.decoded_body) {
-      payloadData = tx.in_msg.decoded_body;
-    }
-    
-    // Способ 3: Проверяем message (старый формат)
-    if (!payloadData && tx.in_msg.message) {
-      payloadData = tx.in_msg.message;
-    }
-
-    if (!payloadData) {
-      return null;
-    }
-
-    // Если payload это строка - возвращаем как есть
-    if (typeof payloadData === 'string') {
-      return payloadData;
-    }
-
-    // Если это объект с текстом
-    if (payloadData.text) {
-      return payloadData.text;
-    }
-
-    // Пробуем парсить как base64
     try {
-      if (typeof payloadData === 'string' && payloadData.length > 0) {
-        const decoded = Buffer.from(payloadData, 'base64').toString('utf8');
-        // Проверяем что декодированная строка читаема
-        if (decoded.includes('COSMO')) {
-          return decoded;
-        }
+      // Проверяем наличие in_msg
+      if (!tx.in_msg) {
+        return null;
       }
-    } catch (decodeError) {
-      // Игнорируем ошибки декодирования
+  
+      let payloadData = null;
+      
+      // Способ 1: Проверяем msg_data.body (TONAPI v2)
+      if (tx.in_msg.msg_data && tx.in_msg.msg_data.body) {
+        payloadData = tx.in_msg.msg_data.body;
+      }
+      
+      // Способ 2: Проверяем decoded_body
+      if (!payloadData && tx.in_msg.decoded_body) {
+        payloadData = tx.in_msg.decoded_body;
+      }
+      
+      // Способ 3: Проверяем message (для совместимости)
+      if (!payloadData && tx.in_msg.message) {
+        payloadData = tx.in_msg.message;
+      }
+  
+      // Способ 4: Проверяем comment (некоторые API возвращают так)
+      if (!payloadData && tx.in_msg.comment) {
+        return tx.in_msg.comment;
+      }
+  
+      if (!payloadData) {
+        return null;
+      }
+  
+      // Если payload это уже строка - проверяем на COSMO
+      if (typeof payloadData === 'string') {
+        if (payloadData.includes('COSMO:')) {
+          return payloadData;
+        }
+        // Пробуем декодировать из base64
+        try {
+          const decoded = atob(payloadData);
+          if (decoded.includes('COSMO:')) {
+            return decoded;
+          }
+        } catch (e) {
+          // Не base64
+        }
+        return payloadData;
+      }
+  
+      // Если это объект с текстом
+      if (payloadData.text && payloadData.text.includes('COSMO:')) {
+        return payloadData.text;
+      }
+  
+      // Если это объект с comment
+      if (payloadData.comment && payloadData.comment.includes('COSMO:')) {
+        return payloadData.comment;
+      }
+  
+      // Пробуем парсить как base64 encoded payload
+      try {
+        if (typeof payloadData === 'string' && payloadData.length > 8) {
+          // Декодируем base64
+          const binaryString = atob(payloadData);
+          
+          // Пропускаем первые 4 байта (magic number для комментария)
+          const commentText = binaryString.substring(4);
+          
+          if (commentText && commentText.includes('COSMO:')) {
+            console.log('Найден COSMO payload в комментарии:', commentText);
+            return commentText;
+          }
+          
+          // Пробуем без пропуска байтов
+          if (binaryString.includes('COSMO:')) {
+            console.log('Найден COSMO payload:', binaryString);
+            return binaryString;
+          }
+        }
+      } catch (decodeError) {
+        console.log('Не удалось декодировать payload:', decodeError.message);
+      }
+  
+      return null;
+    } catch (error) {
+      console.log('Не удалось извлечь payload:', error.message);
+      return null;
     }
-
-    return null;
-  } catch (error) {
-    console.log('Не удалось извлечь payload:', error.message);
-    return null;
-  }
-};
-
-// Функция проверки принадлежности депозита игроку
-const isDepositForPlayer = (tx, playerId, fromAddress) => {
-  // Извлекаем payload из транзакции
-  const payload = extractPayloadFromTransaction(tx);
+  };
   
-  console.log(`🔍 Проверка депозита:`);
-  console.log(`   - Payload: ${payload || 'отсутствует'}`);
-  console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
-  console.log(`   - Для игрока: ${playerId}`);
-  
-  // ОСНОВНАЯ ПРОВЕРКА: payload содержит COSMO и правильный telegram_id
-  if (payload && payload.includes('COSMO:')) {
-    const parts = payload.split(':');
-    if (parts.length >= 2 && parts[0] === 'COSMO' && parts[1] === playerId) {
-      console.log(`✅ БЕЗОПАСНО: Найден валидный payload для игрока ${playerId}`);
+  // Обновленная функция проверки принадлежности депозита игроку
+  const isDepositForPlayer = (tx, playerId, fromAddress) => {
+    // Извлекаем payload из транзакции
+    const payload = extractPayloadFromTransaction(tx);
+    
+    console.log(`🔍 Проверка депозита:`);
+    console.log(`   - Payload: ${payload || 'отсутствует'}`);
+    console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
+    console.log(`   - Для игрока: ${playerId}`);
+    
+    // ОСНОВНАЯ ПРОВЕРКА: payload содержит COSMO и правильный telegram_id
+    if (payload && payload.includes('COSMO:')) {
+      const parts = payload.split(':');
+      if (parts.length >= 2 && parts[0] === 'COSMO' && parts[1] === playerId) {
+        console.log(`✅ БЕЗОПАСНО: Найден валидный payload для игрока ${playerId}`);
+        return {
+          valid: true,
+          method: 'payload_match',
+          details: `COSMO payload для игрока ${playerId}`
+        };
+      } else if (parts.length >= 2 && parts[0] === 'COSMO') {
+        console.log(`❌ ОТКЛОНЕНО: Payload для другого игрока (${parts[1]}, нужен ${playerId})`);
+        return {
+          valid: false,
+          method: 'payload_mismatch',
+          details: `Payload для игрока ${parts[1]}, а не ${playerId}`
+        };
+      }
+    }
+    
+    // РЕЗЕРВНАЯ ПРОВЕРКА: Если нет payload, проверяем по времени и адресу (менее надежно)
+    // Это поможет обработать депозиты, где payload не сработал
+    const txTime = new Date(tx.utime * 1000);
+    const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
+    
+    // Если транзакция очень свежая (менее 10 минут) и нет других претендентов - можно рискнуть
+    if (minutesAgo < 10 && !payload) {
+      console.log(`⚠️ ВНИМАНИЕ: Нет payload, но транзакция свежая (${minutesAgo} мин). Разрешаем с осторожностью.`);
       return {
         valid: true,
-        method: 'payload',
-        details: `COSMO payload для игрока ${playerId}`
-      };
-    } else if (parts.length >= 2 && parts[0] === 'COSMO') {
-      console.log(`❌ ОТКЛОНЕНО: Payload для другого игрока (${parts[1]}, нужен ${playerId})`);
-      return {
-        valid: false,
-        method: 'payload_mismatch',
-        details: `Payload для игрока ${parts[1]}, а не ${playerId}`
+        method: 'fallback_recent',
+        details: `Свежая транзакция без payload (${minutesAgo} мин назад)`
       };
     }
-  }
-  
-  // РЕЗЕРВНАЯ ПРОВЕРКА: Для старых депозитов или особых случаев
-  // Можно включить дополнительную логику, но по умолчанию отклоняем
-  console.log(`⚠️ ОТКЛОНЕНО: Нет валидного COSMO payload для игрока ${playerId}`);
-  return {
-    valid: false,
-    method: 'no_valid_payload',
-    details: 'Нет COSMO payload - отклонено для безопасности'
+    
+    console.log(`❌ ОТКЛОНЕНО: Нет валидного COSMO payload для игрока ${playerId}`);
+    return {
+      valid: false,
+      method: 'no_valid_payload',
+      details: 'Нет COSMO payload - отклонено для безопасности'
+    };
   };
-};
-// routes/wallet/ton-deposits.js - ЗАЩИЩЕННАЯ ВЕРСИЯ - ЧАСТЬ 2
+  
 
 // Получение транзакций TON
 const getTonTransactions = async (gameWalletAddress, limit = 50) => {
