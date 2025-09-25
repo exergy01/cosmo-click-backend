@@ -1,4 +1,4 @@
-// routes/wallet/ton-deposits.js - ЗАЩИЩЕННАЯ ВЕРСИЯ С ПРОВЕРКОЙ PAYLOAD - ЧАСТЬ 1
+// routes/wallet/ton-deposits.js - ПОЛНАЯ ВЕРСИЯ С ВРЕМЕННЫМ ОКНОМ
 const express = require('express');
 const pool = require('../../db');
 const { getPlayer } = require('../shared/getPlayer');
@@ -7,299 +7,258 @@ const axios = require('axios');
 
 const router = express.Router();
 
-// Функция извлечения payload из транзакции - УЛУЧШЕННАЯ ВЕРСИЯ
-// Замените функцию extractPayloadFromTransaction в ton-deposits.js на эту версию:
-
-const extractPayloadFromTransaction = (tx) => {
+// Получение транзакций TON
+const getTonTransactions = async (gameWalletAddress, limit = 50) => {
+  console.log(`Получаем TON транзакции для ${gameWalletAddress}`);
+  
+  // ПРИОРИТЕТ: TONAPI с токеном
+  if (process.env.TONAPI_TOKEN) {
     try {
-      if (!tx.in_msg) {
-        return null;
-      }
-  
-      let payloadData = null;
-      
-      // Способ 1: msg_data.body (TONAPI v2)
-      if (tx.in_msg.msg_data && tx.in_msg.msg_data.body) {
-        payloadData = tx.in_msg.msg_data.body;
-      }
-      
-      // Способ 2: decoded_body
-      if (!payloadData && tx.in_msg.decoded_body) {
-        payloadData = tx.in_msg.decoded_body;
-      }
-      
-      // Способ 3: message
-      if (!payloadData && tx.in_msg.message) {
-        payloadData = tx.in_msg.message;
-      }
-  
-      // Способ 4: comment (прямой комментарий)
-      if (!payloadData && tx.in_msg.comment) {
-        return tx.in_msg.comment;
-      }
-  
-      if (!payloadData) {
-        return null;
-      }
-  
-      // Если это уже строка с COSMO
-      if (typeof payloadData === 'string') {
-        if (payloadData.includes('COSMO:')) {
-          return payloadData;
-        }
-        
-        // Пробуем декодировать base64
-        try {
-          const decoded = Buffer.from(payloadData, 'base64').toString('utf8');
-          if (decoded.includes('COSMO:')) {
-            console.log('Найден COSMO в base64:', decoded);
-            return decoded;
+      console.log('Пробуем TONAPI с токеном...');
+      const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
+        params: { 
+          limit: Math.min(limit, 100),
+          sort_order: 'desc'
+        },
+        headers: {
+          'Authorization': `Bearer ${process.env.TONAPI_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+
+      if (response.data && response.data.transactions) {
+        const transactions = response.data.transactions.map(tx => ({
+          transaction_id: { 
+            hash: tx.hash,
+            lt: tx.lt.toString()
+          },
+          utime: tx.utime,
+          in_msg: {
+            source: tx.in_msg?.source?.address || tx.in_msg?.source,
+            value: tx.in_msg?.value
           }
-          
-          // Пробуем с пропуском первых 4 байтов (magic)
-          if (decoded.length > 4) {
-            const withoutMagic = decoded.substring(4);
-            if (withoutMagic.includes('COSMO:')) {
-              console.log('Найден COSMO после magic bytes:', withoutMagic);
-              return withoutMagic;
-            }
-          }
-        } catch (e) {
-          // Не base64 или другая ошибка
-        }
-        
-        return null;
+        }));
+        console.log(`TONAPI работает! Получено ${transactions.length} транзакций`);
+        return transactions;
       }
-  
-      // Если это объект
-      if (typeof payloadData === 'object') {
-        if (payloadData.text && payloadData.text.includes('COSMO:')) {
-          return payloadData.text;
-        }
-        if (payloadData.comment && payloadData.comment.includes('COSMO:')) {
-          return payloadData.comment;
-        }
-      }
-  
-      return null;
     } catch (error) {
-      console.log('Не удалось извлечь payload:', error.message);
-      return null;
+      console.log('TONAPI ошибка:', error.message);
     }
-  };
-  
-  // Также обновите функцию проверки:
-  const isDepositForPlayer = (tx, playerId, fromAddress) => {
-    const payload = extractPayloadFromTransaction(tx);
-    
-    console.log(`🔍 Проверка депозита:`);
-    console.log(`   - Payload: ${payload || 'отсутствует'}`);
-    console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
-    console.log(`   - Для игрока: ${playerId}`);
-    
-    // ОСНОВНАЯ ПРОВЕРКА: payload содержит COSMO и правильный telegram_id
-    if (payload && payload.includes('COSMO:')) {
-      const parts = payload.split(':');
-      if (parts.length >= 2 && parts[0] === 'COSMO' && parts[1] === playerId) {
-        console.log(`✅ БЕЗОПАСНО: Найден валидный payload для игрока ${playerId}`);
-        return {
-          valid: true,
-          method: 'payload_match',
-          details: `COSMO payload для игрока ${playerId}`
-        };
-      } else if (parts.length >= 2 && parts[0] === 'COSMO') {
-        console.log(`❌ ОТКЛОНЕНО: Payload для другого игрока (${parts[1]}, нужен ${playerId})`);
-        return {
-          valid: false,
-          method: 'payload_mismatch',
-          details: `Payload для игрока ${parts[1]}, а не ${playerId}`
-        };
+  }
+
+  // Резерв: TON Center
+  if (process.env.TONCENTER_API_KEY) {
+    try {
+      console.log('Пробуем TON Center с API ключом...');
+      const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
+        params: {
+          address: gameWalletAddress,
+          limit: Math.min(limit, 50),
+          archival: true
+        },
+        headers: {
+          'X-API-Key': process.env.TONCENTER_API_KEY
+        },
+        timeout: 15000
+      });
+
+      if (response.data.ok && response.data.result) {
+        console.log(`TON Center работает! Получено ${response.data.result.length} транзакций`);
+        return response.data.result;
       }
+    } catch (error) {
+      console.log('TON Center ошибка:', error.message);
     }
+  }
+
+  throw new Error('Все TON API недоступны');
+};
+
+// Функция создания таблицы для ожидаемых депозитов (если не существует)
+const ensureExpectedDepositsTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS expected_deposits (
+        id SERIAL PRIMARY KEY,
+        player_id VARCHAR(50) NOT NULL,
+        amount DECIMAL(10, 8) NOT NULL,
+        from_address VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        processed BOOLEAN DEFAULT FALSE
+      )
+    `);
     
-    // РЕЗЕРВНАЯ ПРОВЕРКА для свежих транзакций без payload
-    const txTime = new Date(tx.utime * 1000);
-    const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
+    // Создаем индексы если их нет
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_expected_player_from_amount 
+      ON expected_deposits (player_id, from_address, amount)
+    `);
     
-    // Разрешаем свежие транзакции (менее 5 минут) если нет payload
-    // Это поможет в случаях когда payload технически не сработал
-    if (minutesAgo < 5 && !payload) {
-      console.log(`⚠️ РАЗРЕШЕНО: Свежая транзакция (${minutesAgo} мин) без payload`);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_expected_expires_processed 
+      ON expected_deposits (expires_at, processed)
+    `);
+    
+    console.log('✅ Таблица expected_deposits готова');
+  } catch (error) {
+    console.error('Ошибка создания таблицы expected_deposits:', error);
+  }
+};
+
+// Инициализируем таблицу при запуске
+ensureExpectedDepositsTable();
+
+// Функция проверки принадлежности депозита с временным окном
+const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
+  const txTime = new Date(tx.utime * 1000);
+  const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
+  const amount = parseFloat(tx.in_msg.value) / 1000000000;
+  
+  console.log(`🔍 Проверка депозита с временным окном:`);
+  console.log(`   - Сумма: ${amount} TON`);
+  console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
+  console.log(`   - Время: ${minutesAgo} минут назад`);
+  console.log(`   - Для игрока: ${playerId}`);
+  
+  try {
+    // ПРОВЕРЯЕМ ОЖИДАЕМЫЕ ДЕПОЗИТЫ
+    const expectedResult = await pool.query(
+      `SELECT id, amount, created_at FROM expected_deposits 
+       WHERE player_id = $1 
+       AND from_address = $2 
+       AND ABS(amount - $3) < 0.001
+       AND expires_at > NOW()
+       AND NOT processed
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [playerId, fromAddress, amount]
+    );
+    
+    if (expectedResult.rows.length > 0) {
+      const expectedDeposit = expectedResult.rows[0];
+      const expectedMinutesAgo = Math.floor((Date.now() - new Date(expectedDeposit.created_at).getTime()) / (1000 * 60));
+      
+      console.log(`✅ НАЙДЕН ОЖИДАЕМЫЙ ДЕПОЗИТ: ${expectedDeposit.amount} TON (${expectedMinutesAgo} мин назад)`);
+      
+      // Помечаем ожидаемый депозит как обработанный
+      await pool.query(
+        'UPDATE expected_deposits SET processed = true WHERE id = $1',
+        [expectedDeposit.id]
+      );
+      
       return {
         valid: true,
-        method: 'fallback_recent',
-        details: `Свежая транзакция без payload (${minutesAgo} мин назад)`
+        method: 'expected_deposit',
+        details: `Найден ожидаемый депозит для игрока ${playerId}`
       };
     }
     
-    console.log(`❌ ОТКЛОНЕНО: Нет валидного payload для игрока ${playerId}`);
-    return {
-      valid: false,
-      method: 'no_valid_payload',
-      details: 'Нет COSMO payload или транзакция не свежая'
-    };
-  };  
-
-// Получение транзакций TON
-const getTonTransactions = async (gameWalletAddress, limit = 50) => {
-    console.log(`Получаем TON транзакции для ${gameWalletAddress}`);
+    // РЕЗЕРВНАЯ ПРОВЕРКА: Свежие транзакции (менее 3 минут) от того же адреса
+    if (minutesAgo < 3 && fromAddress) {
+      // Проверяем, нет ли других игроков с таким же адресом в последние 10 минут
+      const conflictResult = await pool.query(
+        `SELECT player_id FROM expected_deposits 
+         WHERE from_address = $1 
+         AND player_id != $2 
+         AND created_at > NOW() - INTERVAL '10 minutes'`,
+        [fromAddress, playerId]
+      );
+      
+      if (conflictResult.rows.length === 0) {
+        console.log(`⚠️ РАЗРЕШЕНО: Свежая транзакция без конфликтов (${minutesAgo} мин)`);
+        return {
+          valid: true,
+          method: 'fallback_fresh',
+          details: `Свежая транзакция без конфликтов (${minutesAgo} мин назад)`
+        };
+      } else {
+        console.log(`❌ КОНФЛИКТ: Адрес используется другим игроком`);
+      }
+    }
     
-    // ПРИОРИТЕТ: TONAPI с токеном
-    if (process.env.TONAPI_TOKEN) {
-      try {
-        console.log('Пробуем TONAPI с токеном...');
-        const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
-          params: { 
-            limit: Math.min(limit, 100),
-            sort_order: 'desc'
-          },
-          headers: {
-            'Authorization': `Bearer ${process.env.TONAPI_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 15000
-        });
+  } catch (error) {
+    console.error('Ошибка проверки ожидаемых депозитов:', error);
+  }
   
-        if (response.data && response.data.transactions) {
-          const transactions = response.data.transactions.map(tx => ({
-            transaction_id: { 
-              hash: tx.hash,
-              lt: tx.lt.toString()
-            },
-            utime: tx.utime,
-            in_msg: {
-              source: tx.in_msg?.source?.address || tx.in_msg?.source,
-              value: tx.in_msg?.value,
-              msg_data: tx.in_msg?.msg_data || null,
-              decoded_body: tx.in_msg?.decoded_body || null,
-              message: tx.in_msg?.message || null
-            }
-          }));
-          console.log(`TONAPI работает! Получено ${transactions.length} транзакций`);
-          return transactions;
-        }
-      } catch (error) {
-        console.log('TONAPI ошибка:', error.message);
-      }
-    }
-  
-    // Резерв: TON Center
-    if (process.env.TONCENTER_API_KEY) {
-      try {
-        console.log('Пробуем TON Center с API ключом...');
-        const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
-          params: {
-            address: gameWalletAddress,
-            limit: Math.min(limit, 50),
-            archival: true
-          },
-          headers: {
-            'X-API-Key': process.env.TONCENTER_API_KEY
-          },
-          timeout: 15000
-        });
-  
-        if (response.data.ok && response.data.result) {
-          // Преобразуем формат TON Center в нужный нам
-          const transactions = response.data.result.map(tx => ({
-            transaction_id: { 
-              hash: tx.transaction_id.hash,
-              lt: tx.transaction_id.lt.toString()
-            },
-            utime: tx.utime,
-            in_msg: tx.in_msg ? {
-              source: tx.in_msg.source,
-              value: tx.in_msg.value,
-              msg_data: tx.in_msg.msg_data || null,
-              decoded_body: tx.in_msg.decoded_body || null,
-              message: tx.in_msg.message || null
-            } : null
-          }));
-          console.log(`TON Center работает! Получено ${transactions.length} транзакций`);
-          return transactions;
-        }
-      } catch (error) {
-        console.log('TON Center ошибка:', error.message);
-      }
-    }
-  
-    throw new Error('Все TON API недоступны');
+  console.log(`❌ ОТКЛОНЕНО: Нет ожидаемого депозита для игрока ${playerId}`);
+  return {
+    valid: false,
+    method: 'no_expected_deposit',
+    details: 'Депозит не найден в ожидаемых или слишком старый'
   };
-  // routes/wallet/ton-deposits.js - ЗАЩИЩЕННАЯ ВЕРСИЯ - ЧАСТЬ 3
+};
 
-// ЗАЩИЩЕННАЯ функция обработки депозита
+// Функция обработки депозита
 async function processDeposit(playerId, amount, hash, fromAddress, validationInfo) {
-    console.log(`🔐 ЗАЩИЩЕННАЯ ОБРАБОТКА ДЕПОЗИТА:`);
-    console.log(`   - Сумма: ${amount} TON`);
-    console.log(`   - От: ${fromAddress}`);
-    console.log(`   - Hash: ${hash}`);
-    console.log(`   - Игрок: ${playerId}`);
-    console.log(`   - Валидация: ${validationInfo.method} - ${validationInfo.details}`);
+  console.log(`💰 ОБРАБОТКА ДЕПОЗИТА:`);
+  console.log(`   - Сумма: ${amount} TON`);
+  console.log(`   - От: ${fromAddress}`);
+  console.log(`   - Hash: ${hash}`);
+  console.log(`   - Игрок: ${playerId}`);
+  console.log(`   - Метод валидации: ${validationInfo.method}`);
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
     
-    const client = await pool.connect();
+    // ШАГ 1: Проверяем игрока
+    const playerResult = await client.query(
+      'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
+      [playerId]
+    );
+
+    if (playerResult.rows.length === 0) {
+      console.log(`❌ Игрок ${playerId} не найден`);
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Player not found' };
+    }
+
+    const playerData = playerResult.rows[0];
+    const currentBalance = parseFloat(playerData.ton || '0');
+    console.log(`✅ Игрок: ${playerData.first_name}, баланс: ${currentBalance} TON`);
+    
+    // ШАГ 2: Проверяем дублирование
+    const existingCheck = await client.query(
+      'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
+      [hash]
+    );
+
+    if (existingCheck.rows.length > 0) {
+      console.log(`⚠️ Транзакция уже обработана: ${hash}`);
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Transaction already processed', skipped: true };
+    }
+    
+    // ШАГ 3: Обновляем баланс игрока
+    const newBalance = currentBalance + amount;
+    console.log(`💰 Обновляем баланс: ${currentBalance} + ${amount} = ${newBalance}`);
+    
+    const updateResult = await client.query(
+      'UPDATE players SET ton = $1 WHERE telegram_id = $2 RETURNING ton',
+      [newBalance, playerId]
+    );
+    
+    if (updateResult.rows.length === 0) {
+      console.log(`❌ Не удалось обновить баланс`);
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Failed to update balance' };
+    }
+
+    // ШАГ 4: Записываем депозит в историю
+    const depositResult = await client.query(
+      `INSERT INTO ton_deposits (
+        player_id, amount, transaction_hash, status, created_at
+      ) VALUES ($1, $2, $3, 'completed', NOW()) 
+      RETURNING id`,
+      [playerId, amount, hash]
+    );
+    
+    console.log(`✅ Депозит записан с ID: ${depositResult.rows[0].id}`);
+
+    // ШАГ 5: Записываем в balance_history (если таблица существует)
     try {
-      await client.query('BEGIN');
-      
-      // ШАГ 1: Проверяем существование игрока
-      console.log(`🔍 Шаг 1: Проверка игрока...`);
-      const playerResult = await client.query(
-        'SELECT telegram_id, first_name, username, ton FROM players WHERE telegram_id = $1',
-        [playerId]
-      );
-  
-      if (playerResult.rows.length === 0) {
-        console.log(`❌ ОШИБКА: Игрок ${playerId} не найден в базе`);
-        await client.query('ROLLBACK');
-        return { success: false, error: 'Player not found' };
-      }
-  
-      const playerData = playerResult.rows[0];
-      const currentBalance = parseFloat(playerData.ton || '0');
-      console.log(`✅ Игрок найден: ${playerData.first_name}, баланс: ${currentBalance}`);
-      
-      // ШАГ 2: Проверяем дублирование транзакции
-      console.log(`🔍 Шаг 2: Проверка дублирования...`);
-      const existingCheck = await client.query(
-        'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
-        [hash]
-      );
-  
-      if (existingCheck.rows.length > 0) {
-        console.log(`⚠️ Транзакция уже обработана: ${hash}`);
-        await client.query('ROLLBACK');
-        return { success: false, error: 'Transaction already processed', skipped: true };
-      }
-      console.log(`✅ Транзакция новая`);
-      
-      // ШАГ 3: Обновляем баланс
-      const newBalance = currentBalance + amount;
-      console.log(`💰 Шаг 3: Обновление баланса: ${currentBalance} + ${amount} = ${newBalance}`);
-      
-      const updateResult = await client.query(
-        'UPDATE players SET ton = $1 WHERE telegram_id = $2 RETURNING ton',
-        [newBalance, playerId]
-      );
-      
-      if (updateResult.rows.length === 0) {
-        console.log(`❌ ОШИБКА: Не удалось обновить баланс`);
-        await client.query('ROLLBACK');
-        return { success: false, error: 'Failed to update balance' };
-      }
-      console.log(`✅ Баланс обновлен: ${updateResult.rows[0].ton}`);
-  
-      // ШАГ 4: Записываем транзакцию депозита
-      console.log(`📝 Шаг 4: Запись депозита...`);
-      const depositResult = await client.query(
-        `INSERT INTO ton_deposits (
-          player_id, amount, transaction_hash, status, created_at, validation_method, from_address
-        ) VALUES ($1, $2, $3, 'completed', NOW(), $4, $5) 
-        RETURNING id`,
-        [playerId, amount, hash, validationInfo.method, fromAddress]
-      );
-      console.log(`✅ Депозит записан с ID: ${depositResult.rows[0].id}`);
-  
-      // ШАГ 5: История баланса
-      console.log(`📜 Шаг 5: История баланса...`);
       await client.query(
         `INSERT INTO balance_history (
           telegram_id, currency, old_balance, new_balance, 
@@ -311,392 +270,493 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
           currentBalance,
           newBalance,
           amount,
-          'secure_auto_deposit',
+          'deposit_with_time_window',
           JSON.stringify({
             transaction_hash: hash,
             from_address: fromAddress,
             validation_method: validationInfo.method,
             validation_details: validationInfo.details,
-            processed_by: 'secure_system',
             timestamp: new Date().toISOString()
           })
         ]
       );
       console.log(`✅ История баланса записана`);
-  
-      // ШАГ 6: Коммит транзакции
-      await client.query('COMMIT');
-      console.log(`🎉 УСПЕХ! Защищенный депозит обработан: ${amount} TON для игрока ${playerId}`);
-      
-      // ШАГ 7: Уведомление (не критично)
-      try {
+    } catch (historyError) {
+      console.log('⚠️ Не удалось записать историю баланса (не критично):', historyError.message);
+    }
+
+    // Коммитим транзакцию
+    await client.query('COMMIT');
+    console.log(`🎉 УСПЕХ! Депозит обработан: ${amount} TON для ${playerData.first_name}`);
+    
+    // Отправляем уведомление (не критично)
+    try {
+      if (notifyTonDeposit) {
         await notifyTonDeposit(playerData, amount, hash);
         console.log(`📧 Уведомление отправлено`);
-      } catch (notifyErr) {
-        console.log('⚠️ Уведомление не отправлено (не критично):', notifyErr.message);
       }
-      
-      return {
-        success: true,
-        amount,
-        new_balance: newBalance,
-        hash: hash.substring(0, 16) + '...',
-        old_balance: currentBalance,
-        deposit_id: depositResult.rows[0].id,
-        validation_method: validationInfo.method
-      };
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('💥 КРИТИЧЕСКАЯ ОШИБКА в защищенном processDeposit:', error);
-      return { success: false, error: error.message };
-    } finally {
-      client.release();
+    } catch (notifyErr) {
+      console.log('⚠️ Уведомление не отправлено:', notifyErr.message);
     }
+    
+    return {
+      success: true,
+      amount,
+      new_balance: newBalance,
+      hash: hash.substring(0, 16) + '...',
+      old_balance: currentBalance,
+      deposit_id: depositResult.rows[0].id,
+      validation_method: validationInfo.method
+    };
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('💥 КРИТИЧЕСКАЯ ОШИБКА в processDeposit:', error);
+    return { success: false, error: error.message };
+  } finally {
+    client.release();
   }
-  // routes/wallet/ton-deposits.js - ЗАЩИЩЕННАЯ ВЕРСИЯ - ЧАСТЬ 4
+}
 
-// POST /check-deposits - ЗАЩИЩЕННАЯ проверка депозитов
+// POST /register-expected - Регистрация ожидаемого депозита
+router.post('/register-expected', async (req, res) => {
+  const { player_id, amount, from_address, timestamp } = req.body;
+  
+  if (!player_id || !amount || !from_address) {
+    return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
+  }
+
+  try {
+    // Удаляем старые записи этого игрока
+    await pool.query(
+      'DELETE FROM expected_deposits WHERE player_id = $1 AND created_at < NOW() - INTERVAL \'1 hour\'',
+      [player_id]
+    );
+
+    // Создаем запись об ожидаемом депозите
+    const result = await pool.query(
+      `INSERT INTO expected_deposits (
+        player_id, amount, from_address, created_at, expires_at
+      ) VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '10 minutes')
+      RETURNING id`,
+      [player_id, parseFloat(amount), from_address]
+    );
+    
+    console.log(`📝 Зарегистрирован ожидаемый депозит: ${amount} TON от ${from_address} для игрока ${player_id}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Ожидаемый депозит зарегистрирован',
+      expected_deposit_id: result.rows[0].id
+    });
+    
+  } catch (error) {
+    console.error('Ошибка регистрации ожидаемого депозита:', error);
+    res.status(500).json({ success: false, error: 'Ошибка сервера' });
+  }
+});
+
+// POST /check-deposits - Основная функция проверки депозитов
 router.post('/check-deposits', async (req, res) => {
-    const { player_id, sender_address } = req.body;
-    
-    console.log('🛡️ ===============================================================');
-    console.log('🛡️ ЗАЩИЩЕННАЯ ПРОВЕРКА ДЕПОЗИТОВ');
-    console.log('🛡️ Игрок:', player_id);
-    console.log('🛡️ Кошелек отправителя:', sender_address || 'не указан');
-    console.log('🛡️ ===============================================================');
-    
-    if (!player_id) {
-      return res.status(400).json({ error: 'Player ID обязателен' });
-    }
+  const { player_id, sender_address } = req.body;
   
+  console.log('🔒 ===============================================================');
+  console.log('🔒 ЗАЩИЩЕННАЯ ПРОВЕРКА ДЕПОЗИТОВ С ВРЕМЕННЫМ ОКНОМ');
+  console.log('🔒 Игрок:', player_id);
+  console.log('🔒 Адрес отправителя:', sender_address || 'не указан');
+  console.log('🔒 ===============================================================');
+  
+  if (!player_id) {
+    return res.status(400).json({ error: 'Player ID обязателен' });
+  }
+
+  try {
+    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 
+      'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
+    
+    // Получаем транзакции из блокчейна
+    let transactions = [];
     try {
-      const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 
-        'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
-      
-      // Получаем транзакции из блокчейна
-      let transactions = [];
-      try {
-        transactions = await getTonTransactions(gameWalletAddress, 100);
-        console.log(`🔗 Получено ${transactions.length} транзакций из блокчейна`);
-      } catch (apiError) {
-        console.error('💥 Все API недоступны:', apiError.message);
-        return res.json({ 
-          success: false, 
-          error: 'TON API временно недоступен',
-          details: 'Попробуйте через несколько минут'
-        });
-      }
-      
-      const processed = [];
-      let skippedCount = 0;
-      let rejectedCount = 0;
-      let errorCount = 0;
-      
-      console.log('🔍 Анализ транзакций с проверкой безопасности...');
-      
-      // Обрабатываем каждую транзакцию с проверкой безопасности
-      for (let i = 0; i < transactions.length; i++) {
-        const tx = transactions[i];
-        
-        console.log(`\n📋 Транзакция ${i+1}/${transactions.length}:`);
-        
-        // Пропускаем исходящие транзакции
-        if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') {
-          console.log('⭕ Пропуск: исходящая или нулевая транзакция');
-          continue;
-        }
-  
-        const amount = parseFloat(tx.in_msg.value) / 1000000000;
-        const hash = tx.transaction_id.hash;
-        const fromAddress = tx.in_msg.source;
-        const txTime = new Date(tx.utime * 1000);
-        const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
-        
-        console.log(`💰 Сумма: ${amount} TON`);
-        console.log(`🔗 Hash: ${hash.substring(0, 20)}...`);
-        console.log(`👤 От: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'неизвестно'}`);
-        console.log(`⏰ Время: ${minutesAgo} минут назад`);
-        
-        // Фильтр минимальной суммы
-        if (amount < 0.005) {
-          console.log('⭕ Пропуск: сумма меньше 0.005 TON');
-          continue;
-        }
-        
-        // 🛡️ КЛЮЧЕВАЯ ПРОВЕРКА БЕЗОПАСНОСТИ
-        const validationResult = isDepositForPlayer(tx, player_id, fromAddress);
-        
-        if (!validationResult.valid) {
-          console.log(`🚫 ОТКЛОНЕНО: ${validationResult.details}`);
-          rejectedCount++;
-          continue;
-        }
-        
-        console.log(`✅ ПРИНЯТО: ${validationResult.details}`);
-        console.log('🔄 Обработка защищенного депозита...');
-        
-        // ОБРАБАТЫВАЕМ ЗАЩИЩЕННЫЙ ДЕПОЗИТ
-        const result = await processDeposit(player_id, amount, hash, fromAddress, validationResult);
-        
-        if (result.success) {
-          processed.push(result);
-          console.log(`🎉 УСПЕХ! Обработано: ${amount} TON`);
-        } else if (result.skipped) {
-          skippedCount++;
-          console.log(`⚠️ ПРОПУЩЕНО: ${result.error}`);
-        } else {
-          errorCount++;
-          console.log(`❌ ОШИБКА: ${result.error}`);
-        }
-      }
-      
-      console.log('\n🛡️ ===============================================================');
-      console.log('🛡️ ЗАЩИЩЕННАЯ ПРОВЕРКА ЗАВЕРШЕНА');
-      console.log(`🛡️ Успешно обработано: ${processed.length}`);
-      console.log(`🛡️ Уже обработано (пропущено): ${skippedCount}`);
-      console.log(`🛡️ Отклонено по безопасности: ${rejectedCount}`);
-      console.log(`🛡️ Ошибок: ${errorCount}`);
-      console.log('🛡️ ===============================================================');
-      
-      if (processed.length > 0) {
-        const totalAmount = processed.reduce((sum, dep) => sum + dep.amount, 0);
-        
-        res.json({
-          success: true,
-          message: `УСПЕХ! Найдено и безопасно обработано ${processed.length} депозитов`,
-          deposits_found: processed.length,
-          total_amount: totalAmount.toFixed(8),
-          rejected_for_security: rejectedCount,
-          deposits: processed.map(dep => ({
-            amount: dep.amount.toFixed(8),
-            hash: dep.hash,
-            new_balance: dep.new_balance.toFixed(8),
-            old_balance: dep.old_balance.toFixed(8),
-            deposit_id: dep.deposit_id,
-            validation_method: dep.validation_method
-          }))
-        });
-      } else {
-        let message = 'Новых депозитов не найдено';
-        if (rejectedCount > 0) {
-          message += ` (${rejectedCount} отклонено по безопасности - нет правильного payload)`;
-        }
-        if (skippedCount > 0) {
-          message += ` (${skippedCount} уже обработано)`;
-        }
-        
-        res.json({
-          success: true,
-          message: message,
-          deposits_found: 0,
-          total_amount: '0',
-          rejected_for_security: rejectedCount,
-          skipped: skippedCount,
-          errors: errorCount
-        });
-      }
-  
-    } catch (error) {
-      console.error('💥 КРИТИЧЕСКАЯ ОШИБКА в защищенной проверке:', error);
-      res.status(500).json({ 
+      transactions = await getTonTransactions(gameWalletAddress, 50);
+      console.log(`🔗 Получено ${transactions.length} транзакций из блокчейна`);
+    } catch (apiError) {
+      console.error('💥 Все API недоступны:', apiError.message);
+      return res.json({ 
         success: false, 
-        error: 'Внутренняя ошибка сервера',
-        details: error.message 
+        error: 'TON API временно недоступен',
+        details: 'Попробуйте через несколько минут'
       });
     }
-  });
-  // routes/wallet/ton-deposits.js - ЗАЩИЩЕННАЯ ВЕРСИЯ - ЧАСТЬ 5
+    
+    const processed = [];
+    let skippedCount = 0;
+    let rejectedCount = 0;
+    let errorCount = 0;
+    
+    console.log('🔍 Анализ транзакций с проверкой временного окна...');
+    
+    // Обрабатываем каждую транзакцию
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+      
+      console.log(`\n📋 Транзакция ${i+1}/${transactions.length}:`);
+      
+      // Пропускаем исходящие транзакции
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') {
+        console.log('⭕ Пропуск: исходящая или нулевая транзакция');
+        continue;
+      }
+
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      const txTime = new Date(tx.utime * 1000);
+      const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
+      
+      console.log(`💰 Сумма: ${amount} TON`);
+      console.log(`🔗 Hash: ${hash.substring(0, 20)}...`);
+      console.log(`👤 От: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'неизвестно'}`);
+      console.log(`⏰ Время: ${minutesAgo} минут назад`);
+      
+      // Фильтр минимальной суммы
+      if (amount < 0.005) {
+        console.log('⭕ Пропуск: сумма меньше 0.005 TON');
+        continue;
+      }
+      
+      // 🔒 ПРОВЕРКА С ВРЕМЕННЫМ ОКНОМ
+      const validationResult = await isDepositForPlayerWithTimeWindow(tx, player_id, fromAddress);
+      
+      if (!validationResult.valid) {
+        console.log(`🚫 ОТКЛОНЕНО: ${validationResult.details}`);
+        rejectedCount++;
+        continue;
+      }
+      
+      console.log(`✅ ПРИНЯТО: ${validationResult.details}`);
+      console.log('🔄 Обработка депозита...');
+      
+      // ОБРАБАТЫВАЕМ ДЕПОЗИТ
+      const result = await processDeposit(player_id, amount, hash, fromAddress, validationResult);
+      
+      if (result.success) {
+        processed.push(result);
+        console.log(`🎉 УСПЕХ! Обработано: ${amount} TON`);
+      } else if (result.skipped) {
+        skippedCount++;
+        console.log(`⚠️ ПРОПУЩЕНО: ${result.error}`);
+      } else {
+        errorCount++;
+        console.log(`❌ ОШИБКА: ${result.error}`);
+      }
+    }
+    
+    console.log('\n🔒 ===============================================================');
+    console.log('🔒 ПРОВЕРКА ЗАВЕРШЕНА');
+    console.log(`🔒 Успешно обработано: ${processed.length}`);
+    console.log(`🔒 Уже обработано (пропущено): ${skippedCount}`);
+    console.log(`🔒 Отклонено по безопасности: ${rejectedCount}`);
+    console.log(`🔒 Ошибок: ${errorCount}`);
+    console.log('🔒 ===============================================================');
+    
+    if (processed.length > 0) {
+      const totalAmount = processed.reduce((sum, dep) => sum + dep.amount, 0);
+      
+      res.json({
+        success: true,
+        message: `УСПЕХ! Найдено и безопасно обработано ${processed.length} депозитов`,
+        deposits_found: processed.length,
+        total_amount: totalAmount.toFixed(8),
+        rejected_for_security: rejectedCount,
+        deposits: processed.map(dep => ({
+          amount: dep.amount.toFixed(8),
+          hash: dep.hash,
+          new_balance: dep.new_balance.toFixed(8),
+          old_balance: dep.old_balance.toFixed(8),
+          deposit_id: dep.deposit_id,
+          validation_method: dep.validation_method
+        }))
+      });
+    } else {
+      let message = 'Новых депозитов не найдено';
+      if (rejectedCount > 0) {
+        message += ` (${rejectedCount} отклонено по безопасности)`;
+      }
+      if (skippedCount > 0) {
+        message += ` (${skippedCount} уже обработано)`;
+      }
+      
+      res.json({
+        success: true,
+        message: message,
+        deposits_found: 0,
+        total_amount: '0',
+        rejected_for_security: rejectedCount,
+        skipped: skippedCount,
+        errors: errorCount
+      });
+    }
+
+  } catch (error) {
+    console.error('💥 КРИТИЧЕСКАЯ ОШИБКА в проверке депозитов:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Внутренняя ошибка сервера',
+      details: error.message 
+    });
+  }
+});
 
 // POST /manual-add - Ручное добавление депозита (только для админов)
 router.post('/manual-add', async (req, res) => {
-    const { player_id, amount, transaction_hash, admin_key } = req.body;
-    
-    if (admin_key !== 'cosmo_admin_2025') {
-      return res.status(403).json({ error: 'Нет доступа' });
+  const { player_id, amount, transaction_hash, admin_key } = req.body;
+  
+  if (admin_key !== 'cosmo_admin_2025') {
+    return res.status(403).json({ error: 'Нет доступа' });
+  }
+  
+  if (!player_id || !amount || !transaction_hash) {
+    return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
+  }
+
+  const validationInfo = {
+    method: 'manual_admin',
+    details: 'Ручное добавление администратором'
+  };
+
+  const result = await processDeposit(player_id, parseFloat(amount), transaction_hash, 'manual_admin', validationInfo);
+  
+  if (result.success) {
+    res.json({
+      success: true,
+      message: 'Ручной депозит успешно добавлен',
+      ...result
+    });
+  } else {
+    res.status(500).json(result);
+  }
+});
+
+// Очистка старых ожидаемых депозитов (запускается при каждом запросе)
+const cleanupExpiredDeposits = async () => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM expected_deposits WHERE expires_at < NOW() - INTERVAL \'1 hour\''
+    );
+    if (result.rowCount > 0) {
+      console.log(`🧹 Очищено ${result.rowCount} устаревших ожидаемых депозитов`);
     }
+  } catch (error) {
+    console.error('Ошибка очистки ожидаемых депозитов:', error);
+  }
+};
+
+// POST /debug-deposits - Диагностика депозитов
+router.post('/debug-deposits', async (req, res) => {
+  const { player_id } = req.body;
+  
+  if (!player_id) {
+    return res.status(400).json({ error: 'Player ID обязателен' });
+  }
+
+  try {
+    const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 
+      'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
     
-    if (!player_id || !amount || !transaction_hash) {
-      return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
-    }
-  
-    const validationInfo = {
-      method: 'manual_admin',
-      details: 'Ручное добавление администратором'
-    };
-  
-    const result = await processDeposit(player_id, parseFloat(amount), transaction_hash, 'manual_admin', validationInfo);
+    // Проверяем игрока в базе
+    const playerResult = await pool.query(
+      'SELECT telegram_id, first_name, ton FROM players WHERE telegram_id = $1',
+      [player_id]
+    );
     
-    if (result.success) {
-      console.log('Ручной депозит добавлен:', { player_id, amount, transaction_hash });
-      res.json({
-        success: true,
-        message: 'Ручной депозит успешно добавлен',
-        ...result
-      });
-    } else {
-      res.status(500).json(result);
-    }
-  });
-  
-  // POST /debug-deposits - Диагностика депозитов с информацией о безопасности
-  router.post('/debug-deposits', async (req, res) => {
-    const { player_id } = req.body;
-    
-    if (!player_id) {
-      return res.status(400).json({ error: 'Player ID обязателен' });
-    }
-  
-    try {
-      const gameWalletAddress = process.env.GAME_WALLET_ADDRESS || 
-        'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
-      
-      // Проверяем игрока в базе
-      const playerResult = await pool.query(
-        'SELECT telegram_id, first_name, ton FROM players WHERE telegram_id = $1',
-        [player_id]
-      );
-      
-      if (playerResult.rows.length === 0) {
-        return res.json({ 
-          success: false, 
-          error: 'Игрок не найден',
-          debug: { player_found: false }
-        });
-      }
-      
-      const player = playerResult.rows[0];
-      
-      // Проверяем существующие депозиты в базе
-      const existingDeposits = await pool.query(
-        'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 15',
-        [player_id]
-      );
-      
-      // Получаем транзакции из блокчейна
-      let transactions = [];
-      let apiStatus = 'unknown';
-      let apiError = null;
-      try {
-        transactions = await getTonTransactions(gameWalletAddress, 20);
-        apiStatus = 'working';
-      } catch (apiErrorCatch) {
-        apiStatus = 'failed';
-        apiError = apiErrorCatch.message;
-        return res.json({ 
-          success: false, 
-          error: 'Ошибка TON API',
-          debug: { ton_api_error: true, error_details: apiError }
-        });
-      }
-      
-      // Анализируем входящие транзакции с проверкой payload и безопасности
-      const incomingTransactions = [];
-      
-      for (const tx of transactions) {
-        if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
-        
-        const amount = parseFloat(tx.in_msg.value) / 1000000000;
-        const hash = tx.transaction_id.hash;
-        const fromAddress = tx.in_msg.source;
-        const txTime = new Date(tx.utime * 1000);
-        
-        if (amount < 0.005) continue;
-        
-        // Проверяем payload для безопасности
-        const payload = extractPayloadFromTransaction(tx);
-        const validationResult = isDepositForPlayer(tx, player_id, fromAddress);
-        
-        incomingTransactions.push({
-          amount: amount.toFixed(8),
-          hash: hash.substring(0, 16) + '...',
-          full_hash: hash,
-          from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
-          from_full: fromAddress,
-          time: txTime.toISOString(),
-          minutes_ago: Math.floor((Date.now() - txTime.getTime()) / (1000 * 60)),
-          payload: payload || 'отсутствует',
-          valid_for_player: validationResult.valid,
-          validation_method: validationResult.method,
-          validation_details: validationResult.details
-        });
-      }
-      
-      // Проверяем, какие транзакции уже обработаны
-      const processedHashes = existingDeposits.rows.map(dep => dep.transaction_hash);
-      const unprocessedTransactions = incomingTransactions.filter(tx => 
-        !processedHashes.includes(tx.full_hash)
-      );
-      
-      // Фильтруем только валидные для этого игрока
-      const validUnprocessedTransactions = unprocessedTransactions.filter(tx => tx.valid_for_player);
-      
-      // Формируем отчет
-      const debugReport = {
-        success: true,
-        player: {
-          telegram_id: player.telegram_id,
-          name: player.first_name,
-          current_ton_balance: parseFloat(player.ton || '0'),
-        },
-        game_wallet: gameWalletAddress,
-        api_status: apiStatus,
-        api_error: apiError,
-        security_info: {
-          total_incoming_transactions: incomingTransactions.length,
-          valid_for_player: incomingTransactions.filter(tx => tx.valid_for_player).length,
-          rejected_for_security: incomingTransactions.filter(tx => !tx.valid_for_player).length
-        },
-        database_deposits: {
-          count: existingDeposits.rows.length,
-          deposits: existingDeposits.rows.map(dep => ({
-            amount: parseFloat(dep.amount),
-            status: dep.status,
-            created_at: dep.created_at,
-            hash: dep.transaction_hash ? dep.transaction_hash.substring(0, 16) + '...' : 'no_hash',
-            validation_method: dep.validation_method || 'legacy'
-          }))
-        },
-        blockchain_transactions: {
-          count: incomingTransactions.length,
-          recent_incoming: incomingTransactions.slice(0, 5),
-          unprocessed_count: unprocessedTransactions.length,
-          unprocessed: unprocessedTransactions.slice(0, 3),
-          valid_unprocessed_count: validUnprocessedTransactions.length,
-          valid_unprocessed: validUnprocessedTransactions.slice(0, 3)
-        },
-        recommendations: []
-      };
-      
-      // Рекомендации по безопасности
-      if (validUnprocessedTransactions.length > 0) {
-        debugReport.recommendations.push(`НАЙДЕНО ${validUnprocessedTransactions.length} ВАЛИДНЫХ необработанных транзакций для этого игрока!`);
-        validUnprocessedTransactions.slice(0, 2).forEach((tx, i) => {
-          debugReport.recommendations.push(`   ${i+1}. ${tx.amount} TON с payload: ${tx.payload} (${tx.minutes_ago} мин назад)`);
-        });
-      } else if (unprocessedTransactions.length > validUnprocessedTransactions.length) {
-        const rejectedCount = unprocessedTransactions.length - validUnprocessedTransactions.length;
-        debugReport.recommendations.push(`БЕЗОПАСНОСТЬ: ${rejectedCount} транзакций отклонено - нет правильного COSMO payload`);
-        debugReport.recommendations.push("Это нормально - система защищена от зачисления чужих депозитов");
-      } else if (incomingTransactions.length > 0) {
-        debugReport.recommendations.push("УСПЕХ: Все найденные транзакции уже обработаны");
-      } else {
-        debugReport.recommendations.push("Входящих транзакций в блокчейне не найдено");
-      }
-      
-      // Инструкции по использованию payload
-      debugReport.recommendations.push("ВАЖНО: Убедитесь, что депозиты отправляются через приложение с COSMO payload!");
-      
-      res.json(debugReport);
-  
-    } catch (error) {
-      console.error('Ошибка диагностики:', error);
-      res.status(500).json({ 
+    if (playerResult.rows.length === 0) {
+      return res.json({ 
         success: false, 
-        error: 'Ошибка диагностики',
-        details: error.message 
+        error: 'Игрок не найден',
+        debug: { player_found: false }
       });
     }
-  });
-  
-  module.exports = router;
+    
+    const player = playerResult.rows[0];
+    
+    // Проверяем депозиты в базе
+    const existingDeposits = await pool.query(
+      'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [player_id]
+    );
+    
+    // Проверяем ожидаемые депозиты
+    const expectedDeposits = await pool.query(
+      'SELECT * FROM expected_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 5',
+      [player_id]
+    );
+    
+    // Получаем транзакции из блокчейна
+    let transactions = [];
+    let apiStatus = 'unknown';
+    let apiError = null;
+    try {
+      transactions = await getTonTransactions(gameWalletAddress, 15);
+      apiStatus = 'working';
+    } catch (apiErrorCatch) {
+      apiStatus = 'failed';
+      apiError = apiErrorCatch.message;
+    }
+    
+    // Анализируем входящие транзакции
+    const incomingTransactions = [];
+    
+    for (const tx of transactions) {
+      if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') continue;
+      
+      const amount = parseFloat(tx.in_msg.value) / 1000000000;
+      const hash = tx.transaction_id.hash;
+      const fromAddress = tx.in_msg.source;
+      const txTime = new Date(tx.utime * 1000);
+      
+      if (amount < 0.005) continue;
+      
+      // Проверяем валидность для этого игрока
+      const validationResult = await isDepositForPlayerWithTimeWindow(tx, player_id, fromAddress);
+      
+      incomingTransactions.push({
+        amount: amount.toFixed(8),
+        hash: hash.substring(0, 16) + '...',
+        full_hash: hash,
+        from: fromAddress ? fromAddress.substring(0, 10) + '...' : 'unknown',
+        from_full: fromAddress,
+        time: txTime.toISOString(),
+        minutes_ago: Math.floor((Date.now() - txTime.getTime()) / (1000 * 60)),
+        valid_for_player: validationResult.valid,
+        validation_method: validationResult.method,
+        validation_details: validationResult.details
+      });
+    }
+    
+    // Проверяем необработанные
+    const processedHashes = existingDeposits.rows.map(dep => dep.transaction_hash);
+    const unprocessedTransactions = incomingTransactions.filter(tx => 
+      !processedHashes.includes(tx.full_hash)
+    );
+    const validUnprocessedTransactions = unprocessedTransactions.filter(tx => tx.valid_for_player);
+    
+    // Формируем отчет
+    const debugReport = {
+      success: true,
+      player: {
+        telegram_id: player.telegram_id,
+        name: player.first_name,
+        current_ton_balance: parseFloat(player.ton || '0'),
+      },
+      game_wallet: gameWalletAddress,
+      api_status: apiStatus,
+      api_error: apiError,
+      expected_deposits: {
+        count: expectedDeposits.rows.length,
+        active_count: expectedDeposits.rows.filter(dep => !dep.processed && new Date(dep.expires_at) > new Date()).length,
+        deposits: expectedDeposits.rows.map(dep => ({
+          amount: parseFloat(dep.amount),
+          from_address: dep.from_address ? dep.from_address.substring(0, 10) + '...' : 'unknown',
+          created_minutes_ago: Math.floor((Date.now() - new Date(dep.created_at).getTime()) / (1000 * 60)),
+          expires_minutes: Math.floor((new Date(dep.expires_at).getTime() - Date.now()) / (1000 * 60)),
+          processed: dep.processed
+        }))
+      },
+      database_deposits: {
+        count: existingDeposits.rows.length,
+        deposits: existingDeposits.rows.map(dep => ({
+          amount: parseFloat(dep.amount),
+          status: dep.status,
+          created_at: dep.created_at,
+          hash: dep.transaction_hash ? dep.transaction_hash.substring(0, 16) + '...' : 'no_hash'
+        }))
+      },
+      blockchain_transactions: {
+        count: incomingTransactions.length,
+        recent_incoming: incomingTransactions.slice(0, 5),
+        unprocessed_count: unprocessedTransactions.length,
+        valid_unprocessed_count: validUnprocessedTransactions.length,
+        valid_unprocessed: validUnprocessedTransactions.slice(0, 3)
+      },
+      recommendations: []
+    };
+    
+    // Рекомендации
+    if (validUnprocessedTransactions.length > 0) {
+      debugReport.recommendations.push(`НАЙДЕНО ${validUnprocessedTransactions.length} ВАЛИДНЫХ необработанных депозитов!`);
+    } else if (unprocessedTransactions.length > 0) {
+      debugReport.recommendations.push(`${unprocessedTransactions.length} необработанных транзакций отклонено системой безопасности`);
+    } else {
+      debugReport.recommendations.push("Все транзакции обработаны или нет новых депозитов");
+    }
+    
+    if (expectedDeposits.rows.length === 0) {
+      debugReport.recommendations.push("Нет ожидаемых депозитов. Отправляйте TON через приложение для регистрации ожидания.");
+    }
+    
+    res.json(debugReport);
+
+  } catch (error) {
+    console.error('Ошибка диагностики:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Ошибка диагностики',
+      details: error.message 
+    });
+  }
+});
+
+// GET /status - Статус системы депозитов
+router.get('/status', async (req, res) => {
+  try {
+    // Проверяем подключение к API
+    let tonApiStatus = 'unknown';
+    try {
+      const gameWallet = process.env.GAME_WALLET_ADDRESS || 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
+      await getTonTransactions(gameWallet, 1);
+      tonApiStatus = 'working';
+    } catch (apiError) {
+      tonApiStatus = 'failed';
+    }
+    
+    // Статистика из базы
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_deposits,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as deposits_24h,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '1 hour') as deposits_1h,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COALESCE(SUM(amount) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'), 0) as amount_24h
+      FROM ton_deposits WHERE status = 'completed'
+    `);
+    
+    const expectedStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_expected,
+        COUNT(*) FILTER (WHERE NOT processed AND expires_at > NOW()) as active_expected,
+        COUNT(*) FILTER (WHERE processed) as processed_expected
+      FROM expected_deposits
+    `);
+    
+    res.json({
+      success: true,
+      system_status: 'operational',
+      ton_api_status: tonApiStatus,
+      deposit_stats: stats.rows[0],
+      expected_deposit_stats: expectedStats.rows[0],
+      last_check: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      system_status: 'error',
+      error: error.message
+    });
+  }
+});
+
+// Запускаем очистку каждые 10 минут
+setInterval(cleanupExpiredDeposits, 10 * 60 * 1000);
+
+module.exports = router;
