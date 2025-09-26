@@ -20,6 +20,10 @@ const questsSchedulerModule = require('./quests/scheduler');
 // Финансовый модуль
 const financeModule = require('./finance');
 
+// Аналитика и расследования
+const analyticsModule = require('./analytics');
+const investigationModule = require('./investigation');
+
 console.log('📦 Все модули админ-панели загружены');
 
 // ===============================
@@ -105,6 +109,24 @@ console.log('✅ Модуль планировщика подключен: /sche
 router.use('/', financeModule);
 
 console.log('✅ Модуль финансов подключен: /ton-deposits, /ton-stats, /process-ton-deposit');
+
+// ===============================
+// 📊 АНАЛИТИКА
+// ===============================
+
+// Подключаем модуль аналитики
+router.use('/analytics', analyticsModule);
+
+console.log('✅ Модуль аналитики подключен: /analytics/daily-finance, /analytics/top-players');
+
+// ===============================
+// 🕵️ РАССЛЕДОВАНИЯ
+// ===============================
+
+// Подключаем модуль расследований
+router.use('/investigation', investigationModule);
+
+console.log('✅ Модуль расследований подключен: /investigation/search, /investigation/player-analysis');
 
 // ===============================
 // 📋 ИНФОРМАЦИЯ О МОДУЛЯХ
