@@ -17,6 +17,9 @@ const systemModule = require('./system');
 const questsManagementModule = require('./quests/management');
 const questsSchedulerModule = require('./quests/scheduler');
 
+// Финансовый модуль
+const financeModule = require('./finance');
+
 console.log('📦 Все модули админ-панели загружены');
 
 // ===============================
@@ -95,6 +98,15 @@ router.use('/scheduler', questsSchedulerModule);
 console.log('✅ Модуль планировщика подключен: /scheduler/overview, /scheduler/create-schedule');
 
 // ===============================
+// 💰 ФИНАНСОВОЕ УПРАВЛЕНИЕ
+// ===============================
+
+// Подключаем финансовый модуль
+router.use('/', financeModule);
+
+console.log('✅ Модуль финансов подключен: /ton-deposits, /ton-stats, /process-ton-deposit');
+
+// ===============================
 // 📋 ИНФОРМАЦИЯ О МОДУЛЯХ
 // ===============================
 
@@ -112,7 +124,7 @@ router.get('/modules-info/:telegramId', (req, res) => {
   const modulesInfo = {
     success: true,
     admin_panel_version: '2.0.3-backward-compatible',
-    total_modules: 8,
+    total_modules: 9,
     modules: [
       {
         name: 'Authentication',
@@ -175,6 +187,12 @@ router.get('/modules-info/:telegramId', (req, res) => {
         file: 'quests/scheduler.js',
         endpoints: ['/scheduler/overview/:telegramId', '/scheduler/create-schedule/:telegramId', '/scheduler/toggle-schedule/:telegramId', '/scheduler/list/:telegramId', '/scheduler/test-activation/:telegramId'],
         description: 'Планировщик автоматической активации заданий'
+      },
+      {
+        name: 'Finance Management',
+        file: 'finance.js',
+        endpoints: ['/ton-deposits', '/ton-stats', '/process-ton-deposit'],
+        description: 'Управление TON депозитами и финансовой статистикой'
       }
     ],
     architecture: {
@@ -203,8 +221,8 @@ router.get('/modules-info/:telegramId', (req, res) => {
 // ===============================
 
 console.log('🚀 Модульная админ-панель готова к работе!');
-console.log('📊 Всего модулей: 8');
-console.log('🔗 Всего endpoints: ~30');
-console.log('🔄 Middleware исправлен + алиасы для совместимости');
+console.log('📊 Всего модулей: 9');
+console.log('🔗 Всего endpoints: ~35');
+console.log('🔄 Middleware исправлен + алиасы для совместимости + финансы');
 
 module.exports = router;
