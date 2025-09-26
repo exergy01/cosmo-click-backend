@@ -45,6 +45,28 @@ router.post('/create-invoice', async (req, res) => {
 
     console.log('Stars invoice created:', { telegram_id, amount, invoice });
     
+    // НОВОЕ: Записываем попытку пополнения в базу
+    try {
+      await pool.query(
+        `INSERT INTO star_transactions (
+          player_id, amount, transaction_type, description,
+          telegram_payment_id, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [
+          telegram_id,
+          amount,
+          'deposit',
+          `Stars invoice created: ${amount} stars`,
+          null, // telegram_payment_id будет позже при оплате
+          'pending' // Статус: ожидание оплаты
+        ]
+      );
+      console.log('Invoice attempt recorded in database');
+    } catch (dbErr) {
+      console.error('Failed to record invoice attempt:', dbErr);
+      // Не падаем, продолжаем работу
+    }
+    
     res.json({
       success: true,
       invoice_url: invoice,
@@ -122,21 +144,43 @@ router.post('/webhook', async (req, res) => {
           [amount, playerId]
         );
         
-        // Записываем транзакцию
-        await client.query(
-          `INSERT INTO star_transactions (
-            player_id, amount, transaction_type, description,
-            telegram_payment_id, status, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        // Обновляем статус pending транзакции на completed
+        const updateResult = await client.query(
+          `UPDATE star_transactions 
+           SET status = $1, 
+               telegram_payment_id = $2,
+               description = $3
+           WHERE player_id = $4 
+             AND amount = $5 
+             AND status = 'pending' 
+             AND created_at >= NOW() - INTERVAL '1 hour'
+           RETURNING id`,
           [
-            playerId,
-            amount,
-            'deposit',
-            `Stars purchase: ${amount} stars`,
+            'completed',
             payment.telegram_payment_charge_id,
-            'completed'
+            `Stars purchase completed: ${amount} stars`,
+            playerId,
+            amount
           ]
         );
+        
+        // Если не нашли pending транзакцию, создаем новую completed
+        if (updateResult.rows.length === 0) {
+          await client.query(
+            `INSERT INTO star_transactions (
+              player_id, amount, transaction_type, description,
+              telegram_payment_id, status, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [
+              playerId,
+              amount,
+              'deposit',
+              `Stars purchase: ${amount} stars`,
+              payment.telegram_payment_charge_id,
+              'completed'
+            ]
+          );
+        }
         
         await client.query('COMMIT');
         
@@ -148,11 +192,11 @@ router.post('/webhook', async (req, res) => {
         try {
           await bot.telegram.sendMessage(
             playerId,
-            `🎉 Congratulations! Your balance has been topped up by ${amount} ⭐ Stars!`,
+            `🎉 Поздравляем! Ваш баланс пополнен на ${amount} ⭐ Stars!`,
             {
               reply_markup: {
                 inline_keyboard: [[{
-                  text: '🎮 Open Game',
+                  text: '🎮 Открыть игру',
                   web_app: { url: 'https://cosmoclick-frontend.vercel.app' }
                 }]]
               }
@@ -186,6 +230,37 @@ router.post('/webhook', async (req, res) => {
   } catch (err) {
     console.error('Stars webhook processing error:', err);
     res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// НОВЫЙ ENDPOINT: Обработка отмененных/проваленных платежей из frontend
+router.post('/cancel-invoice', async (req, res) => {
+  const { telegram_id, amount, status } = req.body;
+  
+  console.log('Cancelling Stars invoice:', { telegram_id, amount, status });
+  
+  try {
+    // Обновляем статус pending транзакции
+    await pool.query(
+      `UPDATE star_transactions 
+       SET status = $1,
+           description = $2
+       WHERE player_id = $3 
+         AND amount = $4 
+         AND status = 'pending' 
+         AND created_at >= NOW() - INTERVAL '1 hour'`,
+      [
+        status || 'cancelled',
+        `Stars invoice ${status || 'cancelled'}: ${amount} stars`,
+        telegram_id,
+        amount
+      ]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error cancelling invoice:', err);
+    res.status(500).json({ error: 'Failed to cancel invoice' });
   }
 });
 
