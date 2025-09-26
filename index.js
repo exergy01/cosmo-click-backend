@@ -815,8 +815,14 @@ app.listen(PORT, async () => {
       const tonRateService = require('./services/tonRateService');
       await tonRateService.startAutoUpdate();
       console.log('Сервис курсов TON запущен');
+
+      // Запуск мониторинга TON депозитов
+      const { tonDepositMonitor } = require('./services/tonDepositMonitor');
+      await tonDepositMonitor.start();
+      console.log('Мониторинг TON депозитов запущен');
+
     } catch (error) {
-      console.error('Ошибка запуска сервиса курсов:', error);
+      console.error('Ошибка запуска TON сервисов:', error);
     }
   }, 30000);
 

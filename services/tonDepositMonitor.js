@@ -1,13 +1,16 @@
 // services/tonDepositMonitor.js - АВТОМАТИЧЕСКИЙ МОНИТОРИНГ TON ДЕПОЗИТОВ
 
 const pool = require('../db');
-const { TonWeb } = require('tonweb');
+const { getHttpEndpoint } = require('@ton/ton');
+const { TonClient } = require('@ton/ton');
+const { Address } = require('@ton/core');
 const { notifyTonDeposit } = require('../routes/telegramBot');
 
-// Инициализация TonWeb (потребуется API ключ)
-const tonweb = new TonWeb(new TonWeb.HttpProvider('https://toncenter.com/api/v2/jsonRPC', {
-    apiKey: process.env.TON_API_KEY // Получить на https://toncenter.com
-}));
+// Инициализация TON клиента
+const tonClient = new TonClient({
+    endpoint: 'https://toncenter.com/api/v2/jsonRPC',
+    apiKey: process.env.TON_API_KEY
+});
 
 class TonDepositMonitor {
     constructor() {
@@ -71,14 +74,18 @@ class TonDepositMonitor {
         try {
             console.log('🔍 Проверяем новые TON транзакции...');
 
-            // Получаем транзакции для мониторинг-адреса
-            const transactions = await tonweb.provider.getTransactions(
-                this.monitoringAddress,
-                10, // количество последних транзакций
-                undefined, // до какой транзакции
-                undefined, // с какой транзакции
-                this.lastProcessedLt // только новые транзакции
-            );
+            if (!this.monitoringAddress) {
+                console.log('⚠️ Адрес для мониторинга не задан');
+                return;
+            }
+
+            // Парсим адрес
+            const address = Address.parse(this.monitoringAddress);
+
+            // Получаем транзакции
+            const transactions = await tonClient.getTransactions(address, {
+                limit: 10
+            });
 
             console.log(`📊 Найдено транзакций: ${transactions.length}`);
 
@@ -88,7 +95,7 @@ class TonDepositMonitor {
 
             // Обновляем последнюю обработанную транзакцию
             if (transactions.length > 0) {
-                this.lastProcessedLt = transactions[0].transaction_id.lt;
+                this.lastProcessedLt = transactions[0].lt.toString();
             }
 
         } catch (err) {
@@ -98,14 +105,21 @@ class TonDepositMonitor {
 
     async processTransaction(tx) {
         try {
-            // Проверяем, что это входящая транзакция
-            if (!tx.in_msg || !tx.in_msg.value) {
-                return; // пропускаем исходящие
+            // Получаем входящие сообщения
+            const inMsgs = tx.inMessage;
+
+            if (!inMsgs || !inMsgs.info || inMsgs.info.type !== 'internal') {
+                return; // пропускаем исходящие или внешние
             }
 
-            const amount = parseFloat(tx.in_msg.value) / 1000000000; // конвертируем из nanotons
-            const hash = tx.transaction_id.hash;
-            const fromAddress = tx.in_msg.source;
+            const amount = parseFloat(inMsgs.info.value.coins) / 1000000000; // из nanotons в TON
+            const hash = tx.hash().toString('base64');
+            const fromAddress = inMsgs.info.src ? inMsgs.info.src.toString() : 'unknown';
+
+            // Пропускаем очень маленькие суммы (меньше 0.01 TON)
+            if (amount < 0.01) {
+                return;
+            }
 
             console.log(`💰 Обнаружен депозит: ${amount} TON от ${fromAddress}`);
 
@@ -120,9 +134,9 @@ class TonDepositMonitor {
                 return;
             }
 
-            // Определяем игрока по memo или комментарию
+            // Определяем игрока по комментарию
             const playerId = await this.extractPlayerIdFromTransaction(tx);
-            
+
             if (!playerId) {
                 console.log('⚠️ Не удалось определить игрока для депозита');
                 // Логируем неопознанные депозиты для ручной обработки
@@ -140,26 +154,39 @@ class TonDepositMonitor {
 
     async extractPlayerIdFromTransaction(tx) {
         try {
-            // Ищем комментарий с telegram_id в транзакции
-            if (tx.in_msg && tx.in_msg.message) {
-                const comment = tx.in_msg.message;
-                
-                // Ожидаем формат комментария: "deposit_123456789" или просто "123456789"
-                const telegramIdMatch = comment.match(/(?:deposit_)?(\d{8,12})/);
-                if (telegramIdMatch) {
-                    return telegramIdMatch[1];
+            // Ищем комментарий в сообщении
+            const inMsg = tx.inMessage;
+
+            if (inMsg && inMsg.body) {
+                try {
+                    // Пытаемся извлечь текст комментария
+                    const comment = inMsg.body.toString();
+
+                    // Ожидаем формат комментария: "deposit_123456789" или просто "123456789"
+                    const telegramIdMatch = comment.match(/(?:deposit_)?(\d{8,12})/);
+                    if (telegramIdMatch) {
+                        console.log(`📝 Найден ID игрока в комментарии: ${telegramIdMatch[1]}`);
+                        return telegramIdMatch[1];
+                    }
+                } catch (commentErr) {
+                    // Если не удалось извлечь комментарий, продолжаем
+                    console.log('⚠️ Не удалось извлечь комментарий из транзакции');
                 }
             }
 
             // Дополнительные способы определения игрока
-            // Можно добавить поиск по кошелькам игроков
-            const playerByWallet = await pool.query(
-                'SELECT telegram_id FROM players WHERE telegram_wallet = $1',
-                [tx.in_msg.source]
-            );
+            const fromAddress = inMsg?.info?.src?.toString();
 
-            if (playerByWallet.rows.length > 0) {
-                return playerByWallet.rows[0].telegram_id;
+            if (fromAddress) {
+                const playerByWallet = await pool.query(
+                    'SELECT telegram_id FROM players WHERE telegram_wallet = $1',
+                    [fromAddress]
+                );
+
+                if (playerByWallet.rows.length > 0) {
+                    console.log(`📝 Найден игрок по кошельку: ${playerByWallet.rows[0].telegram_id}`);
+                    return playerByWallet.rows[0].telegram_id;
+                }
             }
 
             return null;
