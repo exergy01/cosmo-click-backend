@@ -120,20 +120,21 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     const bonusAmount = DAILY_BONUS_AMOUNTS[newStreak - 1];
 
-    // ✅ ПРОСТАЯ ТРАНЗАКЦИЯ как в заданиях
-    await pool.query('BEGIN');
+    console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
 
+    // 🧪 ВРЕМЕННО БЕЗ ТРАНЗАКЦИЙ - для дебага
     try {
-      // Обновляем игрока одним запросом
-      await pool.query(`
+      // Обновляем игрока одним запросом БЕЗ транзакции
+      const updateResult = await pool.query(`
         UPDATE players
         SET daily_bonus_streak = $1,
             daily_bonus_last_claim = $2,
             ccc = ccc + $3
         WHERE telegram_id = $4
+        RETURNING daily_bonus_streak, ccc
       `, [newStreak, currentTime, bonusAmount, telegramId]);
 
-      await pool.query('COMMIT');
+      console.log(`✅ Update successful:`, updateResult.rows[0]);
 
       console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
@@ -147,9 +148,9 @@ router.post('/claim/:telegramId', async (req, res) => {
         is_max_streak: newStreak === 7
       });
 
-    } catch (error) {
-      await pool.query('ROLLBACK');
-      throw error;
+    } catch (updateError) {
+      console.error(`❌ Update failed:`, updateError);
+      throw updateError;
     }
 
   } catch (error) {
