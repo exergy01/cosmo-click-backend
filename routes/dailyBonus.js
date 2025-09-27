@@ -63,6 +63,43 @@ router.get('/status/:telegramId', async (req, res) => {
   }
 });
 
+// POST /api/daily-bonus/test-tomorrow/:telegramId - ТЕСТ завтрашнего дня
+router.post('/test-tomorrow/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+
+    if (!telegramId) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegramId is required'
+      });
+    }
+
+    // Устанавливаем дату как завтра для теста
+    const tomorrowTime = new Date();
+    tomorrowTime.setDate(tomorrowTime.getDate() + 1);
+
+    await pool.query(`
+      UPDATE players
+      SET daily_bonus_last_claim = $1
+      WHERE telegram_id = $2
+    `, [tomorrowTime, telegramId]);
+
+    res.json({
+      success: true,
+      message: 'Дата установлена на завтра для тестирования',
+      test_date: tomorrowTime.toISOString()
+    });
+
+  } catch (error) {
+    console.error('Ошибка тестового endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера'
+    });
+  }
+});
+
 // POST /api/daily-bonus/claim/:telegramId - забрать ежедневный бонус
 router.post('/claim/:telegramId', async (req, res) => {
   try {
@@ -145,14 +182,18 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
 
-    // 🧪 ВРЕМЕННО БЕЗ UPDATE - только тест ответа
+    // ✅ ПРОСТОЙ UPDATE БЕЗ ТРАНЗАКЦИЙ (транзакции блокируются!)
     try {
-      console.log(`🚫 SKIPPING UPDATE for debug - would update:`, {
-        newStreak,
-        currentTime: currentTime.toISOString(),
-        bonusAmount,
-        telegramId
-      });
+      const updateResult = await pool.query(`
+        UPDATE players
+        SET daily_bonus_streak = $1,
+            daily_bonus_last_claim = $2,
+            ccc = ccc + $3
+        WHERE telegram_id = $4
+        RETURNING daily_bonus_streak, ccc
+      `, [newStreak, currentTime, bonusAmount, telegramId]);
+
+      console.log(`✅ Update successful:`, updateResult.rows[0]);
 
       console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
