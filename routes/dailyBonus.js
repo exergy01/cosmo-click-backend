@@ -98,7 +98,10 @@ router.post('/claim/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const player = await getPlayer(telegramId);
+    // Проверяем игрока напрямую в транзакции
+    const playerResult = await client.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
+    const player = playerResult.rows[0];
+
     if (!player) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
@@ -212,16 +215,12 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     console.log(`✅ Ежедневный бонус начислен: ${bonusAmount} CCC (день ${newStreak})`);
 
-    // Получаем обновленные данные игрока
-    const updatedPlayer = await getPlayer(telegramId);
-
     res.json({
       success: true,
       bonus_amount: bonusAmount,
       streak_day: newStreak,
       next_day: newStreak < 7 ? newStreak + 1 : 1,
       next_bonus_amount: DAILY_BONUS_AMOUNTS[newStreak < 7 ? newStreak : 0],
-      player: updatedPlayer,
       is_max_streak: newStreak === 7
     });
 
