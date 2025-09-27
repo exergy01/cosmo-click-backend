@@ -115,9 +115,9 @@ router.post('/claim/:telegramId', async (req, res) => {
     }
 
     console.log(`🎯 Получаем статус ежедневных бонусов...`);
-    // Получаем текущий статус бонусов
+    // Получаем текущий статус бонусов (убираем FOR UPDATE)
     const bonusResult = await client.query(
-      'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1 FOR UPDATE',
+      'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1',
       [telegramId]
     );
     console.log(`✅ Статус получен, записей найдено: ${bonusResult.rows.length}`);
@@ -128,12 +128,17 @@ router.post('/claim/:telegramId', async (req, res) => {
     if (!bonusData) {
       console.log(`➕ Создаем новую запись для игрока ${telegramId}...`);
       await client.query(
-        'INSERT INTO daily_bonus_streaks (telegram_id, current_streak, last_claim_date, total_claims) VALUES ($1, 0, NULL, 0)',
+        'INSERT INTO daily_bonus_streaks (telegram_id, current_streak, last_claim_date, total_claims) VALUES ($1, 0, NULL, 0) ON CONFLICT (telegram_id) DO NOTHING',
         [telegramId]
       );
-      console.log(`✅ Запись создана`);
+      console.log(`✅ Запись создана (или уже существует)`);
 
-      bonusData = {
+      // Повторно получаем данные после INSERT
+      const newBonusResult = await client.query(
+        'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1',
+        [telegramId]
+      );
+      bonusData = newBonusResult.rows[0] || {
         telegram_id: telegramId,
         current_streak: 0,
         last_claim_date: null,
@@ -141,18 +146,23 @@ router.post('/claim/:telegramId', async (req, res) => {
       };
     }
 
+    console.log(`🗓️ Проверяем можно ли забрать бонус...`);
     const now = new Date();
     const today = now.toDateString();
 
     // Проверяем можно ли забрать
     if (bonusData.last_claim_date) {
       const lastClaimDate = new Date(bonusData.last_claim_date).toDateString();
+      console.log(`📅 Последний раз забирал: ${lastClaimDate}, сегодня: ${today}`);
 
       if (lastClaimDate === today) {
+        console.log(`❌ Уже забирал сегодня, отклоняем запрос`);
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Daily bonus already claimed today' });
       }
     }
+
+    console.log(`✅ Можно забрать бонус, рассчитываем стрик...`);
 
     // Вычисляем новый стрик
     let newStreak = 1;
