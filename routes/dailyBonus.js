@@ -63,10 +63,24 @@ router.get('/status/:telegramId', async (req, res) => {
   }
 });
 
+// POST /api/daily-bonus/test-simple/:telegramId - ПРОСТОЙ ТЕСТ без БД
+router.post('/test-simple/:telegramId', async (req, res) => {
+  const { telegramId } = req.params;
+  console.log(`🧪 Simple test for ${telegramId}`);
+
+  res.json({
+    success: true,
+    message: 'Простой тест работает!',
+    telegramId: telegramId,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // POST /api/daily-bonus/test-tomorrow/:telegramId - ТЕСТ завтрашнего дня
 router.post('/test-tomorrow/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
+    console.log(`🧪 Tomorrow test for ${telegramId}`);
 
     if (!telegramId) {
       return res.status(400).json({
@@ -79,11 +93,13 @@ router.post('/test-tomorrow/:telegramId', async (req, res) => {
     const tomorrowTime = new Date();
     tomorrowTime.setDate(tomorrowTime.getDate() + 1);
 
+    console.log(`🧪 About to update DB for tomorrow test...`);
     await pool.query(`
       UPDATE players
       SET daily_bonus_last_claim = $1
       WHERE telegram_id = $2
     `, [tomorrowTime, telegramId]);
+    console.log(`🧪 DB updated successfully for tomorrow test`);
 
     res.json({
       success: true,
