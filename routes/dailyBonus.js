@@ -200,6 +200,14 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     // ✅ ПРОСТОЙ UPDATE БЕЗ ТРАНЗАКЦИЙ (транзакции блокируются!)
     try {
+      console.log(`🔧 About to execute UPDATE with params:`, {
+        newStreak,
+        currentTime: currentTime.toISOString(),
+        bonusAmount,
+        telegramId
+      });
+
+      console.log(`🔧 Calling pool.query now...`);
       const updateResult = await pool.query(`
         UPDATE players
         SET daily_bonus_streak = $1,
@@ -208,6 +216,8 @@ router.post('/claim/:telegramId', async (req, res) => {
         WHERE telegram_id = $4
         RETURNING daily_bonus_streak, ccc
       `, [newStreak, currentTime, bonusAmount, telegramId]);
+
+      console.log(`🔧 pool.query completed successfully`);
 
       console.log(`✅ Update successful:`, updateResult.rows[0]);
 
