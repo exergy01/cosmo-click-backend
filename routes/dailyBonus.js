@@ -7,7 +7,7 @@ const { logPlayerAction, updateLifetimeStats, logBalanceChange } = require('./sh
 const router = express.Router();
 
 // Конфигурация ежедневных бонусов (CCC за каждый день)
-const DAILY_BONUS_AMOUNTS = [1, 5, 10, 20, 40, 70, 100];
+const DAILY_BONUS_AMOUNTS = [10, 20, 30, 40, 50, 60, 100];
 
 // GET /api/daily-bonus/status/:telegramId - получить статус ежедневных бонусов
 router.get('/status/:telegramId', async (req, res) => {
