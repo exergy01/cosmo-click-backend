@@ -210,8 +210,8 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       
       // ШАГ 2: Проверяем дублирование
       const existingCheck = await client.query(
-        'SELECT id, status FROM ton_deposits WHERE transaction_hash = $1',
-        [hash]
+        'SELECT id, status FROM ton_deposits WHERE transaction_hash = $1 AND status = $2',
+        [hash, 'completed']
       );
   
       if (existingCheck.rows.length > 0) {
