@@ -94,33 +94,44 @@ router.post('/claim/:telegramId', async (req, res) => {
 
   console.log(`🎁 Попытка забрать ежедневный бонус: ${telegramId}`);
 
+  console.log(`🔗 Получение подключения к БД...`);
   const client = await pool.connect();
+  console.log(`✅ Подключение получено, начинаем транзакцию...`);
+
   try {
     await client.query('BEGIN');
+    console.log(`✅ Транзакция начата, проверяем игрока...`);
 
     // Проверяем игрока напрямую в транзакции
     const playerResult = await client.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
     const player = playerResult.rows[0];
+    console.log(`✅ Игрок проверен: ${player ? 'найден' : 'НЕ найден'}`);
+
 
     if (!player) {
+      console.log(`❌ Игрок не найден, откатываем транзакцию`);
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
 
+    console.log(`🎯 Получаем статус ежедневных бонусов...`);
     // Получаем текущий статус бонусов
     const bonusResult = await client.query(
       'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1 FOR UPDATE',
       [telegramId]
     );
+    console.log(`✅ Статус получен, записей найдено: ${bonusResult.rows.length}`);
 
     let bonusData = bonusResult.rows[0];
 
     // Если записи нет, создаем
     if (!bonusData) {
+      console.log(`➕ Создаем новую запись для игрока ${telegramId}...`);
       await client.query(
         'INSERT INTO daily_bonus_streaks (telegram_id, current_streak, last_claim_date, total_claims) VALUES ($1, 0, NULL, 0)',
         [telegramId]
       );
+      console.log(`✅ Запись создана`);
 
       bonusData = {
         telegram_id: telegramId,
