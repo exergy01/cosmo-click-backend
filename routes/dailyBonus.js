@@ -208,18 +208,17 @@ router.post('/claim/:telegramId', async (req, res) => {
       });
 
       console.log(`🔧 Calling pool.query now...`);
-      const updateResult = await pool.query(`
+
+      // 🚨 ЭКСТРЕННЫЙ ФИКС: убираем RETURNING который может блокироваться
+      await pool.query(`
         UPDATE players
         SET daily_bonus_streak = $1,
             daily_bonus_last_claim = $2,
             ccc = ccc + $3
         WHERE telegram_id = $4
-        RETURNING daily_bonus_streak, ccc
       `, [newStreak, currentTime, bonusAmount, telegramId]);
 
       console.log(`🔧 pool.query completed successfully`);
-
-      console.log(`✅ Update successful:`, updateResult.rows[0]);
 
       console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
