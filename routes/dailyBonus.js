@@ -75,11 +75,15 @@ router.post('/claim/:telegramId', async (req, res) => {
       });
     }
 
+    console.log(`🎁 Claim request for ${telegramId}`);
+
     // ✅ ПРОСТАЯ ЛОГИКА как в watch_ad из заданий
     const playerResult = await pool.query(
       'SELECT telegram_id, first_name, ccc, daily_bonus_streak, daily_bonus_last_claim FROM players WHERE telegram_id = $1',
       [telegramId]
     );
+
+    console.log(`📊 Player query result: ${playerResult.rows.length} rows`);
 
     if (playerResult.rows.length === 0) {
       return res.status(404).json({
