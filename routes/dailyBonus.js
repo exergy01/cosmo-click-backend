@@ -145,19 +145,14 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
 
-    // 🧪 ВРЕМЕННО БЕЗ ТРАНЗАКЦИЙ - для дебага
+    // 🧪 ВРЕМЕННО БЕЗ UPDATE - только тест ответа
     try {
-      // Обновляем игрока одним запросом БЕЗ транзакции
-      const updateResult = await pool.query(`
-        UPDATE players
-        SET daily_bonus_streak = $1,
-            daily_bonus_last_claim = $2,
-            ccc = ccc + $3
-        WHERE telegram_id = $4
-        RETURNING daily_bonus_streak, ccc
-      `, [newStreak, currentTime, bonusAmount, telegramId]);
-
-      console.log(`✅ Update successful:`, updateResult.rows[0]);
+      console.log(`🚫 SKIPPING UPDATE for debug - would update:`, {
+        newStreak,
+        currentTime: currentTime.toISOString(),
+        bonusAmount,
+        telegramId
+      });
 
       console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
