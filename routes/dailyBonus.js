@@ -14,71 +14,46 @@ router.get('/status/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
 
-    console.log(`📅 Проверка статуса ежедневных бонусов для ${telegramId}`);
-
     const player = await getPlayer(telegramId);
     if (!player) {
       return res.status(404).json({ error: 'Player not found' });
     }
 
-    // Получаем информацию о ежедневных бонусах
-    const bonusResult = await pool.query(
-      'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1',
-      [telegramId]
-    );
+    // ✅ ПРОСТАЯ ЛОГИКА как в заданиях - используем поля игрока напрямую
+    const currentTime = new Date();
+    const today = currentTime.toDateString();
 
-    let bonusData = bonusResult.rows[0];
-
-    // Если записи нет, создаем новую
-    if (!bonusData) {
-      await pool.query(
-        'INSERT INTO daily_bonus_streaks (telegram_id, current_streak, last_claim_date, total_claims) VALUES ($1, 0, NULL, 0)',
-        [telegramId]
-      );
-
-      bonusData = {
-        telegram_id: telegramId,
-        current_streak: 0,
-        last_claim_date: null,
-        total_claims: 0
-      };
-    }
-
-    const now = new Date();
-    const today = now.toDateString();
-
-    // Проверяем можно ли забрать бонус сегодня
+    let dailyBonusStreak = player.daily_bonus_streak || 0;
+    let dailyBonusLastClaim = player.daily_bonus_last_claim;
     let canClaim = true;
     let nextDay = 1;
 
-    if (bonusData.last_claim_date) {
-      const lastClaimDate = new Date(bonusData.last_claim_date).toDateString();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toDateString();
+    // Логика как в quest_ad системе
+    if (dailyBonusLastClaim) {
+      const lastClaimDate = new Date(dailyBonusLastClaim).toDateString();
+      const yesterday = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000).toDateString();
 
       if (lastClaimDate === today) {
         // Уже забрал сегодня
         canClaim = false;
-        nextDay = bonusData.current_streak < 7 ? bonusData.current_streak + 1 : 1;
+        nextDay = dailyBonusStreak < 7 ? dailyBonusStreak + 1 : 1;
       } else if (lastClaimDate === yesterday) {
         // Можно продолжить стрик
-        nextDay = bonusData.current_streak < 7 ? bonusData.current_streak + 1 : 1;
+        nextDay = dailyBonusStreak < 7 ? dailyBonusStreak + 1 : 1;
       } else {
-        // Стрик сброшен
+        // Стрик сброшен - новый день после пропуска
         nextDay = 1;
       }
     }
 
     const nextBonusAmount = DAILY_BONUS_AMOUNTS[nextDay - 1];
 
-    console.log(`📅 Статус бонусов: день ${nextDay}, можно забрать: ${canClaim}, сумма: ${nextBonusAmount} CCC`);
-
     res.json({
       can_claim: canClaim,
-      current_streak: bonusData.current_streak,
+      current_streak: dailyBonusStreak,
       next_day: nextDay,
       next_bonus_amount: nextBonusAmount,
-      last_claim_date: bonusData.last_claim_date,
-      total_claims: bonusData.total_claims,
+      last_claim_date: dailyBonusLastClaim,
       bonus_schedule: DAILY_BONUS_AMOUNTS
     });
 
@@ -90,181 +65,95 @@ router.get('/status/:telegramId', async (req, res) => {
 
 // POST /api/daily-bonus/claim/:telegramId - забрать ежедневный бонус
 router.post('/claim/:telegramId', async (req, res) => {
-  const { telegramId } = req.params;
-
-  console.log(`🎁 Попытка забрать ежедневный бонус: ${telegramId}`);
-
-  console.log(`🔗 Получение подключения к БД...`);
-  const client = await pool.connect();
-  console.log(`✅ Подключение получено, начинаем транзакцию...`);
-
   try {
-    await client.query('BEGIN');
-    console.log(`✅ Транзакция начата, проверяем игрока...`);
+    const { telegramId } = req.params;
 
-    // Проверяем игрока напрямую в транзакции
-    const playerResult = await client.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
-    const player = playerResult.rows[0];
-    console.log(`✅ Игрок проверен: ${player ? 'найден' : 'НЕ найден'}`);
-
-
-    if (!player) {
-      console.log(`❌ Игрок не найден, откатываем транзакцию`);
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Player not found' });
+    if (!telegramId) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegramId is required'
+      });
     }
 
-    console.log(`🎯 Получаем статус ежедневных бонусов...`);
-    // Получаем текущий статус бонусов (убираем FOR UPDATE)
-    const bonusResult = await client.query(
-      'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1',
+    // ✅ ПРОСТАЯ ЛОГИКА как в watch_ad из заданий
+    const playerResult = await pool.query(
+      'SELECT telegram_id, first_name, ccc, daily_bonus_streak, daily_bonus_last_claim FROM players WHERE telegram_id = $1',
       [telegramId]
     );
-    console.log(`✅ Статус получен, записей найдено: ${bonusResult.rows.length}`);
 
-    let bonusData = bonusResult.rows[0];
-
-    // Если записи нет, создаем
-    if (!bonusData) {
-      console.log(`➕ Создаем новую запись для игрока ${telegramId}...`);
-      await client.query(
-        'INSERT INTO daily_bonus_streaks (telegram_id, current_streak, last_claim_date, total_claims) VALUES ($1, 0, NULL, 0) ON CONFLICT (telegram_id) DO NOTHING',
-        [telegramId]
-      );
-      console.log(`✅ Запись создана (или уже существует)`);
-
-      // Повторно получаем данные после INSERT
-      const newBonusResult = await client.query(
-        'SELECT * FROM daily_bonus_streaks WHERE telegram_id = $1',
-        [telegramId]
-      );
-      bonusData = newBonusResult.rows[0] || {
-        telegram_id: telegramId,
-        current_streak: 0,
-        last_claim_date: null,
-        total_claims: 0
-      };
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Игрок не найден'
+      });
     }
 
-    console.log(`🗓️ Проверяем можно ли забрать бонус...`);
-    const now = new Date();
-    const today = now.toDateString();
+    const player = playerResult.rows[0];
+    const currentTime = new Date();
+    const today = currentTime.toDateString();
+    const lastClaimDate = player.daily_bonus_last_claim ? new Date(player.daily_bonus_last_claim).toDateString() : null;
 
-    // Проверяем можно ли забрать
-    if (bonusData.last_claim_date) {
-      const lastClaimDate = new Date(bonusData.last_claim_date).toDateString();
-      console.log(`📅 Последний раз забирал: ${lastClaimDate}, сегодня: ${today}`);
-
-      if (lastClaimDate === today) {
-        console.log(`❌ Уже забирал сегодня, отклоняем запрос`);
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Daily bonus already claimed today' });
-      }
+    // Проверяем, можно ли забрать бонус сегодня
+    if (lastClaimDate === today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Ежедневный бонус уже получен сегодня'
+      });
     }
 
-    console.log(`✅ Можно забрать бонус, рассчитываем стрик...`);
-
-    // Вычисляем новый стрик
+    // Рассчитываем новый стрик
     let newStreak = 1;
+    let currentStreak = player.daily_bonus_streak || 0;
 
-    if (bonusData.last_claim_date) {
-      const lastClaimDate = new Date(bonusData.last_claim_date).toDateString();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toDateString();
-
+    if (lastClaimDate) {
+      const yesterday = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000).toDateString();
       if (lastClaimDate === yesterday) {
         // Продолжаем стрик
-        newStreak = bonusData.current_streak < 7 ? bonusData.current_streak + 1 : 1;
+        newStreak = currentStreak < 7 ? currentStreak + 1 : 1;
       }
       // Если пропустил день - стрик сбрасывается на 1
     }
 
     const bonusAmount = DAILY_BONUS_AMOUNTS[newStreak - 1];
 
-    console.log(`🎁 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
+    // ✅ ПРОСТАЯ ТРАНЗАКЦИЯ как в заданиях
+    await pool.query('BEGIN');
 
-    // Сохраняем баланс до операции
-    const balanceBefore = {
-      ccc: parseFloat(player.ccc),
-      cs: parseFloat(player.cs),
-      ton: parseFloat(player.ton)
-    };
+    try {
+      // Обновляем игрока одним запросом
+      await pool.query(`
+        UPDATE players
+        SET daily_bonus_streak = $1,
+            daily_bonus_last_claim = $2,
+            ccc = ccc + $3
+        WHERE telegram_id = $4
+      `, [newStreak, currentTime, bonusAmount, telegramId]);
 
-    // Начисляем CCC
-    const newCccBalance = parseFloat(player.ccc) + bonusAmount;
+      await pool.query('COMMIT');
 
-    await client.query(
-      'UPDATE players SET ccc = $1 WHERE telegram_id = $2',
-      [newCccBalance, telegramId]
-    );
+      console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
-    // Обновляем статус ежедневных бонусов
-    await client.query(
-      'UPDATE daily_bonus_streaks SET current_streak = $1, last_claim_date = $2, total_claims = total_claims + 1 WHERE telegram_id = $3',
-      [newStreak, now, telegramId]
-    );
-
-    console.log(`📝 Логируем действие игрока...`);
-    // Логируем действие
-    const actionId = await logPlayerAction(
-      telegramId,
-      'daily_bonus_claim',
-      bonusAmount,
-      null,
-      null,
-      {
-        streak_day: newStreak,
+      res.json({
+        success: true,
+        message: 'Ежедневный бонус получен',
         bonus_amount: bonusAmount,
-        was_streak_reset: newStreak === 1 && bonusData.current_streak > 0
-      },
-      req
-    );
-    console.log(`✅ Действие залогировано, actionId: ${actionId}`);
+        streak_day: newStreak,
+        next_day: newStreak < 7 ? newStreak + 1 : 1,
+        next_bonus_amount: DAILY_BONUS_AMOUNTS[newStreak < 7 ? newStreak : 0],
+        is_max_streak: newStreak === 7
+      });
 
-    console.log(`💰 Логируем изменение баланса...`);
-    // Логируем изменение баланса
-    const balanceAfter = {
-      ccc: newCccBalance,
-      cs: parseFloat(player.cs),
-      ton: parseFloat(player.ton)
-    };
-
-    if (actionId) {
-      await logBalanceChange(telegramId, actionId, balanceBefore, balanceAfter);
-      console.log(`✅ Изменение баланса залогировано`);
-    } else {
-      console.log(`⚠️ actionId отсутствует, пропускаем логирование баланса`);
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
     }
 
-    console.log(`📊 Обновляем статистику...`);
-    // Обновляем статистику
-    await updateLifetimeStats(telegramId, 'daily_bonus_claim', 1);
-    console.log(`✅ Статистика обновлена`);
-
-    console.log(`💾 Коммитим транзакцию...`);
-    await client.query('COMMIT');
-    console.log(`✅ Транзакция завершена`);
-
-    console.log(`✅ Ежедневный бонус начислен: ${bonusAmount} CCC (день ${newStreak})`);
-
-    console.log(`📤 Отправляем ответ клиенту...`);
-    const response = {
-      success: true,
-      bonus_amount: bonusAmount,
-      streak_day: newStreak,
-      next_day: newStreak < 7 ? newStreak + 1 : 1,
-      next_bonus_amount: DAILY_BONUS_AMOUNTS[newStreak < 7 ? newStreak : 0],
-      is_max_streak: newStreak === 7
-    };
-
-    res.json(response);
-    console.log(`✅ Ответ отправлен:`, response);
-
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Error claiming daily bonus:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
+  } catch (error) {
+    console.error('Ошибка получения ежедневного бонуса:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера'
+    });
   }
 });
 
@@ -273,16 +162,14 @@ router.get('/leaderboard', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        p.telegram_id,
-        p.first_name,
-        p.username,
-        dbs.current_streak,
-        dbs.total_claims,
-        dbs.last_claim_date
-      FROM daily_bonus_streaks dbs
-      JOIN players p ON dbs.telegram_id = p.telegram_id
-      WHERE dbs.total_claims > 0
-      ORDER BY dbs.current_streak DESC, dbs.total_claims DESC
+        telegram_id,
+        first_name,
+        username,
+        daily_bonus_streak as current_streak,
+        daily_bonus_last_claim as last_claim_date
+      FROM players
+      WHERE daily_bonus_streak > 0
+      ORDER BY daily_bonus_streak DESC, daily_bonus_last_claim DESC
       LIMIT 50
     `);
 
