@@ -203,6 +203,7 @@ router.post('/claim/:telegramId', async (req, res) => {
       [newStreak, now, telegramId]
     );
 
+    console.log(`📝 Логируем действие игрока...`);
     // Логируем действие
     const actionId = await logPlayerAction(
       telegramId,
@@ -217,7 +218,9 @@ router.post('/claim/:telegramId', async (req, res) => {
       },
       req
     );
+    console.log(`✅ Действие залогировано, actionId: ${actionId}`);
 
+    console.log(`💰 Логируем изменение баланса...`);
     // Логируем изменение баланса
     const balanceAfter = {
       ccc: newCccBalance,
@@ -227,23 +230,34 @@ router.post('/claim/:telegramId', async (req, res) => {
 
     if (actionId) {
       await logBalanceChange(telegramId, actionId, balanceBefore, balanceAfter);
+      console.log(`✅ Изменение баланса залогировано`);
+    } else {
+      console.log(`⚠️ actionId отсутствует, пропускаем логирование баланса`);
     }
 
+    console.log(`📊 Обновляем статистику...`);
     // Обновляем статистику
     await updateLifetimeStats(telegramId, 'daily_bonus_claim', 1);
+    console.log(`✅ Статистика обновлена`);
 
+    console.log(`💾 Коммитим транзакцию...`);
     await client.query('COMMIT');
+    console.log(`✅ Транзакция завершена`);
 
     console.log(`✅ Ежедневный бонус начислен: ${bonusAmount} CCC (день ${newStreak})`);
 
-    res.json({
+    console.log(`📤 Отправляем ответ клиенту...`);
+    const response = {
       success: true,
       bonus_amount: bonusAmount,
       streak_day: newStreak,
       next_day: newStreak < 7 ? newStreak + 1 : 1,
       next_bonus_amount: DAILY_BONUS_AMOUNTS[newStreak < 7 ? newStreak : 0],
       is_max_streak: newStreak === 7
-    });
+    };
+
+    res.json(response);
+    console.log(`✅ Ответ отправлен:`, response);
 
   } catch (err) {
     await client.query('ROLLBACK');
