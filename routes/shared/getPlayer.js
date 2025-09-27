@@ -1,23 +1,15 @@
 const pool = require('../../db');
 
 async function getPlayer(telegramId) {
-  console.log(`🔍 getPlayer вызван для игрока: ${telegramId}, тип: ${typeof telegramId}`);
-  
   // Приводим telegramId к строке для совместимости
   const safeTelegramId = String(telegramId);
-  console.log(`🔍 Используем safeTelegramId: ${safeTelegramId}`);
   
   const playerResult = await pool.query('SELECT * FROM players WHERE telegram_id = $1', [safeTelegramId]);
   let player = playerResult.rows[0];
 
   if (!player) {
-    console.log(`❌ getPlayer: игрок ${safeTelegramId} НЕ НАЙДЕН - возвращаем null`);
-    console.log(`ℹ️ Проверяем напрямую: ${JSON.stringify(playerResult.rows)}`);
-    console.log(`ℹ️ Создание игроков теперь происходит через endpoint create-with-referrer`);
-    return null; // 🔥 НЕ СОЗДАЕМ ИГРОКА - возвращаем null
+    return null; // НЕ СОЗДАЕМ ИГРОКА - возвращаем null
   }
-
-  console.log(`✅ getPlayer: игрок ${safeTelegramId} найден, referrer_id = ${player.referrer_id}`);
 
   // 🔥 ИСПРАВЛЕНО: Пересчитываем точный счетчик рефералов из таблицы referrals
   try {
@@ -29,15 +21,14 @@ async function getPlayer(telegramId) {
     
     // Если счетчик в players отличается - обновляем
     if (player.referrals_count !== actualCount) {
-      console.log(`🔄 Обновляем счетчик рефералов: ${player.referrals_count} → ${actualCount}`);
       await pool.query(
-        'UPDATE players SET referrals_count = $1 WHERE telegram_id = $2', 
+        'UPDATE players SET referrals_count = $1 WHERE telegram_id = $2',
         [actualCount, safeTelegramId]
       );
       player.referrals_count = actualCount;
     }
   } catch (err) {
-    console.error('❌ Ошибка пересчета рефералов:', err);
+    // Игнорируем ошибки пересчета рефералов
   }
 
   // Убеждаемся что все нужные поля существуют
@@ -84,16 +75,11 @@ async function getPlayer(telegramId) {
     const maxCargoCapacity = systemCargo.reduce((max, c) => Math.max(max, c.capacity || 0), 0);
     maxCargoCapacityData[system] = Number(maxCargoCapacity);
 
-    console.log(`🔧 getPlayer система ${system}: карго объекты =`, systemCargo, `максимум = ${maxCargoCapacity}`);
-
     if (!hasCargo || !hasAsteroid || !hasDrone) {
       maxCargoCapacityData[system] = 0;
       miningSpeedData[system] = 0;
     }
   });
-
-  console.log('🔧 getPlayer: финальные max_cargo_capacity_data =', maxCargoCapacityData);
-  console.log(`🔧 getPlayer: точный счетчик рефералов = ${player.referrals_count}`);
 
   return {
     ...player,
