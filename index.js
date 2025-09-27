@@ -129,6 +129,13 @@ try {
 }
 
 try {
+  const dailyBonusRoutes = require('./routes/dailyBonus');
+  app.use('/api/daily-bonus', dailyBonusRoutes);
+} catch (err) {
+  console.error('Ошибка подключения маршрутов ежедневных бонусов:', err);
+}
+
+try {
   const miniGamesRoutes = require('./routes/games');
   app.use('/api/games', miniGamesRoutes);
 } catch (err) {
@@ -790,10 +797,33 @@ app.post('/api/admin/manual-run-scheduler', async (req, res) => {
   }
 });
 
+// Создание таблицы ежедневных бонусов при запуске
+const createDailyBonusTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS daily_bonus_streaks (
+        id SERIAL PRIMARY KEY,
+        telegram_id VARCHAR(50) UNIQUE NOT NULL,
+        current_streak INTEGER DEFAULT 0,
+        last_claim_date TIMESTAMP,
+        total_claims INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Таблица daily_bonus_streaks проверена/создана');
+  } catch (error) {
+    console.error('❌ Ошибка создания таблицы daily_bonus_streaks:', error);
+  }
+};
+
 // Запуск сервера
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
   console.log(`🔥 UNIFIED система верификации активирована!`);
+
+  // Создаем таблицу ежедневных бонусов
+  await createDailyBonusTable();
 
   // 🔥 ИСПРАВЛЕНО: Webhook установлен правильно на Stars эндпоинт
   const webhookUrl = `https://cosmoclick-backend.onrender.com/api/wallet/webhook-stars`;
