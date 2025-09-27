@@ -93,32 +93,55 @@ router.post('/claim/:telegramId', async (req, res) => {
     }
 
     const player = playerResult.rows[0];
+    console.log(`👤 Player data:`, {
+      telegram_id: player.telegram_id,
+      daily_bonus_streak: player.daily_bonus_streak,
+      daily_bonus_last_claim: player.daily_bonus_last_claim
+    });
+
     const currentTime = new Date();
+    console.log(`⏰ Current time:`, currentTime);
+
     const today = currentTime.toDateString();
+    console.log(`📅 Today:`, today);
+
     const lastClaimDate = player.daily_bonus_last_claim ? new Date(player.daily_bonus_last_claim).toDateString() : null;
+    console.log(`📅 Last claim date:`, lastClaimDate);
 
     // Проверяем, можно ли забрать бонус сегодня
     if (lastClaimDate === today) {
+      console.log(`❌ Already claimed today`);
       return res.status(400).json({
         success: false,
         error: 'Ежедневный бонус уже получен сегодня'
       });
     }
 
+    console.log(`🧮 Calculating streak...`);
+
     // Рассчитываем новый стрик
     let newStreak = 1;
     let currentStreak = player.daily_bonus_streak || 0;
+    console.log(`📊 Current streak:`, currentStreak);
 
     if (lastClaimDate) {
       const yesterday = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000).toDateString();
+      console.log(`📅 Yesterday:`, yesterday);
+
       if (lastClaimDate === yesterday) {
         // Продолжаем стрик
         newStreak = currentStreak < 7 ? currentStreak + 1 : 1;
+        console.log(`✅ Continuing streak to:`, newStreak);
+      } else {
+        console.log(`🔄 Streak reset to 1`);
       }
       // Если пропустил день - стрик сбрасывается на 1
+    } else {
+      console.log(`🆕 First time claiming`);
     }
 
     const bonusAmount = DAILY_BONUS_AMOUNTS[newStreak - 1];
+    console.log(`💰 Bonus amount for day ${newStreak}:`, bonusAmount);
 
     console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
 
