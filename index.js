@@ -4,7 +4,7 @@ const { Telegraf } = require('telegraf');
 const pool = require('./db'); // 🔥 ДОБАВИЛИ импорт pool для работы с БД
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5002;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Инициализируем бота
@@ -37,7 +37,7 @@ app.use(express.static('public'));
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Telegram-ID'],
   credentials: false
 }));
 app.use(express.json());
@@ -46,7 +46,7 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Telegram-ID');
 
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
 
@@ -175,11 +175,45 @@ try {
 // 🔥 ДОБАВЛЯЕМ АДМИНСКИЕ РОУТЫ
 try {
   const adminRoutes = require('./routes/admin/index');
-  
+
   app.use('/api/admin', adminRoutes);
   console.log('✅ Админские роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения админских роутов:', err);
+}
+
+// 🚀 COSMIC FLEET COMMANDER API РОУТЫ
+try {
+  const cosmicFleetRoutes = require('./routes/cosmic-fleet/index');
+  app.use('/api/cosmic-fleet', cosmicFleetRoutes);
+  console.log('✅ Cosmic Fleet основные роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Cosmic Fleet основных роутов:', err);
+}
+
+try {
+  const cosmicFleetShipsRoutes = require('./routes/cosmic-fleet/ships');
+  app.use('/api/cosmic-fleet/ships', cosmicFleetShipsRoutes);
+  console.log('✅ Cosmic Fleet корабли роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Cosmic Fleet кораблей роутов:', err);
+}
+
+try {
+  const cosmicFleetBattleRoutes = require('./routes/cosmic-fleet/battle');
+  app.use('/api/cosmic-fleet/battle', cosmicFleetBattleRoutes);
+  console.log('✅ Cosmic Fleet боевые роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Cosmic Fleet боевых роутов:', err);
+}
+
+// 💰 LUMINIOS CURRENCY API РОУТЫ
+try {
+  const luminiosRoutes = require('./routes/luminios');
+  app.use('/api/luminios', luminiosRoutes);
+  console.log('✅ Luminios валютные роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Luminios валютных роутов:', err);
 }
 
 // 🔥 ИСПРАВЛЕНО: Telegram webhook для обычных сообщений бота (НЕ платежи Stars)
@@ -821,6 +855,7 @@ const createDailyBonusTable = async () => {
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
   console.log(`🔥 UNIFIED система верификации активирована!`);
+  console.log(`✅ CORS обновлен - X-Telegram-ID header разрешен!`);
 
   // Создаем таблицу ежедневных бонусов
   await createDailyBonusTable();
