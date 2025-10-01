@@ -53,14 +53,21 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
   try {
     const { telegramId, csAmount } = req.body;
 
-    if (!telegramId || !csAmount || csAmount <= 0) {
+    console.log('💱 Exchange request:', { telegramId, csAmount, type: typeof telegramId });
+
+    // Преобразуем telegramId в число если нужно
+    const telegramIdNum = parseInt(telegramId);
+    const csAmountNum = parseFloat(csAmount);
+
+    if (!telegramIdNum || isNaN(telegramIdNum) || !csAmountNum || isNaN(csAmountNum) || csAmountNum <= 0) {
+      console.log('❌ Invalid data:', { telegramIdNum, csAmountNum });
       return res.status(400).json({
         success: false,
         error: 'Invalid request data'
       });
     }
 
-    const luminiosAmount = csAmount * EXCHANGE_RATE;
+    const luminiosAmount = csAmountNum * EXCHANGE_RATE;
 
     // Начинаем транзакцию
     await db.query('BEGIN');
@@ -70,9 +77,9 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
       const csCheckQuery = `
         SELECT cs FROM players WHERE telegram_id = $1
       `;
-      const csCheckResult = await db.query(csCheckQuery, [telegramId]);
+      const csCheckResult = await db.query(csCheckQuery, [telegramIdNum]);
 
-      if (csCheckResult.rows.length === 0 || parseFloat(csCheckResult.rows[0].cs) < csAmount) {
+      if (csCheckResult.rows.length === 0 || parseFloat(csCheckResult.rows[0].cs) < csAmountNum) {
         await db.query('ROLLBACK');
         return res.status(400).json({
           success: false,
@@ -84,7 +91,7 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
       const deductCsQuery = `
         UPDATE players SET cs = cs - $1 WHERE telegram_id = $2 RETURNING cs
       `;
-      const deductResult = await db.query(deductCsQuery, [csAmount, telegramId]);
+      const deductResult = await db.query(deductCsQuery, [csAmountNum, telegramIdNum]);
       const newCsBalance = parseFloat(deductResult.rows[0].cs);
 
       // 3. Проверяем/создаем игрока cosmic fleet
@@ -92,7 +99,7 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
         SELECT id, luminios_balance FROM cosmic_fleet_players
         WHERE telegram_id = $1
       `;
-      const checkPlayerResult = await db.query(checkPlayerQuery, [telegramId]);
+      const checkPlayerResult = await db.query(checkPlayerQuery, [telegramIdNum]);
 
       let playerId, newLuminiosBalance;
 
@@ -103,7 +110,7 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
           VALUES ($1, $2)
           RETURNING id, luminios_balance
         `;
-        const createResult = await db.query(createPlayerQuery, [telegramId, luminiosAmount]);
+        const createResult = await db.query(createPlayerQuery, [telegramIdNum, luminiosAmount]);
         playerId = createResult.rows[0].id;
         newLuminiosBalance = createResult.rows[0].luminios_balance;
       } else {
@@ -128,12 +135,12 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
         RETURNING *
       `;
       const transactionResult = await db.query(transactionQuery, [
-        telegramId,
+        telegramIdNum,
         'exchange',
-        csAmount,
+        csAmountNum,
         luminiosAmount,
         EXCHANGE_RATE,
-        `Exchange ${csAmount} CS to ${luminiosAmount} Luminios`
+        `Exchange ${csAmountNum} CS to ${luminiosAmount} Luminios`
       ]);
 
       await db.query('COMMIT');
@@ -146,7 +153,7 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
           id: transactionResult.rows[0].id.toString(),
           type: 'exchange',
           amount: luminiosAmount,
-          cccAmount: csAmount,
+          cccAmount: csAmountNum,
           exchangeRate: EXCHANGE_RATE,
           description: transactionResult.rows[0].description,
           timestamp: transactionResult.rows[0].created_at.getTime()
