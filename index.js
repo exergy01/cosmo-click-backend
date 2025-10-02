@@ -207,6 +207,23 @@ try {
   console.error('❌ Ошибка подключения Cosmic Fleet боевых роутов:', err);
 }
 
+// 🚀 COSMIC FLEET - FORMATIONS & BATTLES API
+try {
+  const cosmicFleetFormationsRoutes = require('./routes/cosmic-fleet/formations');
+  app.use('/api/cosmic-fleet/formation', cosmicFleetFormationsRoutes);
+  console.log('✅ Cosmic Fleet формации роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Cosmic Fleet формаций роутов:', err);
+}
+
+try {
+  const cosmicFleetBattlesRoutes = require('./routes/cosmic-fleet/battles');
+  app.use('/api/cosmic-fleet/battles', cosmicFleetBattlesRoutes);
+  console.log('✅ Cosmic Fleet система боёв роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Cosmic Fleet системы боёв роутов:', err);
+}
+
 // 💰 LUMINIOS CURRENCY API РОУТЫ
 try {
   const luminiosRoutes = require('./routes/luminios');
