@@ -190,11 +190,26 @@ router.post('/set', async (req, res) => {
     // Проверяем что все корабли принадлежат игроку
     const validShipIds = shipIds.filter(id => id !== null);
     if (validShipIds.length > 0) {
+      // DEBUG: Проверка владения
+      const debugQuery = await pool.query(`
+        SELECT id, player_id FROM cosmic_fleet_ships WHERE id = ANY($1)
+      `, [validShipIds]);
+      console.log('🔍 DEBUG ownership check:', {
+        requestedShips: validShipIds,
+        telegramId: telegramId.toString(),
+        shipsInDB: debugQuery.rows
+      });
+
       const ownershipCheck = await pool.query(`
         SELECT COUNT(*) as count
         FROM cosmic_fleet_ships
         WHERE id = ANY($1) AND player_id = $2
       `, [validShipIds, telegramId.toString()]);
+
+      console.log('🔍 DEBUG ownership result:', {
+        found: ownershipCheck.rows[0].count,
+        expected: validShipIds.length
+      });
 
       if (parseInt(ownershipCheck.rows[0].count) !== validShipIds.length) {
         return res.status(403).json({ error: 'Ships do not belong to player' });
