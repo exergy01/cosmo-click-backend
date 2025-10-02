@@ -15,8 +15,6 @@ router.get('/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
 
-    console.log(`🚀 Загрузка флота игрока ${telegramId}`);
-
     // Получаем формацию
     const formationResult = await pool.query(`
       SELECT * FROM cosmic_fleet_formations WHERE telegram_id = $1
@@ -90,8 +88,6 @@ router.post('/save', async (req, res) => {
   try {
     const { telegramId, slots } = req.body;
 
-    console.log(`💾 Сохранение флота игрока ${telegramId}:`, slots);
-
     // Валидация
     if (!telegramId || !Array.isArray(slots)) {
       return res.status(400).json({ error: 'Invalid request' });
@@ -144,8 +140,6 @@ router.post('/save', async (req, res) => {
       telegramId
     ]);
 
-    console.log(`✅ Флот сохранён для ${telegramId}`);
-
     res.json({
       success: true,
       message: 'Formation saved',
@@ -163,8 +157,6 @@ router.post('/save', async (req, res) => {
 router.post('/set', async (req, res) => {
   try {
     const { telegramId, shipIds } = req.body;
-
-    console.log(`💾 Установка формации игрока ${telegramId}:`, shipIds);
 
     // Валидация
     if (!telegramId || !Array.isArray(shipIds)) {
@@ -231,8 +223,6 @@ router.post('/set', async (req, res) => {
       telegramId
     ]);
 
-    console.log(`✅ Формация установлена для ${telegramId}`);
-
     res.json({
       success: true,
       message: 'Formation set',
@@ -250,8 +240,6 @@ router.post('/set', async (req, res) => {
 router.post('/unlock-slot', async (req, res) => {
   try {
     const { telegramId } = req.body;
-
-    console.log(`🔓 Разблокировка слота для ${telegramId}`);
 
     // Получаем текущую формацию
     const formationResult = await pool.query(`
@@ -315,8 +303,6 @@ router.post('/unlock-slot', async (req, res) => {
       `, [nextSlot, telegramId]);
 
       await pool.query('COMMIT');
-
-      console.log(`✅ Слот ${nextSlot} разблокирован для ${telegramId}`);
 
       res.json({
         success: true,

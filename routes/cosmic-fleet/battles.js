@@ -24,8 +24,6 @@ class BattleEngine {
 
   // Запуск боя
   fight() {
-    console.log(`⚔️ БОЙ НАЧАЛСЯ! ${this.playerFleet.length} vs ${this.enemyFleet.length}`);
-
     while (this.round < battleConfig.victory.maxRounds) {
       this.round++;
       this.battleLog.push({ round: this.round, events: [] });
@@ -39,7 +37,6 @@ class BattleEngine {
 
     // Финальная проверка
     const result = this.getResult();
-    console.log(`🏁 БОЙ ЗАВЕРШЁН: ${result.winner} победил за ${this.round} раундов`);
 
     return {
       winner: result.winner,
@@ -166,8 +163,6 @@ class BattleEngine {
 router.post('/bot', async (req, res) => {
   try {
     const { telegramId, difficulty, adaptive = false } = req.body;  // 🔥 НОВОЕ: adaptive mode
-
-    console.log(`🤖 Бой с ботом: ${telegramId} vs ${difficulty}${adaptive ? ' (адаптивный)' : ''}`);
 
     // Валидация
     if (!adaptive && !botsConfig.difficulties[difficulty]) {
@@ -305,8 +300,6 @@ router.post('/bot', async (req, res) => {
       ]);
 
       await pool.query('COMMIT');
-
-      console.log(`✅ Бой завершён: ${isWin ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ'}, награда: ${reward} Luminios`);
 
       res.json({
         success: true,

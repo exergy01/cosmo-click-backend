@@ -72,8 +72,6 @@ class TonDepositMonitor {
 
     async checkNewTransactions() {
         try {
-            console.log('🔍 Проверяем новые TON транзакции...');
-
             if (!this.monitoringAddress) {
                 console.log('⚠️ Адрес для мониторинга не задан');
                 return;
@@ -86,8 +84,6 @@ class TonDepositMonitor {
             const transactions = await tonClient.getTransactions(address, {
                 limit: 10
             });
-
-            console.log(`📊 Найдено транзакций: ${transactions.length}`);
 
             for (const tx of transactions) {
                 await this.processTransaction(tx);
@@ -121,8 +117,6 @@ class TonDepositMonitor {
                 return;
             }
 
-            console.log(`💰 Обнаружен депозит: ${amount} TON от ${fromAddress}`);
-
             // Проверяем, не обрабатывали ли уже эту транзакцию
             const existingTx = await pool.query(
                 'SELECT id FROM ton_deposits WHERE transaction_hash = $1',
@@ -130,7 +124,6 @@ class TonDepositMonitor {
             );
 
             if (existingTx.rows.length > 0) {
-                console.log('⏭️ Транзакция уже обработана, пропускаем');
                 return;
             }
 
@@ -165,7 +158,6 @@ class TonDepositMonitor {
                     // Ожидаем формат комментария: "deposit_123456789" или просто "123456789"
                     const telegramIdMatch = comment.match(/(?:deposit_)?(\d{8,12})/);
                     if (telegramIdMatch) {
-                        console.log(`📝 Найден ID игрока в комментарии: ${telegramIdMatch[1]}`);
                         return telegramIdMatch[1];
                     }
                 } catch (commentErr) {
@@ -184,7 +176,6 @@ class TonDepositMonitor {
                 );
 
                 if (playerByWallet.rows.length > 0) {
-                    console.log(`📝 Найден игрок по кошельку: ${playerByWallet.rows[0].telegram_id}`);
                     return playerByWallet.rows[0].telegram_id;
                 }
             }
@@ -253,8 +244,7 @@ class TonDepositMonitor {
 
             await client.query('COMMIT');
 
-            console.log(`✅ Автоматически обработан депозит: ${playerId} +${amount} TON`);
-            console.log(`💰 Баланс обновлен: ${currentBalance} → ${newBalance}`);
+            console.log(`✅ Автоматически обработан депозит: ${playerId} +${amount} TON (баланс: ${currentBalance} → ${newBalance})`);
 
             // Отправляем уведомление игроку
             try {
