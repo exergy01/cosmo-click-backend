@@ -263,12 +263,15 @@ router.get('/check-reset-status/:telegramId', async (req, res) => {
 // POST /api/quests/click_link - обработка клика по ссылке задания
 router.post('/click_link', async (req, res) => {
   try {
-    const { telegramId, questId } = req.body;
-    
-    if (!telegramId || !questId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'telegramId and questId are required' 
+    const { telegramId, questId, quest_key } = req.body;
+
+    // Поддерживаем и старый формат (questId) и новый (quest_key)
+    const questIdentifier = quest_key || questId;
+
+    if (!telegramId || !questIdentifier) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegramId and (questId or quest_key) are required'
       });
     }
     
@@ -287,26 +290,26 @@ router.post('/click_link', async (req, res) => {
     
     const questLinkStates = playerResult.rows[0].quest_link_states || {};
     const currentTime = new Date();
-    
-    // Обновляем состояние для этого задания
-    questLinkStates[questId.toString()] = {
+
+    // Обновляем состояние для этого задания (используем questIdentifier как ключ)
+    questLinkStates[questIdentifier.toString()] = {
       clicked_at: currentTime.toISOString(),
       timer_remaining: 30,
       can_claim: false
     };
-    
+
     // Сохраняем в базу данных
     await pool.query(
       'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
       [JSON.stringify(questLinkStates), telegramId]
     );
-    
-    console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questId}`);
-    
+
+    console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questIdentifier}`);
+
     res.json({
       success: true,
       message: 'Ссылка обработана',
-      link_state: questLinkStates[questId.toString()]
+      link_state: questLinkStates[questIdentifier.toString()]
     });
     
   } catch (error) {
@@ -407,33 +410,68 @@ router.post('/watch_ad', async (req, res) => {
 // POST /api/quests/complete - отметить задание как выполненное
 router.post('/complete', async (req, res) => {
   try {
-    const { telegramId, questId } = req.body;
-    
-    if (!telegramId || !questId) {
-      return res.status(400).json({ error: 'telegramId and questId are required' });
+    const { telegramId, questId, quest_key } = req.body;
+
+    // Поддерживаем и старый формат (questId) и новый (quest_key)
+    const questIdentifier = quest_key || questId;
+
+    if (!telegramId || !questIdentifier) {
+      return res.status(400).json({ error: 'telegramId and (questId or quest_key) are required' });
     }
-    
+
+    // Определяем тип идентификатора (ID или key)
+    const isQuestKey = !!quest_key;
+
     // Проверяем что задание еще не выполнено
-    const existingResult = await pool.query(
-      'SELECT * FROM player_quests WHERE telegram_id = $1 AND quest_id = $2',
-      [telegramId, questId]
-    );
-    
+    let existingResult;
+    if (isQuestKey) {
+      existingResult = await pool.query(
+        'SELECT * FROM player_quests WHERE telegram_id = $1 AND quest_key = $2',
+        [telegramId, questIdentifier]
+      );
+    } else {
+      existingResult = await pool.query(
+        'SELECT * FROM player_quests WHERE telegram_id = $1 AND quest_id = $2',
+        [telegramId, questIdentifier]
+      );
+    }
+
     if (existingResult.rows.length > 0) {
       return res.status(400).json({ error: 'Quest already completed' });
     }
-    
-    // Получаем информацию о задании
-    const questResult = await pool.query(
-      'SELECT reward_cs, quest_type FROM quests WHERE quest_id = $1',
-      [questId]
-    );
-    
-    if (questResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Quest not found' });
+
+    // Получаем информацию о задании (из новой или старой таблицы)
+    let questResult, rewardCs, questType, dbQuestId;
+
+    if (isQuestKey) {
+      // Новая система - quest_templates
+      questResult = await pool.query(
+        'SELECT id, reward_cs, quest_type FROM quest_templates WHERE quest_key = $1',
+        [questIdentifier]
+      );
+
+      if (questResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Quest not found' });
+      }
+
+      dbQuestId = questResult.rows[0].id;
+      rewardCs = questResult.rows[0].reward_cs;
+      questType = questResult.rows[0].quest_type;
+    } else {
+      // Старая система - quests
+      questResult = await pool.query(
+        'SELECT reward_cs, quest_type FROM quests WHERE quest_id = $1',
+        [questIdentifier]
+      );
+
+      if (questResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Quest not found' });
+      }
+
+      dbQuestId = questIdentifier;
+      rewardCs = questResult.rows[0].reward_cs;
+      questType = questResult.rows[0].quest_type;
     }
-    
-    const { reward_cs: rewardCs, quest_type: questType } = questResult.rows[0];
     
     // Для partner_link заданий проверяем состояние таймера
     if (questType === 'partner_link') {
@@ -447,34 +485,41 @@ router.post('/complete', async (req, res) => {
       }
       
       const questLinkStates = playerResult.rows[0].quest_link_states || {};
-      const linkState = questLinkStates[questId.toString()];
-      
+      const linkState = questLinkStates[questIdentifier.toString()];
+
       // Проверяем, прошло ли 30 секунд с момента клика
       if (!linkState || !linkState.clicked_at) {
         return res.status(400).json({ error: 'Link was not clicked yet' });
       }
-      
+
       const clickedTime = new Date(linkState.clicked_at);
       const currentTime = new Date();
       const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
-      
+
       if (elapsedSeconds < 30) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: `Link timer not completed yet. Wait ${30 - elapsedSeconds} more seconds.`,
           remainingSeconds: 30 - elapsedSeconds
         });
       }
     }
-    
+
     // Начинаем транзакцию
     await pool.query('BEGIN');
-    
+
     try {
-      // Отмечаем задание как выполненное
-      await pool.query(
-        'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
-        [telegramId, questId, rewardCs]
-      );
+      // Отмечаем задание как выполненное (с quest_key если новая система)
+      if (isQuestKey) {
+        await pool.query(
+          'INSERT INTO player_quests (telegram_id, quest_id, quest_key, completed, reward_cs) VALUES ($1, $2, $3, true, $4)',
+          [telegramId, dbQuestId, questIdentifier, rewardCs]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
+          [telegramId, questId, rewardCs]
+        );
+      }
       
       // Добавляем CS игроку
       await pool.query(
@@ -491,26 +536,26 @@ router.post('/complete', async (req, res) => {
         
         if (playerResult.rows.length > 0) {
           const questLinkStates = playerResult.rows[0].quest_link_states || {};
-          
+
           // Помечаем задание как завершенное, а не удаляем состояние
-          questLinkStates[questId.toString()] = {
-            ...questLinkStates[questId.toString()],
+          questLinkStates[questIdentifier.toString()] = {
+            ...questLinkStates[questIdentifier.toString()],
             completed: true,
             completed_at: new Date().toISOString()
           };
-          
+
           await pool.query(
             'UPDATE players SET quest_link_states = $1 WHERE telegram_id = $2',
             [JSON.stringify(questLinkStates), telegramId]
           );
-          
-          console.log(`✅ Задание ${questId} помечено как завершенное`);
+
+          console.log(`✅ Задание ${questIdentifier} помечено как завершенное`);
         }
       }
-      
+
       await pool.query('COMMIT');
-      
-      console.log(`✅ Игрок ${telegramId} выполнил задание ${questId}, получил ${rewardCs} CS`);
+
+      console.log(`✅ Игрок ${telegramId} выполнил задание ${questIdentifier}, получил ${rewardCs} CS`);
       res.json({ success: true, reward_cs: rewardCs });
       
     } catch (error) {
@@ -545,11 +590,16 @@ router.get('/v2/:telegramId', async (req, res) => {
     }
     
     const player = playerResult.rows[0];
-    
-    // Определяем язык игрока (с возможностью принудительного изменения для тестов)
-    let userLanguage = force_language || player.registration_language || player.language || 'en';
-    console.log(`🌍 Язык игрока: ${userLanguage} ${force_language ? '(принудительно)' : ''}`);
-    
+
+    // Определяем ПЕРВОНАЧАЛЬНЫЙ язык игрока для фильтрации квестов (ВАЖНО!)
+    const registrationLanguage = player.registration_language || player.language || 'en';
+
+    // Определяем язык для ПЕРЕВОДОВ (может быть переключен игроком)
+    const translationLanguage = force_language || player.language || registrationLanguage;
+
+    console.log(`🌍 Язык регистрации (фильтр квестов): ${registrationLanguage}`);
+    console.log(`🌍 Язык переводов: ${translationLanguage} ${force_language ? '(принудительно)' : ''}`);
+
     // Проверяем сброс рекламы (как в старом API)
     const currentTime = new Date();
     const today = currentTime.toDateString();
@@ -576,7 +626,7 @@ router.get('/v2/:telegramId', async (req, res) => {
     
     // 🆕 НОВАЯ ЛОГИКА: Загружаем задания из новых таблиц
     const questsResult = await pool.query(`
-      SELECT 
+      SELECT
         qt.id,
         qt.quest_key,
         qt.quest_type,
@@ -585,41 +635,41 @@ router.get('/v2/:telegramId', async (req, res) => {
         qt.target_languages,
         qt.is_active,
         qt.sort_order,
-        -- Пытаемся получить перевод на нужном языке
+        -- Пытаемся получить перевод на нужном языке ($1 = translationLanguage)
         COALESCE(
-          qtr_user.quest_name, 
-          qtr_en.quest_name, 
+          qtr_user.quest_name,
+          qtr_en.quest_name,
           qt.quest_key
         ) as quest_name,
         COALESCE(
-          qtr_user.description, 
-          qtr_en.description, 
+          qtr_user.description,
+          qtr_en.description,
           'No description available'
         ) as description,
         COALESCE(
-          qtr_user.manual_check_user_instructions, 
+          qtr_user.manual_check_user_instructions,
           qtr_en.manual_check_user_instructions
         ) as manual_check_user_instructions,
         -- Информация о языке перевода
-        CASE 
+        CASE
           WHEN qtr_user.language_code IS NOT NULL THEN qtr_user.language_code
           WHEN qtr_en.language_code IS NOT NULL THEN qtr_en.language_code
           ELSE 'no_translation'
         END as used_language
       FROM quest_templates qt
-      -- Перевод на языке пользователя
-      LEFT JOIN quest_translations qtr_user ON qt.quest_key = qtr_user.quest_key 
+      -- Перевод на языке пользователя (для UI)
+      LEFT JOIN quest_translations qtr_user ON qt.quest_key = qtr_user.quest_key
         AND qtr_user.language_code = $1
       -- Резервный английский перевод
-      LEFT JOIN quest_translations qtr_en ON qt.quest_key = qtr_en.quest_key 
+      LEFT JOIN quest_translations qtr_en ON qt.quest_key = qtr_en.quest_key
         AND qtr_en.language_code = 'en'
       WHERE qt.is_active = true
         AND (
-          qt.target_languages IS NULL 
-          OR $1 = ANY(qt.target_languages)
+          qt.target_languages IS NULL
+          OR $2 = ANY(qt.target_languages)
         )
       ORDER BY qt.sort_order, qt.id
-    `, [userLanguage]);
+    `, [translationLanguage, registrationLanguage]);
     
     // Получаем выполненные задания игрока
     const completedResult = await pool.query(
@@ -681,13 +731,14 @@ router.get('/v2/:telegramId', async (req, res) => {
       }, {})
     };
     
-    console.log(`🎯 V2: Загружено ${quests.length} заданий для игрока ${telegramId} (язык: ${userLanguage})`);
+    console.log(`🎯 V2: Загружено ${quests.length} заданий для игрока ${telegramId} (язык: ${translationLanguage})`);
     console.log(`📊 V2: Статистика:`, stats);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       version: 'v2',
-      user_language: userLanguage,
+      user_language: translationLanguage,
+      registration_language: registrationLanguage,
       quests,
       quest_ad_views: questAdViews,
       stats
