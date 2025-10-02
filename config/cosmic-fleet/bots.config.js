@@ -134,5 +134,70 @@ module.exports = {
       damage: Math.floor(ship.damage * multiplier),
       armor: Math.floor(ship.armor * multiplier)
     };
+  },
+
+  // 🔥 НОВОЕ: Расчёт силы флота
+  calculateFleetPower(fleet) {
+    return fleet.reduce((total, ship) => {
+      // Формула: (HP + Damage×2 + Armor) × Tier
+      const tier = ship.tier || 1;
+      const shipPower = (ship.hp + ship.damage * 2 + (ship.armor || 0)) * tier;
+      return total + shipPower;
+    }, 0);
+  },
+
+  // 🔥 НОВОЕ: Генерация адаптивного бота ±variance от силы игрока
+  generateAdaptiveBot(playerFleet, variance = 0.05) {
+    const shipsConfig = require('./ships.config');
+
+    // Рассчитать силу флота игрока
+    const playerPower = this.calculateFleetPower(playerFleet);
+    console.log(`⚖️ Сила флота игрока: ${playerPower}`);
+
+    // Целевая сила бота: ±variance от силы игрока
+    const randomMod = 1 + (Math.random() * variance * 2 - variance);
+    const targetPower = playerPower * randomMod;
+    console.log(`🎯 Целевая сила бота: ${Math.floor(targetPower)} (${(randomMod * 100 - 100).toFixed(1)}%)`);
+
+    // Генерируем флот бота
+    const botFleet = [];
+    let currentPower = 0;
+    let shipIndex = 0;
+
+    // Определяем средний tier игрока
+    const avgTier = playerFleet.length > 0
+      ? playerFleet.reduce((sum, s) => sum + (s.tier || 1), 0) / playerFleet.length
+      : 1;
+
+    // Генерируем корабли пока не достигнем целевой силы
+    while (currentPower < targetPower && botFleet.length < 5) {
+      // Выбираем случайный тип и tier близкий к игроку
+      const types = ['FIGHTER', 'TANK', 'BOMBER', 'SUPPORT'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      const tier = Math.max(1, Math.min(3, Math.floor(avgTier + Math.random() * 2 - 1)));
+      const level = Math.max(1, Math.floor(Math.random() * 5) + 1);
+
+      // Создаём корабль
+      const stats = shipsConfig.calculateShipStats(tier, type, level);
+      const ship = {
+        id: `bot_${shipIndex++}`,
+        ship_name: `Бот ${type} T${tier}`,
+        ...stats,
+        maxHp: stats.hp,
+        tier
+      };
+
+      botFleet.push(ship);
+      currentPower = this.calculateFleetPower(botFleet);
+    }
+
+    console.log(`🤖 Сгенерирован флот бота: ${botFleet.length} кораблей, сила ${currentPower}`);
+
+    return {
+      fleet: botFleet,
+      power: currentPower,
+      aiStrategy: 'smart_targeting',
+      name: 'Адаптивный противник'
+    };
   }
 };

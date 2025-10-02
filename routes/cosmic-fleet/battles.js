@@ -165,12 +165,12 @@ class BattleEngine {
 // Бой с ботом
 router.post('/bot', async (req, res) => {
   try {
-    const { telegramId, difficulty } = req.body;
+    const { telegramId, difficulty, adaptive = false } = req.body;  // 🔥 НОВОЕ: adaptive mode
 
-    console.log(`🤖 Бой с ботом: ${telegramId} vs ${difficulty}`);
+    console.log(`🤖 Бой с ботом: ${telegramId} vs ${difficulty}${adaptive ? ' (адаптивный)' : ''}`);
 
     // Валидация
-    if (!botsConfig.difficulties[difficulty]) {
+    if (!adaptive && !botsConfig.difficulties[difficulty]) {
       return res.status(400).json({ error: 'Invalid difficulty' });
     }
 
@@ -218,21 +218,38 @@ router.post('/bot', async (req, res) => {
     }));
 
     // Генерируем бота
-    const botConfig = botsConfig.difficulties[difficulty];
-    const botFleet = botConfig.fleet.map((template, index) => {
-      const stats = shipsConfig.calculateShipStats(template.tier, template.type, template.level);
-      const modified = botsConfig.applyDifficultyModifier(stats, botConfig.difficultyMultiplier);
+    let botFleet;
+    let botConfig;
+    let aiStrategy;
 
-      return {
-        id: `bot_${index}`,
-        ship_name: `${botConfig.name} ${index + 1}`,
-        ...modified,
-        maxHp: modified.hp
+    if (adaptive) {
+      // 🔥 АДАПТИВНЫЙ БОТ: ±5% от силы игрока
+      const adaptiveBot = botsConfig.generateAdaptiveBot(playerFleet, 0.05);
+      botFleet = adaptiveBot.fleet;
+      aiStrategy = adaptiveBot.aiStrategy;
+      botConfig = {
+        name: adaptiveBot.name,
+        rewardDifficulty: 'medium'  // средняя награда для адаптивных
       };
-    });
+    } else {
+      // 🔥 ОБЫЧНЫЙ БОТ: по сложности
+      botConfig = botsConfig.difficulties[difficulty];
+      botFleet = botConfig.fleet.map((template, index) => {
+        const stats = shipsConfig.calculateShipStats(template.tier, template.type, template.level);
+        const modified = botsConfig.applyDifficultyModifier(stats, botConfig.difficultyMultiplier);
+
+        return {
+          id: `bot_${index}`,
+          ship_name: `${botConfig.name} ${index + 1}`,
+          ...modified,
+          maxHp: modified.hp
+        };
+      });
+      aiStrategy = botConfig.aiStrategy;
+    }
 
     // БИТВА!
-    const battle = new BattleEngine(playerFleet, botFleet, botConfig.aiStrategy);
+    const battle = new BattleEngine(playerFleet, botFleet, aiStrategy);
     const battleResult = battle.fight();
 
     // Расчёт награды
@@ -276,7 +293,7 @@ router.post('/bot', async (req, res) => {
           reward_luminios, battle_log
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       `, [
-        telegramId, 'bot', difficulty,
+        telegramId, 'bot', adaptive ? 'adaptive' : difficulty,
         JSON.stringify(playerFleet), JSON.stringify(botFleet),
         isWin ? 'win' : 'loss', battleResult.rounds,
         battleResult.stats.playerDamageDealt,

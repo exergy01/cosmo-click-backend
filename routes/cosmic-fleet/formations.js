@@ -30,8 +30,7 @@ router.get('/:telegramId', async (req, res) => {
       `, [telegramId, economyConfig.fleetSlots.baseSlots]);
 
       return res.json({
-        telegram_id: telegramId,
-        slots: [],
+        ships: [],
         max_slots: economyConfig.fleetSlots.baseSlots
       });
     }
@@ -64,23 +63,19 @@ router.get('/:telegramId', async (req, res) => {
       ships = shipsResult.rows;
     }
 
-    // Формируем ответ
-    const slots = [];
+    // Формируем ответ - только корабли в слотах (без null)
+    const formationShips = [];
     for (let i = 1; i <= formation.max_slots; i++) {
       const shipId = formation[`slot_${i}_ship_id`];
       const ship = ships.find(s => s.id === shipId);
-      slots.push({
-        slot: i,
-        ship: ship || null
-      });
+      if (ship) {
+        formationShips.push(ship);
+      }
     }
 
     res.json({
-      telegram_id: telegramId,
-      slots,
-      max_slots: formation.max_slots,
-      created_at: formation.created_at,
-      updated_at: formation.updated_at
+      ships: formationShips,
+      max_slots: formation.max_slots
     });
 
   } catch (error) {
@@ -159,6 +154,93 @@ router.post('/save', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Ошибка сохранения флота:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cosmic-fleet/formation/set
+// Установить формацию (новый API)
+router.post('/set', async (req, res) => {
+  try {
+    const { telegramId, shipIds } = req.body;
+
+    console.log(`💾 Установка формации игрока ${telegramId}:`, shipIds);
+
+    // Валидация
+    if (!telegramId || !Array.isArray(shipIds)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    // Получаем или создаём формацию
+    let formationResult = await pool.query(`
+      SELECT max_slots FROM cosmic_fleet_formations WHERE telegram_id = $1
+    `, [telegramId]);
+
+    if (formationResult.rows.length === 0) {
+      // Создаём пустую формацию
+      await pool.query(`
+        INSERT INTO cosmic_fleet_formations (telegram_id, max_slots)
+        VALUES ($1, $2)
+      `, [telegramId, economyConfig.fleetSlots.baseSlots]);
+
+      formationResult = await pool.query(`
+        SELECT max_slots FROM cosmic_fleet_formations WHERE telegram_id = $1
+      `, [telegramId]);
+    }
+
+    const maxSlots = formationResult.rows[0].max_slots;
+
+    // Проверяем что не превышает макс слотов
+    if (shipIds.length > maxSlots) {
+      return res.status(400).json({ error: 'Too many ships for available slots' });
+    }
+
+    // Проверяем что все корабли принадлежат игроку
+    const validShipIds = shipIds.filter(id => id !== null);
+    if (validShipIds.length > 0) {
+      const ownershipCheck = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM cosmic_fleet_ships
+        WHERE id = ANY($1) AND player_id::VARCHAR = $2
+      `, [validShipIds, telegramId]);
+
+      if (parseInt(ownershipCheck.rows[0].count) !== validShipIds.length) {
+        return res.status(403).json({ error: 'Ships do not belong to player' });
+      }
+    }
+
+    // Обновляем формацию (первые 5 слотов)
+    const updateQuery = `
+      UPDATE cosmic_fleet_formations
+      SET
+        slot_1_ship_id = $1,
+        slot_2_ship_id = $2,
+        slot_3_ship_id = $3,
+        slot_4_ship_id = $4,
+        slot_5_ship_id = $5,
+        updated_at = NOW()
+      WHERE telegram_id = $6
+    `;
+
+    await pool.query(updateQuery, [
+      shipIds[0] || null,
+      shipIds[1] || null,
+      shipIds[2] || null,
+      shipIds[3] || null,
+      shipIds[4] || null,
+      telegramId
+    ]);
+
+    console.log(`✅ Формация установлена для ${telegramId}`);
+
+    res.json({
+      success: true,
+      message: 'Formation set',
+      shipIds
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка установки формации:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
