@@ -221,9 +221,9 @@ router.post('/repair', checkDebugAccess, async (req, res) => {
     try {
       // 1. Получаем корабль и игрока
       const shipQuery = `
-        SELECT s.*, p.luminios_balance, p.id as player_id
+        SELECT s.*, p.luminios_balance, p.id as player_db_id
         FROM cosmic_fleet_ships s
-        JOIN cosmic_fleet_players p ON s.player_id = p.id
+        JOIN cosmic_fleet_players p ON s.player_id = p.telegram_id::text
         WHERE s.id = $1 AND p.telegram_id = $2
       `;
       const shipResult = await db.query(shipQuery, [shipId, telegramId]);
@@ -263,7 +263,7 @@ router.post('/repair', checkDebugAccess, async (req, res) => {
         SET luminios_balance = luminios_balance - $1
         WHERE id = $2
       `;
-      await db.query(deductQuery, [repairCost, ship.player_id]);
+      await db.query(deductQuery, [repairCost, ship.player_db_id]);
 
       // 3. Ремонтируем корабль
       const repairQuery = `
