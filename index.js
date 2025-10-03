@@ -238,6 +238,15 @@ try {
   console.error('❌ Ошибка подключения Galactic Empire роутов:', err);
 }
 
+// 🚀 GALACTIC EMPIRE SHIPS API РОУТЫ
+try {
+  const galacticEmpireShipsRoutes = require('./routes/galactic-empire/ships');
+  app.use('/api/galactic-empire/ships', galacticEmpireShipsRoutes);
+  console.log('✅ Galactic Empire Ships роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Galactic Empire Ships роутов:', err);
+}
+
 // 💰 LUMINIOS CURRENCY API РОУТЫ
 try {
   const luminiosRoutes = require('./routes/luminios');
@@ -882,6 +891,36 @@ const createDailyBonusTable = async () => {
   }
 };
 
+// Создание таблицы очереди постройки кораблей при запуске
+const createBuildQueueTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS galactic_empire_build_queue (
+        id SERIAL PRIMARY KEY,
+        player_id BIGINT NOT NULL,
+        ship_type VARCHAR(50) NOT NULL,
+        ship_class VARCHAR(30) NOT NULL,
+        tier INTEGER NOT NULL,
+        started_at TIMESTAMP DEFAULT NOW(),
+        finish_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_ge_build_queue_player ON galactic_empire_build_queue(player_id)
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_ge_build_queue_finish ON galactic_empire_build_queue(finish_at)
+    `);
+
+    console.log('✅ Таблица galactic_empire_build_queue проверена/создана');
+  } catch (error) {
+    console.error('❌ Ошибка создания таблицы galactic_empire_build_queue:', error);
+  }
+};
+
 // Запуск сервера
 app.listen(PORT, async () => {
   console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
@@ -890,6 +929,9 @@ app.listen(PORT, async () => {
 
   // Создаем таблицу ежедневных бонусов
   await createDailyBonusTable();
+
+  // Создаем таблицу очереди постройки кораблей
+  await createBuildQueueTable();
 
   // 🔥 ИСПРАВЛЕНО: Webhook установлен правильно на Stars эндпоинт
   const webhookUrl = `https://cosmoclick-backend.onrender.com/api/wallet/webhook-stars`;
