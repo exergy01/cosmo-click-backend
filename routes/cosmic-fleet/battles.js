@@ -352,4 +352,32 @@ router.get('/history/:telegramId', async (req, res) => {
   }
 });
 
+// GET /api/cosmic-fleet/battle/replay/:battleId
+// Получить полный лог боя для replay
+router.get('/replay/:battleId', async (req, res) => {
+  try {
+    const { battleId } = req.params;
+
+    const result = await pool.query(`
+      SELECT
+        battle_id, battle_type, bot_difficulty, result, rounds_count,
+        player_fleet, opponent_fleet, battle_log,
+        damage_dealt, damage_received, ships_lost, is_perfect_win,
+        reward_luminios, created_at
+      FROM cosmic_fleet_battle_history
+      WHERE battle_id = $1
+    `, [battleId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Battle not found' });
+    }
+
+    res.json(result.rows[0]);
+
+  } catch (error) {
+    console.error('❌ Ошибка загрузки replay:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
