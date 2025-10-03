@@ -229,6 +229,15 @@ try {
   console.error('❌ Ошибка подключения Cosmic Fleet системы боёв роутов:', err);
 }
 
+// 🌌 GALACTIC EMPIRE v2.0 API РОУТЫ
+try {
+  const galacticEmpireRoutes = require('./routes/galactic-empire');
+  app.use('/api/galactic-empire', galacticEmpireRoutes);
+  console.log('✅ Galactic Empire v2.0 роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Galactic Empire роутов:', err);
+}
+
 // 💰 LUMINIOS CURRENCY API РОУТЫ
 try {
   const luminiosRoutes = require('./routes/luminios');
