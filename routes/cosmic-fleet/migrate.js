@@ -41,14 +41,40 @@ router.post('/fix-player-ids', async (req, res) => {
 
       console.log('📊 Ships before migration:', beforeQuery.rows);
 
-      // Update ships to use telegram_id
+      // Step 1: Update ships to use telegram_id (while player_id is still integer)
       const updateResult = await pool.query(`
         UPDATE cosmic_fleet_ships s
-        SET player_id = p.telegram_id::text
+        SET player_id = p.id
         FROM cosmic_fleet_players p
-        WHERE s.player_id::integer = p.id
-        RETURNING s.id, s.player_id, s.ship_name
+        WHERE s.player_id = p.id
       `);
+
+      console.log('✅ Step 1: Ensured player_id references are correct');
+
+      // Step 2: Create mapping table temporarily
+      await pool.query(`
+        CREATE TEMPORARY TABLE temp_player_mapping AS
+        SELECT id, telegram_id::text as telegram_id_text
+        FROM cosmic_fleet_players
+      `);
+
+      // Step 3: Update to telegram_id values (still as integers for now)
+      await pool.query(`
+        UPDATE cosmic_fleet_ships s
+        SET player_id = p.telegram_id::bigint
+        FROM cosmic_fleet_players p
+        WHERE s.player_id = p.id
+      `);
+
+      console.log('✅ Step 2: Updated player_id to telegram_id values');
+
+      // Step 4: Change column type to text
+      await pool.query(`
+        ALTER TABLE cosmic_fleet_ships
+        ALTER COLUMN player_id TYPE text USING player_id::text
+      `);
+
+      console.log('✅ Step 3: Changed column type to TEXT');
 
       console.log('✅ Updated ships:', updateResult.rows);
 
