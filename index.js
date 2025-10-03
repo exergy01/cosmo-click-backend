@@ -220,6 +220,11 @@ try {
   const cosmicFleetBattlesRoutes = require('./routes/cosmic-fleet/battles');
   app.use('/api/cosmic-fleet/battles', cosmicFleetBattlesRoutes);
   console.log('✅ Cosmic Fleet система боёв роуты подключены');
+
+  // 🔧 Cosmic Fleet миграции
+  const cosmicFleetMigrateRoutes = require('./routes/cosmic-fleet/migrate');
+  app.use('/api/cosmic-fleet/migrate', cosmicFleetMigrateRoutes);
+  console.log('✅ Cosmic Fleet миграции роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet системы боёв роутов:', err);
 }
