@@ -193,8 +193,8 @@ router.post('/set', async (req, res) => {
       const ownershipCheck = await pool.query(`
         SELECT COUNT(*) as count
         FROM cosmic_fleet_ships
-        WHERE id = ANY($1) AND player_id = $2::text
-      `, [validShipIds, telegramId]);
+        WHERE id = ANY($1) AND player_id = $2
+      `, [validShipIds, telegramId.toString()]);
 
       if (parseInt(ownershipCheck.rows[0].count) !== validShipIds.length) {
         return res.status(403).json({ error: 'Ships do not belong to player' });

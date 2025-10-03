@@ -144,7 +144,7 @@ router.post('/buy', checkDebugAccess, async (req, res) => {
         RETURNING id
       `;
       const shipResult = await db.query(shipQuery, [
-        player.id,
+        telegramId.toString(),
         shipTemplateId,
         template.name,
         template.baseHealth,
