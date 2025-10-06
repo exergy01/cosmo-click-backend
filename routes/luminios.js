@@ -4,7 +4,9 @@ const router = express.Router();
 const db = require('../db');
 
 // Константы
-const EXCHANGE_RATE = 10; // 1 CS = 10 Luminios
+const EXCHANGE_RATE_COSMIC_FLEET = 10; // 1 CS = 10 Luminios (Cosmic Fleet)
+const EXCHANGE_RATE_GALACTIC_EMPIRE = 100; // 1 CS = 100 Luminios (Galactic Empire)
+const EXCHANGE_RATE = EXCHANGE_RATE_GALACTIC_EMPIRE; // Используем курс Galactic Empire по умолчанию
 const DEBUG_TELEGRAM_IDS = [2097930691, 850758749, 1222791281, 123456789];
 
 // Middleware для проверки доступа к Luminios

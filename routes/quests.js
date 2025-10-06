@@ -261,6 +261,7 @@ router.get('/check-reset-status/:telegramId', async (req, res) => {
 
 
 // POST /api/quests/click_link - обработка клика по ссылке задания
+// POST /api/quests/click_link - обработка клика по ссылке задания
 router.post('/click_link', async (req, res) => {
   try {
     const { telegramId, questId, quest_key } = req.body;
@@ -273,6 +274,25 @@ router.post('/click_link', async (req, res) => {
         success: false,
         error: 'telegramId and (questId or quest_key) are required'
       });
+    }
+
+    // Определяем тип и получаем настоящий ID из базы
+    const isQuestKey = !!quest_key || isNaN(questIdentifier);
+    let dbQuestId;
+
+    if (isQuestKey) {
+      const questResult = await pool.query(
+        'SELECT id FROM quest_templates WHERE quest_key = $1 AND is_active = true',
+        [questIdentifier]
+      );
+      
+      if (questResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Quest not found' });
+      }
+      
+      dbQuestId = questResult.rows[0].id;
+    } else {
+      dbQuestId = questIdentifier;
     }
     
     // Проверяем существование игрока
@@ -291,8 +311,8 @@ router.post('/click_link', async (req, res) => {
     const questLinkStates = playerResult.rows[0].quest_link_states || {};
     const currentTime = new Date();
 
-    // Обновляем состояние для этого задания (используем questIdentifier как ключ)
-    questLinkStates[questIdentifier.toString()] = {
+    // Обновляем состояние для этого задания (используем dbQuestId как ключ)
+    questLinkStates[dbQuestId.toString()] = {
       clicked_at: currentTime.toISOString(),
       timer_remaining: 30,
       can_claim: false
@@ -304,12 +324,12 @@ router.post('/click_link', async (req, res) => {
       [JSON.stringify(questLinkStates), telegramId]
     );
 
-    console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questIdentifier}`);
+    console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questIdentifier} (ID: ${dbQuestId})`);
 
     res.json({
       success: true,
       message: 'Ссылка обработана',
-      link_state: questLinkStates[questIdentifier.toString()]
+      link_state: questLinkStates[dbQuestId.toString()]
     });
     
   } catch (error) {
@@ -408,6 +428,7 @@ router.post('/watch_ad', async (req, res) => {
 });
 
 // POST /api/quests/complete - отметить задание как выполненное
+// В quests.js - обновляем POST /api/quests/complete
 router.post('/complete', async (req, res) => {
   try {
     const { telegramId, questId, quest_key } = req.body;
@@ -420,15 +441,18 @@ router.post('/complete', async (req, res) => {
     }
 
     // Определяем тип идентификатора (ID или key)
-    const isQuestKey = !!quest_key;
+    const isQuestKey = !!quest_key || isNaN(questIdentifier);
 
     // Проверяем что задание еще не выполнено
     let existingResult;
     if (isQuestKey) {
-      existingResult = await pool.query(
-        'SELECT * FROM player_quests WHERE telegram_id = $1 AND quest_key = $2',
-        [telegramId, questIdentifier]
-      );
+      // Ищем по quest_key через JOIN с quest_templates
+      existingResult = await pool.query(`
+        SELECT pq.* 
+        FROM player_quests pq
+        JOIN quest_templates qt ON pq.quest_id = qt.id
+        WHERE pq.telegram_id = $1 AND qt.quest_key = $2
+      `, [telegramId, questIdentifier]);
     } else {
       existingResult = await pool.query(
         'SELECT * FROM player_quests WHERE telegram_id = $1 AND quest_id = $2',
@@ -440,13 +464,13 @@ router.post('/complete', async (req, res) => {
       return res.status(400).json({ error: 'Quest already completed' });
     }
 
-    // Получаем информацию о задании (из новой или старой таблицы)
+    // Получаем информацию о задании
     let questResult, rewardCs, questType, dbQuestId;
 
     if (isQuestKey) {
       // Новая система - quest_templates
       questResult = await pool.query(
-        'SELECT id, reward_cs, quest_type FROM quest_templates WHERE quest_key = $1',
+        'SELECT id, reward_cs, quest_type FROM quest_templates WHERE quest_key = $1 AND is_active = true',
         [questIdentifier]
       );
 
@@ -458,7 +482,7 @@ router.post('/complete', async (req, res) => {
       rewardCs = questResult.rows[0].reward_cs;
       questType = questResult.rows[0].quest_type;
     } else {
-      // Старая система - quests
+      // Старая система - quests (на всякий случай)
       questResult = await pool.query(
         'SELECT reward_cs, quest_type FROM quests WHERE quest_id = $1',
         [questIdentifier]
@@ -485,7 +509,7 @@ router.post('/complete', async (req, res) => {
       }
       
       const questLinkStates = playerResult.rows[0].quest_link_states || {};
-      const linkState = questLinkStates[questIdentifier.toString()];
+      const linkState = questLinkStates[dbQuestId.toString()]; // Используем dbQuestId
 
       // Проверяем, прошло ли 30 секунд с момента клика
       if (!linkState || !linkState.clicked_at) {
@@ -508,18 +532,11 @@ router.post('/complete', async (req, res) => {
     await pool.query('BEGIN');
 
     try {
-      // Отмечаем задание как выполненное (с quest_key если новая система)
-      if (isQuestKey) {
-        await pool.query(
-          'INSERT INTO player_quests (telegram_id, quest_id, quest_key, completed, reward_cs) VALUES ($1, $2, $3, true, $4)',
-          [telegramId, dbQuestId, questIdentifier, rewardCs]
-        );
-      } else {
-        await pool.query(
-          'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
-          [telegramId, questId, rewardCs]
-        );
-      }
+      // Отмечаем задание как выполненное
+      await pool.query(
+        'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
+        [telegramId, dbQuestId, rewardCs]
+      );
       
       // Добавляем CS игроку
       await pool.query(
@@ -538,8 +555,8 @@ router.post('/complete', async (req, res) => {
           const questLinkStates = playerResult.rows[0].quest_link_states || {};
 
           // Помечаем задание как завершенное, а не удаляем состояние
-          questLinkStates[questIdentifier.toString()] = {
-            ...questLinkStates[questIdentifier.toString()],
+          questLinkStates[dbQuestId.toString()] = {
+            ...questLinkStates[dbQuestId.toString()],
             completed: true,
             completed_at: new Date().toISOString()
           };
@@ -549,13 +566,13 @@ router.post('/complete', async (req, res) => {
             [JSON.stringify(questLinkStates), telegramId]
           );
 
-          console.log(`✅ Задание ${questIdentifier} помечено как завершенное`);
+          console.log(`✅ Задание ${questIdentifier} (ID: ${dbQuestId}) помечено как завершенное`);
         }
       }
 
       await pool.query('COMMIT');
 
-      console.log(`✅ Игрок ${telegramId} выполнил задание ${questIdentifier}, получил ${rewardCs} CS`);
+      console.log(`✅ Игрок ${telegramId} выполнил задание ${questIdentifier} (ID: ${dbQuestId}), получил ${rewardCs} CS`);
       res.json({ success: true, reward_cs: rewardCs });
       
     } catch (error) {

@@ -41,17 +41,17 @@ CREATE TABLE IF NOT EXISTS galactic_empire_ships (
   player_id BIGINT NOT NULL REFERENCES galactic_empire_players(telegram_id) ON DELETE CASCADE,
 
   -- Характеристики корабля
-  ship_name VARCHAR(100) NOT NULL,
-  ship_class VARCHAR(50) NOT NULL,                    -- frigate, destroyer, cruiser, battleship
+  ship_type VARCHAR(100) NOT NULL,                    -- frigate_t1, destroyer_t2 и т.д.
+  ship_class VARCHAR(50) NOT NULL,                    -- frigate, destroyer, cruiser, battleship, premium, drones, torpedoes, reb, ai
+  tier INTEGER DEFAULT 1,                              -- Уровень корабля
   race VARCHAR(50) NOT NULL,                           -- Раса корабля
 
   -- Боевые характеристики
-  max_health INTEGER NOT NULL,
-  health INTEGER NOT NULL,
-  damage INTEGER NOT NULL,
+  max_hp INTEGER NOT NULL,
+  current_hp INTEGER NOT NULL,
+  attack INTEGER NOT NULL,
+  defense INTEGER NOT NULL,
   speed INTEGER NOT NULL,
-  armor INTEGER NOT NULL,
-  shield INTEGER NOT NULL,
 
   -- Слоты оружия (3 слота, могут быть разных типов)
   weapon_slot_1 VARCHAR(50),                           -- laser, missiles, drones, artillery, biological, ballistic
@@ -63,18 +63,17 @@ CREATE TABLE IF NOT EXISTS galactic_empire_ships (
   weapon_slot_2_rarity VARCHAR(20),
   weapon_slot_3_rarity VARCHAR(20),
 
-  -- Ремонт
-  last_auto_repair TIMESTAMP DEFAULT NOW(),
+  -- Постройка корабля
+  built_at TIMESTAMP DEFAULT NOW(),                    -- Когда будет построен
 
   -- Метаданные
-  price BIGINT NOT NULL,                               -- Цена покупки (для расчёта ремонта)
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Индексы для быстрого поиска
 CREATE INDEX IF NOT EXISTS idx_ships_player ON galactic_empire_ships(player_id);
-CREATE INDEX IF NOT EXISTS idx_ships_auto_repair ON galactic_empire_ships(last_auto_repair) WHERE health < max_health;
+CREATE INDEX IF NOT EXISTS idx_ships_built_at ON galactic_empire_ships(built_at);
 
 -- =====================================================
 -- 3. ТАБЛИЦА ФОРМАЦИЙ

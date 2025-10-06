@@ -247,6 +247,15 @@ try {
   console.error('❌ Ошибка подключения Galactic Empire Ships роутов:', err);
 }
 
+// ⚔️ GALACTIC EMPIRE BATTLES API РОУТЫ
+try {
+  const galacticEmpireBattlesRoutes = require('./routes/galactic-empire/battles');
+  app.use('/api/galactic-empire/battles', galacticEmpireBattlesRoutes);
+  console.log('✅ Galactic Empire Battles роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Galactic Empire Battles роутов:', err);
+}
+
 // 💰 LUMINIOS CURRENCY API РОУТЫ
 try {
   const luminiosRoutes = require('./routes/luminios');
@@ -892,32 +901,27 @@ const createDailyBonusTable = async () => {
 };
 
 // Создание таблицы очереди постройки кораблей при запуске
-const createBuildQueueTable = async () => {
+const addBuiltAtColumn = async () => {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS galactic_empire_build_queue (
-        id SERIAL PRIMARY KEY,
-        player_id BIGINT NOT NULL,
-        ship_type VARCHAR(50) NOT NULL,
-        ship_class VARCHAR(30) NOT NULL,
-        tier INTEGER NOT NULL,
-        started_at TIMESTAMP DEFAULT NOW(),
-        finish_at TIMESTAMP NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
+    // Проверяем, существует ли колонка built_at
+    const checkColumn = await pool.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name='galactic_empire_ships' AND column_name='built_at'
     `);
 
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_ge_build_queue_player ON galactic_empire_build_queue(player_id)
-    `);
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_ge_build_queue_finish ON galactic_empire_build_queue(finish_at)
-    `);
-
-    console.log('✅ Таблица galactic_empire_build_queue проверена/создана');
+    if (checkColumn.rows.length === 0) {
+      // Добавляем колонку built_at (по умолчанию NOW() для старых кораблей)
+      await pool.query(`
+        ALTER TABLE galactic_empire_ships
+        ADD COLUMN built_at TIMESTAMP DEFAULT NOW()
+      `);
+      console.log('✅ Колонка built_at добавлена в galactic_empire_ships');
+    } else {
+      console.log('✅ Колонка built_at уже существует в galactic_empire_ships');
+    }
   } catch (error) {
-    console.error('❌ Ошибка создания таблицы galactic_empire_build_queue:', error);
+    console.error('❌ Ошибка добавления колонки built_at:', error);
   }
 };
 
@@ -930,8 +934,8 @@ app.listen(PORT, async () => {
   // Создаем таблицу ежедневных бонусов
   await createDailyBonusTable();
 
-  // Создаем таблицу очереди постройки кораблей
-  await createBuildQueueTable();
+  // Добавляем колонку built_at в таблицу кораблей
+  await addBuiltAtColumn();
 
   // 🔥 ИСПРАВЛЕНО: Webhook установлен правильно на Stars эндпоинт
   const webhookUrl = `https://cosmoclick-backend.onrender.com/api/wallet/webhook-stars`;

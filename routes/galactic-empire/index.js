@@ -169,6 +169,117 @@ router.get('/config', (req, res) => {
 });
 
 // =====================================================
+// POST /api/galactic-empire/formation/update
+// Обновить формацию игрока
+// =====================================================
+router.post('/formation/update', async (req, res) => {
+  try {
+    const { telegramId, shipIds } = req.body;
+
+    if (!telegramId || !Array.isArray(shipIds)) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Проверка макс 5 кораблей
+    if (shipIds.length > 5) {
+      return res.status(400).json({ error: 'Maximum 5 ships in formation' });
+    }
+
+    await pool.query('BEGIN');
+
+    // Получаем формацию игрока
+    const formationResult = await pool.query(`
+      SELECT * FROM galactic_empire_formations
+      WHERE player_id = $1
+      LIMIT 1
+    `, [telegramId]);
+
+    if (formationResult.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Formation not found' });
+    }
+
+    // Обновляем слоты
+    const slots = [null, null, null, null, null];
+    shipIds.forEach((shipId, index) => {
+      if (index < 5) slots[index] = shipId;
+    });
+
+    await pool.query(`
+      UPDATE galactic_empire_formations
+      SET slot_1 = $1, slot_2 = $2, slot_3 = $3, slot_4 = $4, slot_5 = $5, updated_at = NOW()
+      WHERE player_id = $6
+    `, [...slots, telegramId]);
+
+    await pool.query('COMMIT');
+
+    res.json({
+      success: true,
+      formation: { slots }
+    });
+
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    console.error('❌ Ошибка обновления формации:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// =====================================================
+// GET /api/galactic-empire/formation/:telegramId
+// Получить формацию игрока
+// =====================================================
+router.get('/formation/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+
+    const result = await pool.query(`
+      SELECT * FROM galactic_empire_formations
+      WHERE player_id = $1
+      LIMIT 1
+    `, [telegramId]);
+
+    if (result.rows.length === 0) {
+      return res.json({ slots: [] });
+    }
+
+    const formation = result.rows[0];
+    const shipIds = [
+      formation.slot_1,
+      formation.slot_2,
+      formation.slot_3,
+      formation.slot_4,
+      formation.slot_5
+    ].filter(id => id !== null);
+
+    // Получаем полные данные кораблей
+    if (shipIds.length > 0) {
+      const shipsResult = await pool.query(`
+        SELECT * FROM galactic_empire_ships
+        WHERE id = ANY($1::int[])
+        ORDER BY ARRAY_POSITION($1::int[], id)
+      `, [shipIds]);
+
+      res.json({
+        formation,
+        ships: shipsResult.rows,
+        shipIds
+      });
+    } else {
+      res.json({
+        formation,
+        ships: [],
+        shipIds: []
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка получения формации:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// =====================================================
 // DELETE /api/galactic-empire/player/:telegramId
 // Сброс игрока (смена расы)
 // =====================================================
