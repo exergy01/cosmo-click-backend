@@ -877,6 +877,7 @@ router.get('/debug/:telegramId/:questId', async (req, res) => {
   }
 });
 
+
 // POST /api/quests/submit_manual_check - отправка данных для ручной проверки
 router.post('/submit_manual_check', async (req, res) => {
   try {
@@ -899,7 +900,8 @@ router.post('/submit_manual_check', async (req, res) => {
       questResult = await pool.query(`
         SELECT qt.id, qtr.quest_name 
         FROM quest_templates qt
-        LEFT JOIN quest_translations qtr ON qt.quest_key = qtr.quest_key AND qtr.language_code = 'ru'
+        LEFT JOIN quest_translations qtr 
+          ON qt.quest_key = qtr.quest_key AND qtr.language_code = 'ru'
         WHERE qt.quest_key = $1 AND qt.is_active = true
       `, [questIdentifier]);
       
@@ -913,7 +915,7 @@ router.post('/submit_manual_check', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid quest identifier' });
     }
 
-    // Проверяем что задание еще не отправлено на проверку
+    // Проверяем, что задание еще не отправлено на проверку
     const existingSubmission = await pool.query(
       'SELECT * FROM manual_quest_submissions WHERE telegram_id = $1 AND quest_id = $2',
       [telegramId, dbQuestId]
@@ -945,31 +947,33 @@ router.post('/submit_manual_check', async (req, res) => {
       VALUES ($1, $2, $3, $4, 'pending', NOW())
     `, [telegramId, dbQuestId, questIdentifier, JSON.stringify(userData)]);
 
-    // Отправляем уведомление админу (можно через Telegram Bot API)
-    const adminMessage = `
-🔔 НОВАЯ ЗАЯВКА НА ПРОВЕРКУ ЗАДАНИЯ
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_BOT_TOKEN';
+    const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || '1222791281'; // Твой ID
+    
+    const adminMessage = `🔔 *НОВАЯ ЗАЯВКА НА ПРОВЕРКУ*\n\n` +
+      `👤 Игрок: ${player.first_name} (@${player.username || 'no_username'})\n` +
+      `🆔 Telegram ID: \`${telegramId}\`\n` +
+      `📋 Задание: ${questName}\n` +
+      `📝 Данные пользователя: \`${JSON.stringify(userData)}\`\n\n` +
+      `Проверьте и одобрите в базе данных.`;
+    
+    try {
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: ADMIN_TELEGRAM_ID,
+        text: adminMessage,
+        parse_mode: 'Markdown'
+      });
+      console.log('✅ Уведомление отправлено админу');
+    } catch (telegramError) {
+      console.error('❌ Ошибка отправки в Telegram:', telegramError);
+    }
 
-👤 Игрок: ${player.first_name} (@${player.username || 'no_username'})
-🆔 Telegram ID: ${telegramId}
-📋 Задание: ${questName}
-📝 Данные: ${userData}
-
-Проверьте в админ-панели игры.
-    `;
-
-    console.log('📤 Заявка на проверку задания:', adminMessage);
-
-    // TODO: Отправить сообщение админу через Telegram Bot
-    // Например: sendTelegramMessage(ADMIN_TELEGRAM_ID, adminMessage);
-
-    res.json({ 
-      success: true, 
-      message: 'Заявка отправлена на проверку. Ожидайте начисления в течение 24 часов.' 
-    });
+    // Возвращаем успешный ответ
+    return res.status(200).json({ success: true, message: 'Отправлено на проверку' });
 
   } catch (error) {
-    console.error('Ошибка отправки на ручную проверку:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    console.error('Ошибка при отправке на проверку:', error);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
