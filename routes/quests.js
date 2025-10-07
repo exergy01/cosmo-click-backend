@@ -877,4 +877,100 @@ router.get('/debug/:telegramId/:questId', async (req, res) => {
   }
 });
 
+// POST /api/quests/submit_manual_check - отправка данных для ручной проверки
+router.post('/submit_manual_check', async (req, res) => {
+  try {
+    const { telegramId, questId, quest_key, userData } = req.body;
+
+    if (!telegramId || (!questId && !quest_key) || !userData) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields' 
+      });
+    }
+
+    const questIdentifier = quest_key || questId;
+    const isQuestKey = !!quest_key || isNaN(questIdentifier);
+
+    // Получаем информацию о задании
+    let questResult, dbQuestId, questName;
+    
+    if (isQuestKey) {
+      questResult = await pool.query(`
+        SELECT qt.id, qtr.quest_name 
+        FROM quest_templates qt
+        LEFT JOIN quest_translations qtr ON qt.quest_key = qtr.quest_key AND qtr.language_code = 'ru'
+        WHERE qt.quest_key = $1 AND qt.is_active = true
+      `, [questIdentifier]);
+      
+      if (questResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Quest not found' });
+      }
+      
+      dbQuestId = questResult.rows[0].id;
+      questName = questResult.rows[0].quest_name || questIdentifier;
+    } else {
+      return res.status(400).json({ success: false, error: 'Invalid quest identifier' });
+    }
+
+    // Проверяем что задание еще не отправлено на проверку
+    const existingSubmission = await pool.query(
+      'SELECT * FROM manual_quest_submissions WHERE telegram_id = $1 AND quest_id = $2',
+      [telegramId, dbQuestId]
+    );
+
+    if (existingSubmission.rows.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Это задание уже отправлено на проверку' 
+      });
+    }
+
+    // Получаем информацию об игроке
+    const playerResult = await pool.query(
+      'SELECT first_name, username FROM players WHERE telegram_id = $1',
+      [telegramId]
+    );
+
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Player not found' });
+    }
+
+    const player = playerResult.rows[0];
+
+    // Сохраняем заявку на проверку
+    await pool.query(`
+      INSERT INTO manual_quest_submissions 
+      (telegram_id, quest_id, quest_key, user_data, status, submitted_at)
+      VALUES ($1, $2, $3, $4, 'pending', NOW())
+    `, [telegramId, dbQuestId, questIdentifier, JSON.stringify(userData)]);
+
+    // Отправляем уведомление админу (можно через Telegram Bot API)
+    const adminMessage = `
+🔔 НОВАЯ ЗАЯВКА НА ПРОВЕРКУ ЗАДАНИЯ
+
+👤 Игрок: ${player.first_name} (@${player.username || 'no_username'})
+🆔 Telegram ID: ${telegramId}
+📋 Задание: ${questName}
+📝 Данные: ${userData}
+
+Проверьте в админ-панели игры.
+    `;
+
+    console.log('📤 Заявка на проверку задания:', adminMessage);
+
+    // TODO: Отправить сообщение админу через Telegram Bot
+    // Например: sendTelegramMessage(ADMIN_TELEGRAM_ID, adminMessage);
+
+    res.json({ 
+      success: true, 
+      message: 'Заявка отправлена на проверку. Ожидайте начисления в течение 24 часов.' 
+    });
+
+  } catch (error) {
+    console.error('Ошибка отправки на ручную проверку:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 module.exports = router;
