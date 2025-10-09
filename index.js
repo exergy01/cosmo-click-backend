@@ -182,6 +182,15 @@ try {
   console.error('❌ Ошибка подключения админских роутов:', err);
 }
 
+// 📝 РУЧНЫЕ ЗАДАНИЯ
+try {
+  const manualQuestSubmissionRoutes = require('./routes/manual-quest-submission');
+  app.use('/api/quests', manualQuestSubmissionRoutes);
+  console.log('✅ Ручные задания роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения ручных заданий:', err);
+}
+
 // 🚀 COSMIC FLEET COMMANDER API РОУТЫ
 try {
   const cosmicFleetRoutes = require('./routes/cosmic-fleet/index');

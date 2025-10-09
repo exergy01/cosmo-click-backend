@@ -96,35 +96,33 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
       const deductResult = await db.query(deductCsQuery, [csAmountNum, telegramIdNum]);
       const newCsBalance = parseFloat(deductResult.rows[0].cs);
 
-      // 3. Проверяем/создаем игрока cosmic fleet
+      // 3. Проверяем/создаем игрока galactic empire
       const checkPlayerQuery = `
-        SELECT id, luminios_balance FROM cosmic_fleet_players
+        SELECT telegram_id, luminios_balance FROM galactic_empire_players
         WHERE telegram_id = $1
       `;
       const checkPlayerResult = await db.query(checkPlayerQuery, [telegramIdNum]);
 
-      let playerId, newLuminiosBalance;
+      let newLuminiosBalance;
 
       if (checkPlayerResult.rows.length === 0) {
         // Создаем нового игрока
         const createPlayerQuery = `
-          INSERT INTO cosmic_fleet_players (telegram_id, luminios_balance)
-          VALUES ($1, $2)
-          RETURNING id, luminios_balance
+          INSERT INTO galactic_empire_players (telegram_id, luminios_balance, race)
+          VALUES ($1, $2, 'human')
+          RETURNING luminios_balance
         `;
         const createResult = await db.query(createPlayerQuery, [telegramIdNum, luminiosAmount]);
-        playerId = createResult.rows[0].id;
         newLuminiosBalance = createResult.rows[0].luminios_balance;
       } else {
         // Обновляем существующего игрока
-        playerId = checkPlayerResult.rows[0].id;
         const updateLuminiosQuery = `
-          UPDATE cosmic_fleet_players
+          UPDATE galactic_empire_players
           SET luminios_balance = luminios_balance + $1
-          WHERE id = $2
+          WHERE telegram_id = $2
           RETURNING luminios_balance
         `;
-        const updateResult = await db.query(updateLuminiosQuery, [luminiosAmount, playerId]);
+        const updateResult = await db.query(updateLuminiosQuery, [luminiosAmount, telegramIdNum]);
         newLuminiosBalance = updateResult.rows[0].luminios_balance;
       }
 

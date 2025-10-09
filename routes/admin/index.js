@@ -24,6 +24,9 @@ const financeModule = require('./finance');
 const analyticsModule = require('./analytics');
 const investigationModule = require('./investigation');
 
+// Ручная проверка заданий
+const manualChecksModule = require('./manual-checks');
+
 console.log('📦 Все модули админ-панели загружены');
 
 // ===============================
@@ -246,5 +249,13 @@ console.log('🚀 Модульная админ-панель готова к р�
 console.log('📊 Всего модулей: 9');
 console.log('🔗 Всего endpoints: ~35');
 console.log('🔄 Middleware исправлен + алиасы для совместимости + финансы');
+
+// ===============================
+// ✅ РУЧНАЯ ПРОВЕРКА ЗАДАНИЙ
+// ===============================
+
+router.use('/manual-checks', manualChecksModule);
+
+console.log('✅ Модуль ручных проверок подключен: /manual-checks/list, /manual-checks/review');
 
 module.exports = router;
