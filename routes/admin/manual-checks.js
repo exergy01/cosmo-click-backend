@@ -140,7 +140,7 @@ router.post('/review/:telegramId', async (req, res) => {
       if (action === 'approve') {
         // Проверяем есть ли уже выполненное задание
         const existingQuest = await pool.query(`
-          SELECT pq.id
+          SELECT pq.telegram_id, pq.quest_id
           FROM player_quests pq
           JOIN quests q ON q.quest_id = pq.quest_id
           WHERE pq.telegram_id = $1 AND q.quest_name = $2 AND pq.completed = true
