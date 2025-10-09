@@ -722,6 +722,13 @@ router.get('/v2/:telegramId', async (req, res) => {
     );
     const pendingQuestKeys = pendingSubmissions.rows.map(row => row.quest_key);
 
+    // Получаем rejected заявки (чтобы не показывать их как pending)
+    const rejectedSubmissions = await pool.query(
+      'SELECT quest_key FROM manual_quest_submissions WHERE telegram_id = $1 AND status = $2',
+      [telegramId, 'rejected']
+    );
+    const rejectedQuestKeys = rejectedSubmissions.rows.map(row => row.quest_key);
+
     // Обрабатываем состояния таймеров (как в старом API)
     const questLinkStates = player.quest_link_states || {};
     const updatedLinkStates = { ...questLinkStates };
@@ -746,6 +753,20 @@ router.get('/v2/:telegramId', async (req, res) => {
       const isCompleted = completedQuestIds.includes(quest.id) || completedQuestKeys.includes(quest.quest_key);
       const isReadyToClaim = readyToClaimIds.includes(quest.id) || readyToClaimKeys.includes(quest.quest_key);
       const isPending = pendingQuestKeys.includes(quest.quest_key);
+      const isRejected = rejectedQuestKeys.includes(quest.quest_key);
+
+      // Логика статуса:
+      // 1. Если completed=true в player_quests - квест завершён, статус null (или можно вообще скрыть)
+      // 2. Если completed=false в player_quests - готов к сбору награды
+      // 3. Если pending в manual_quest_submissions - на проверке
+      // 4. Если rejected - доступен снова (статус null, чтобы показать кнопку регистрации)
+      let manualCheckStatus = null;
+      if (isPending) {
+        manualCheckStatus = 'pending';
+      } else if (isReadyToClaim && !isCompleted) {
+        manualCheckStatus = 'approved_unclaimed';
+      }
+      // Если rejected - оставляем null, чтобы квест показался как доступный
 
       return {
         // Для совместимости со старым API
@@ -764,7 +785,7 @@ router.get('/v2/:telegramId', async (req, res) => {
         manual_check_user_instructions: quest.manual_check_user_instructions,
 
         // Статусы для ручной проверки
-        manual_check_status: isPending ? 'pending' : (isReadyToClaim ? 'approved_unclaimed' : null)
+        manual_check_status: manualCheckStatus
       };
     });
     
