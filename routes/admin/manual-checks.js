@@ -138,32 +138,51 @@ router.post('/review/:telegramId', async (req, res) => {
 
       // Если одобрено - отмечаем задание как выполненное
       if (action === 'approve') {
+        // Маппинг quest_key → quest_name для поиска в таблице quests
+        const questKeyToName = {
+          'roboforex_registration': 'RoboForex регистрация',
+          'roboforex_trade': 'RoboForex сделка',
+          'instaforex_registration': 'InstaForex регистрация',
+          'instaforex_trade': 'InstaForex сделка',
+          'exness_registration': 'Exness регистрация',
+          'exness_trade': 'Exness сделка'
+        };
+
+        const questName = questKeyToName[submission.quest_key] || submission.quest_key;
+
         // Проверяем есть ли уже выполненное задание
         const existingQuest = await pool.query(`
           SELECT pq.telegram_id, pq.quest_id
           FROM player_quests pq
           JOIN quests q ON q.quest_id = pq.quest_id
           WHERE pq.telegram_id = $1 AND q.quest_name = $2 AND pq.completed = true
-        `, [submission.telegram_id, submission.quest_key]);
+        `, [submission.telegram_id, questName]);
 
         if (existingQuest.rows.length === 0) {
-          // Получаем quest_id из таблицы quests
+          // Получаем quest_id из таблицы quests по quest_name
           const questResult = await pool.query(
-            'SELECT quest_id FROM quests WHERE quest_name = $1',
-            [submission.quest_key]
+            'SELECT quest_id, reward_cs FROM quests WHERE quest_name = $1',
+            [questName]
           );
 
           if (questResult.rows.length > 0) {
             const questId = questResult.rows[0].quest_id;
+            const rewardCs = questResult.rows[0].reward_cs;
 
             // Отмечаем как готовое к сбору награды (completed = false, но доступно)
             await pool.query(`
-              INSERT INTO player_quests (telegram_id, quest_id, completed, quest_key)
-              VALUES ($1, $2, false, $3)
+              INSERT INTO player_quests (telegram_id, quest_id, completed, quest_key, reward_cs)
+              VALUES ($1, $2, false, $3, $4)
               ON CONFLICT (telegram_id, quest_id) DO UPDATE
-              SET completed = false, quest_key = $3
-            `, [submission.telegram_id, questId, submission.quest_key]);
+              SET completed = false, quest_key = $3, reward_cs = $4
+            `, [submission.telegram_id, questId, submission.quest_key, rewardCs]);
+
+            console.log(`✅ Задание ${questName} (ID: ${questId}) готово к сбору для игрока ${submission.telegram_id}`);
+          } else {
+            console.error(`❌ Квест "${questName}" не найден в таблице quests!`);
           }
+        } else {
+          console.log(`⚠️ Игрок ${submission.telegram_id} уже выполнил задание ${questName}`);
         }
       }
 
