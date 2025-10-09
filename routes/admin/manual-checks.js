@@ -55,25 +55,27 @@ router.get('/list/:telegramId', async (req, res) => {
         mqs.created_at DESC
     `, params);
 
-    // Группируем по quest_key
-    const groupedByQuest = result.rows.reduce((acc, row) => {
-      if (!acc[row.quest_key]) {
-        acc[row.quest_key] = {
+    // Группируем по broker_name (или quest_key если broker_name нет)
+    const groupedByBroker = result.rows.reduce((acc, row) => {
+      const groupKey = row.broker_name || row.quest_key;
+      if (!acc[groupKey]) {
+        acc[groupKey] = {
           quest_key: row.quest_key,
           quest_name: row.quest_name,
+          broker_name: row.broker_name,
           quest_type: row.quest_type,
           reward_cs: row.reward_cs,
           submissions: []
         };
       }
-      acc[row.quest_key].submissions.push(row);
+      acc[groupKey].submissions.push(row);
       return acc;
     }, {});
 
     res.json({
       success: true,
       submissions: result.rows,
-      grouped_by_quest: Object.values(groupedByQuest),
+      grouped_by_quest: Object.values(groupedByBroker),
       stats: {
         total: result.rows.length,
         pending: result.rows.filter(r => r.status === 'pending').length,
