@@ -2,7 +2,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const bot = require('../bot');
+const { Telegraf } = require('telegraf');
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 const ADMIN_TELEGRAM_ID = '850758749';
 
