@@ -690,24 +690,35 @@ router.get('/v2/:telegramId', async (req, res) => {
     
     // Получаем выполненные задания игрока
     const completedResult = await pool.query(
-      'SELECT quest_id, quest_key FROM player_quests WHERE telegram_id = $1 AND completed = true',
+      'SELECT quest_id, quest_key, completed FROM player_quests WHERE telegram_id = $1',
       [telegramId]
     );
-    
-    const completedQuestIds = completedResult.rows.map(row => row.quest_id);
-    const completedQuestKeys = completedResult.rows.map(row => row.quest_key).filter(Boolean);
-    
+
+    const completedQuestIds = completedResult.rows.filter(r => r.completed).map(row => row.quest_id);
+    const completedQuestKeys = completedResult.rows.filter(r => r.completed).map(row => row.quest_key).filter(Boolean);
+
+    // Квесты готовые к сбору награды (completed = false в player_quests)
+    const readyToClaimIds = completedResult.rows.filter(r => !r.completed).map(row => row.quest_id);
+    const readyToClaimKeys = completedResult.rows.filter(r => !r.completed).map(row => row.quest_key).filter(Boolean);
+
+    // Получаем pending заявки на ручную проверку
+    const pendingSubmissions = await pool.query(
+      'SELECT quest_key FROM manual_quest_submissions WHERE telegram_id = $1 AND status = $2',
+      [telegramId, 'pending']
+    );
+    const pendingQuestKeys = pendingSubmissions.rows.map(row => row.quest_key);
+
     // Обрабатываем состояния таймеров (как в старом API)
     const questLinkStates = player.quest_link_states || {};
     const updatedLinkStates = { ...questLinkStates };
-    
+
     Object.keys(updatedLinkStates).forEach(questId => {
       const state = updatedLinkStates[questId];
       if (state.clicked_at) {
         const clickedTime = new Date(state.clicked_at);
         const elapsedSeconds = Math.floor((currentTime - clickedTime) / 1000);
         const isCompleted = elapsedSeconds >= 30;
-        
+
         updatedLinkStates[questId] = {
           ...state,
           timer_remaining: Math.max(0, 30 - elapsedSeconds),
@@ -715,24 +726,33 @@ router.get('/v2/:telegramId', async (req, res) => {
         };
       }
     });
-    
+
     // Объединяем данные
-    const quests = questsResult.rows.map(quest => ({
-      // Для совместимости со старым API
-      quest_id: quest.id,
-      quest_name: quest.quest_name,
-      quest_type: quest.quest_type,
-      description: quest.description,
-      reward_cs: quest.reward_cs,
-      quest_data: quest.quest_data,
-      completed: completedQuestIds.includes(quest.id) || completedQuestKeys.includes(quest.quest_key),
-      
-      // Новые поля
-      quest_key: quest.quest_key,
-      target_languages: quest.target_languages,
-      used_language: quest.used_language,
-      manual_check_user_instructions: quest.manual_check_user_instructions
-    }));
+    const quests = questsResult.rows.map(quest => {
+      const isCompleted = completedQuestIds.includes(quest.id) || completedQuestKeys.includes(quest.quest_key);
+      const isReadyToClaim = readyToClaimIds.includes(quest.id) || readyToClaimKeys.includes(quest.quest_key);
+      const isPending = pendingQuestKeys.includes(quest.quest_key);
+
+      return {
+        // Для совместимости со старым API
+        quest_id: quest.id,
+        quest_name: quest.quest_name,
+        quest_type: quest.quest_type,
+        description: quest.description,
+        reward_cs: quest.reward_cs,
+        quest_data: quest.quest_data,
+        completed: isCompleted,
+
+        // Новые поля
+        quest_key: quest.quest_key,
+        target_languages: quest.target_languages,
+        used_language: quest.used_language,
+        manual_check_user_instructions: quest.manual_check_user_instructions,
+
+        // Статусы для ручной проверки
+        manual_check_status: isPending ? 'pending' : (isReadyToClaim ? 'approved_unclaimed' : null)
+      };
+    });
     
     const stats = {
       total_quests: quests.length,
