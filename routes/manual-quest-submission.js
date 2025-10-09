@@ -41,7 +41,7 @@ router.post('/submit-manual', async (req, res) => {
 
     // Получаем данные игрока
     const playerResult = await pool.query(
-      'SELECT first_name, last_name, username FROM players WHERE telegram_id = $1',
+      'SELECT first_name, username FROM players WHERE telegram_id = $1',
       [telegram_id]
     );
 

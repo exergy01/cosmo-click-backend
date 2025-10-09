@@ -37,7 +37,6 @@ router.get('/list/:telegramId', async (req, res) => {
       SELECT
         mqs.*,
         p.first_name,
-        p.last_name,
         p.username,
         qt.quest_type,
         qt.reward_cs,
