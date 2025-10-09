@@ -138,35 +138,23 @@ router.post('/review/:telegramId', async (req, res) => {
 
       // Если одобрено - отмечаем задание как выполненное
       if (action === 'approve') {
-        // Маппинг quest_key → quest_name для поиска в таблице quests
-        const questKeyToName = {
-          'roboforex_registration': 'RoboForex регистрация',
-          'roboforex_trade': 'RoboForex сделка',
-          'instaforex_registration': 'InstaForex регистрация',
-          'instaforex_trade': 'InstaForex сделка',
-          'exness_registration': 'Exness регистрация',
-          'exness_trade': 'Exness сделка'
-        };
-
-        const questName = questKeyToName[submission.quest_key] || submission.quest_key;
-
         // Проверяем есть ли уже выполненное задание
         const existingQuest = await pool.query(`
           SELECT pq.telegram_id, pq.quest_id
           FROM player_quests pq
-          JOIN quests q ON q.quest_id = pq.quest_id
-          WHERE pq.telegram_id = $1 AND q.quest_name = $2 AND pq.completed = true
-        `, [submission.telegram_id, questName]);
+          JOIN quest_templates qt ON qt.id = pq.quest_id
+          WHERE pq.telegram_id = $1 AND qt.quest_key = $2 AND pq.completed = true
+        `, [submission.telegram_id, submission.quest_key]);
 
         if (existingQuest.rows.length === 0) {
-          // Получаем quest_id из таблицы quests по quest_name
+          // Получаем template ID и награду из quest_templates по quest_key
           const questResult = await pool.query(
-            'SELECT quest_id, reward_cs FROM quests WHERE quest_name = $1',
-            [questName]
+            'SELECT id, reward_cs FROM quest_templates WHERE quest_key = $1',
+            [submission.quest_key]
           );
 
           if (questResult.rows.length > 0) {
-            const questId = questResult.rows[0].quest_id;
+            const questTemplateId = questResult.rows[0].id;
             const rewardCs = questResult.rows[0].reward_cs;
 
             // Отмечаем как готовое к сбору награды (completed = false, но доступно)
@@ -175,14 +163,14 @@ router.post('/review/:telegramId', async (req, res) => {
               VALUES ($1, $2, false, $3, $4)
               ON CONFLICT (telegram_id, quest_id) DO UPDATE
               SET completed = false, quest_key = $3, reward_cs = $4
-            `, [submission.telegram_id, questId, submission.quest_key, rewardCs]);
+            `, [submission.telegram_id, questTemplateId, submission.quest_key, rewardCs]);
 
-            console.log(`✅ Задание ${questName} (ID: ${questId}) готово к сбору для игрока ${submission.telegram_id}`);
+            console.log(`✅ Задание ${submission.quest_key} (Template ID: ${questTemplateId}) готово к сбору для игрока ${submission.telegram_id}`);
           } else {
-            console.error(`❌ Квест "${questName}" не найден в таблице quests!`);
+            console.error(`❌ Квест "${submission.quest_key}" не найден в quest_templates!`);
           }
         } else {
-          console.log(`⚠️ Игрок ${submission.telegram_id} уже выполнил задание ${questName}`);
+          console.log(`⚠️ Игрок ${submission.telegram_id} уже выполнил задание ${submission.quest_key}`);
         }
       }
 
