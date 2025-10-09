@@ -9,8 +9,11 @@ const ADMIN_TELEGRAM_ID = '850758749';
 
 // Маппинг quest_key -> broker_name
 const BROKER_NAMES = {
+  'roboforex_registration': 'RoboForex',
   'roboforex_trade': 'RoboForex',
+  'instaforex_registration': 'InstaForex',
   'instaforex_trade': 'InstaForex',
+  'exness_registration': 'Exness',
   'exness_trade': 'Exness'
 };
 

@@ -17,8 +17,10 @@ const adminAuth = (req, res, next) => {
     const urlParts = req.url.split('/');
     // Ищем число в URL (telegram ID всегда числовой)
     for (const part of urlParts) {
-      if (/^\d+$/.test(part)) {
-        telegramId = part;
+      // Убираем query string если есть (например "1222791281?status=all" -> "1222791281")
+      const cleanPart = part.split('?')[0];
+      if (/^\d+$/.test(cleanPart)) {
+        telegramId = cleanPart;
         break;
       }
     }
