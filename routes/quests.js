@@ -443,12 +443,12 @@ router.post('/complete', async (req, res) => {
     // Определяем тип идентификатора (ID или key)
     const isQuestKey = !!quest_key || isNaN(questIdentifier);
 
-    // Проверяем что задание еще не выполнено
+    // Проверяем статус задания
     let existingResult;
     if (isQuestKey) {
       // Ищем по quest_key через JOIN с quest_templates
       existingResult = await pool.query(`
-        SELECT pq.* 
+        SELECT pq.*
         FROM player_quests pq
         JOIN quest_templates qt ON pq.quest_id = qt.id
         WHERE pq.telegram_id = $1 AND qt.quest_key = $2
@@ -460,9 +460,13 @@ router.post('/complete', async (req, res) => {
       );
     }
 
-    if (existingResult.rows.length > 0) {
-      return res.status(400).json({ error: 'Quest already completed' });
+    // Если есть запись с completed = true - награда уже забрана
+    if (existingResult.rows.length > 0 && existingResult.rows[0].completed === true) {
+      return res.status(400).json({ error: 'Quest already completed and reward claimed' });
     }
+
+    // Если есть запись с completed = false - это одобренная ручная проверка, разрешаем забрать
+    const isReadyToClaim = existingResult.rows.length > 0 && existingResult.rows[0].completed === false;
 
     // Получаем информацию о задании
     let questResult, rewardCs, questType, dbQuestId;
@@ -532,12 +536,22 @@ router.post('/complete', async (req, res) => {
     await pool.query('BEGIN');
 
     try {
-      // Отмечаем задание как выполненное
-      await pool.query(
-        'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
-        [telegramId, dbQuestId, rewardCs]
-      );
-      
+      // Если это ready-to-claim (approved manual check), обновляем запись
+      if (isReadyToClaim) {
+        await pool.query(
+          'UPDATE player_quests SET completed = true WHERE telegram_id = $1 AND quest_id = $2',
+          [telegramId, dbQuestId]
+        );
+        console.log(`✅ Обновлена запись player_quests для ${telegramId}, quest ${dbQuestId}: completed = true`);
+      } else {
+        // Создаём новую запись для обычных квестов
+        await pool.query(
+          'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
+          [telegramId, dbQuestId, rewardCs]
+        );
+        console.log(`✅ Создана новая запись player_quests для ${telegramId}, quest ${dbQuestId}`);
+      }
+
       // Добавляем CS игроку
       await pool.query(
         'UPDATE players SET cs = cs + $1 WHERE telegram_id = $2',
