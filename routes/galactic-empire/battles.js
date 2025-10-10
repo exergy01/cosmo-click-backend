@@ -374,13 +374,13 @@ router.post('/start-pve', async (req, res) => {
 
     const battleId = battleInsertResult.rows[0].id;
 
-    // Обновляем HP кораблей после боя
+    // Восстанавливаем HP всех кораблей игрока до максимума после боя
     for (const ship of battleResult.fleet1Final) {
       await pool.query(`
         UPDATE galactic_empire_ships
-        SET current_hp = $1, updated_at = NOW()
-        WHERE id = $2
-      `, [ship.current_hp, ship.id]);
+        SET current_hp = max_hp, updated_at = NOW()
+        WHERE id = $1
+      `, [ship.id]);
     }
 
     // Начисляем награду если победа
