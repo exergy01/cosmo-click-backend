@@ -151,12 +151,17 @@ function simulateRound(fleet1, fleet2, race1, race2, roundNumber) {
       isCrit: damageResult.isCrit,
       blocked: damageResult.blocked,
       targetRemainingHP: target.ship.current_hp,
-      isKill: target.ship.current_hp === 0
+      isKill: target.ship.current_hp === 0,
+      attackerFleet: attacker.fleet // Для определения победителя
     });
 
-    // Проверяем победу
+    // Проверяем победу ПОСЛЕ КАЖДОГО ДЕЙСТВИЯ
     const enemiesAlive = enemyFleet.filter(s => s.current_hp > 0).length;
-    if (enemiesAlive === 0) break;
+    if (enemiesAlive === 0) {
+      // Враги уничтожены - победа атакующего флота
+      actions[actions.length - 1].isWinningBlow = true;
+      break;
+    }
   }
 
   return actions;
@@ -178,7 +183,14 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const roundActions = simulateRound(f1, f2, race1, race2, round);
     battleLog.push(...roundActions);
 
-    // Проверяем победу
+    // Проверяем есть ли решающий удар в этом раунде
+    const winningAction = roundActions.find(a => a.isWinningBlow);
+    if (winningAction) {
+      winner = winningAction.attackerFleet;
+      break;
+    }
+
+    // Дополнительная проверка на случай если все умерли
     const fleet1Alive = f1.filter(s => s.current_hp > 0).length;
     const fleet2Alive = f2.filter(s => s.current_hp > 0).length;
 
@@ -220,37 +232,42 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
 // Начать бой с ботом
 // =====================================================
 router.post('/start-pve', async (req, res) => {
+  const client = await pool.connect(); // Get single client from pool
+
   try {
     const { telegramId } = req.body;
 
     if (!telegramId) {
+      client.release();
       return res.status(400).json({ error: 'Missing telegramId' });
     }
 
-    await pool.query('BEGIN');
+    await client.query('BEGIN');
 
     // Получаем данные игрока
-    const playerResult = await pool.query(`
+    const playerResult = await client.query(`
       SELECT * FROM galactic_empire_players
       WHERE telegram_id = $1
     `, [telegramId]);
 
     if (playerResult.rows.length === 0) {
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(404).json({ error: 'Player not found' });
     }
 
     const player = playerResult.rows[0];
 
     // Получаем формацию игрока
-    const formationResult = await pool.query(`
+    const formationResult = await client.query(`
       SELECT * FROM galactic_empire_formations
       WHERE player_id = $1
       LIMIT 1
     `, [telegramId]);
 
     if (formationResult.rows.length === 0) {
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'No formation found' });
     }
 
@@ -264,12 +281,13 @@ router.post('/start-pve', async (req, res) => {
     ].filter(id => id !== null);
 
     if (shipIds.length === 0) {
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Formation is empty' });
     }
 
     // Получаем корабли игрока
-    const shipsResult = await pool.query(`
+    const shipsResult = await client.query(`
       SELECT * FROM galactic_empire_ships
       WHERE id = ANY($1::int[]) AND player_id = $2
     `, [shipIds, telegramId]);
@@ -279,7 +297,8 @@ router.post('/start-pve', async (req, res) => {
     // Проверяем что все корабли живы
     const allAlive = playerFleet.every(ship => ship.current_hp > 0);
     if (!allAlive) {
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
+      client.release();
       return res.status(400).json({ error: 'Some ships are damaged. Repair them first.' });
     }
 
@@ -337,13 +356,13 @@ router.post('/start-pve', async (req, res) => {
     reward = Math.floor(reward);
 
     // Получаем расу игрока
-    const playerRaceResult = await pool.query(`
+    const playerRaceResult = await client.query(`
       SELECT race FROM galactic_empire_players WHERE telegram_id = $1
     `, [telegramId]);
     const playerRace = playerRaceResult.rows[0]?.race || 'human';
 
     // Сохраняем бой в БД
-    const battleInsertResult = await pool.query(`
+    const battleInsertResult = await client.query(`
       INSERT INTO galactic_empire_battles (
         player1_id,
         player2_id,
@@ -376,23 +395,27 @@ router.post('/start-pve', async (req, res) => {
 
     // Восстанавливаем HP всех кораблей игрока до максимума после боя
     for (const ship of battleResult.fleet1Final) {
-      await pool.query(`
+      await client.query(`
         UPDATE galactic_empire_ships
         SET current_hp = max_hp, updated_at = NOW()
         WHERE id = $1
       `, [ship.id]);
+
+      // Обновляем HP в объекте для ответа
+      ship.current_hp = ship.max_hp;
     }
 
     // Начисляем награду если победа
     if (battleResult.winner === 1) {
-      await pool.query(`
+      await client.query(`
         UPDATE galactic_empire_players
         SET luminios_balance = luminios_balance + $1
         WHERE telegram_id = $2
       `, [reward, telegramId]);
     }
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
+    client.release();
 
     res.json({
       success: true,
@@ -400,13 +423,14 @@ router.post('/start-pve', async (req, res) => {
       winner: battleResult.winner,
       rounds: battleResult.rounds,
       battleLog: battleResult.battleLog,
-      playerFleet: battleResult.fleet1Final,
+      playerFleet: battleResult.fleet1Final, // Теперь с восстановленным HP
       botFleet: battleResult.fleet2Final,
       reward: battleResult.winner === 1 ? reward : 0
     });
 
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
+    client.release();
     console.error('❌ Ошибка боя с ботом:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
