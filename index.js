@@ -12,6 +12,7 @@ const bot = new Telegraf(BOT_TOKEN);
 
 const cron = require('node-cron');
 const { sendDailySummary } = require('./routes/telegramBot');
+const rateLimit = require('express-rate-limit');
 
 const tonWebhookRouter = require('./routes/ton-webhook');
 app.use('/api/ton-webhook', tonWebhookRouter);
@@ -32,6 +33,23 @@ cron.schedule('0 12 * * *', async () => {
 
 console.log('⏰ Cron задача для ежедневной сводки настроена на 12:00 МСК');
 
+// 🛡️ RATE LIMITING CONFIGURATION
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute per IP
+  message: { error: 'Too many requests, please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const financialLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute for financial endpoints
+  message: { error: 'Too many financial requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware
 app.use(express.static('public'));
 app.use(cors({
@@ -41,6 +59,12 @@ app.use(cors({
   credentials: false
 }));
 app.use(express.json());
+
+// 🛡️ APPLY RATE LIMITING
+app.use('/api/', apiLimiter);
+app.use('/api/shop', financialLimiter);
+app.use('/api/exchange', financialLimiter);
+app.use('/api/wallet', financialLimiter);
 
 // CORS заголовки и логирование
 app.use((req, res, next) => {
@@ -265,6 +289,15 @@ try {
   console.error('❌ Ошибка подключения Galactic Empire Battles роутов:', err);
 }
 
+// 🔧 GALACTIC EMPIRE MODULES API РОУТЫ
+try {
+  const galacticEmpireModulesRoutes = require('./routes/galactic-empire/modules');
+  app.use('/api/galactic-empire/modules', galacticEmpireModulesRoutes);
+  console.log('✅ Galactic Empire Modules роуты подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения Galactic Empire Modules роутов:', err);
+}
+
 // 💰 LUMINIOS CURRENCY API РОУТЫ
 try {
   const luminiosRoutes = require('./routes/luminios');
@@ -272,6 +305,15 @@ try {
   console.log('✅ Luminios валютные роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Luminios валютных роутов:', err);
+}
+
+// 🔧 МИГРАЦИИ БД
+try {
+  const migrateBattleV2Routes = require('./routes/migrate-battle-v2');
+  app.use('/api/migrate-battle-v2', migrateBattleV2Routes);
+  console.log('✅ Battle v2 миграции подключены');
+} catch (err) {
+  console.error('❌ Ошибка подключения миграций:', err);
 }
 
 // 🔥 ИСПРАВЛЕНО: Telegram webhook для обычных сообщений бота (НЕ платежи Stars)

@@ -27,6 +27,9 @@ const investigationModule = require('./investigation');
 // Ручная проверка заданий
 const manualChecksModule = require('./manual-checks');
 
+// Миграции БД
+const migrateModule = require('./migrate');
+
 console.log('📦 Все модули админ-панели загружены');
 
 // ===============================
@@ -257,5 +260,13 @@ console.log('🔄 Middleware исправлен + алиасы для совме
 router.use('/manual-checks', manualChecksModule);
 
 console.log('✅ Модуль ручных проверок подключен: /manual-checks/list, /manual-checks/review');
+
+// ===============================
+// 🔧 МИГРАЦИИ БД
+// ===============================
+
+router.use('/migrate', migrateModule);
+
+console.log('✅ Модуль миграций подключен: /migrate/run-battle-v2-migration');
 
 module.exports = router;

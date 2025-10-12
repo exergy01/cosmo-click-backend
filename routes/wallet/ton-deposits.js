@@ -199,7 +199,11 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       );
   
       if (playerResult.rows.length === 0) {
-        console.log(`❌ Игрок ${playerId} не найден`);
+        // ⚠️ Не логируем для фантомных ID
+        const phantomIds = ['00000000', '000000005749', '000000005245'];
+        if (!phantomIds.includes(playerId)) {
+          console.log(`❌ Игрок ${playerId} не найден`);
+        }
         await client.query('ROLLBACK');
         return { success: false, error: 'Player not found' };
       }
@@ -554,8 +558,10 @@ router.post('/check-deposits', async (req, res) => {
   // POST /manual-add - Ручное добавление депозита (только для админов) - БЕЗ ИЗМЕНЕНИЙ
   router.post('/manual-add', async (req, res) => {
     const { player_id, amount, transaction_hash, admin_key } = req.body;
-    
-    if (admin_key !== 'cosmo_admin_2025') {
+
+    // 🔒 SECURITY: Check admin key from environment variable
+    const ADMIN_KEY = process.env.MANUAL_DEPOSIT_ADMIN_KEY;
+    if (!ADMIN_KEY || admin_key !== ADMIN_KEY) {
       return res.status(403).json({ error: 'Нет доступа' });
     }
     

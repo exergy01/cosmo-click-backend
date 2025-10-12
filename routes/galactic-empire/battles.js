@@ -8,6 +8,8 @@ const router = express.Router();
 const pool = require('../../db');
 const gameConfig = require('../../config/galactic-empire/game.config');
 const racesConfig = require('../../config/galactic-empire/races.config');
+const { calculateRegeneratedHP } = require('../../utils/ship-regeneration');
+const { WEAPONS, FORMULAS } = require('../../config/galactic-empire/weapons.config');
 
 // =====================================================
 // БОЕВОЙ ДВИЖОК
@@ -96,50 +98,91 @@ function selectTarget(enemyFleet, strategy = 'weakest') {
 }
 
 /**
- * Провести один раунд боя
+ * ⚔️ НОВАЯ 4-ФАЗНАЯ СИСТЕМА БОЯ (ОДНОВРЕМЕННЫЕ АТАКИ)
+ * Все корабли атакуют одновременно, урон применяется в конце раунда
  */
 function simulateRound(fleet1, fleet2, race1, race2, roundNumber) {
   const actions = [];
+  const plannedAttacks = [];
 
-  // Определяем порядок атаки на основе скорости всех кораблей
+  // ========================================
+  // ФАЗА 1: Обновление кулдаунов оружия
+  // ========================================
+  [...fleet1, ...fleet2].forEach(ship => {
+    if (ship.current_hp > 0 && ship.current_cooldown > 0) {
+      ship.current_cooldown = Math.max(0, ship.current_cooldown - 1000); // -1 секунда
+    }
+  });
+
+  // ========================================
+  // ФАЗА 2: Планирование атак (ВСЕ ОДНОВРЕМЕННО)
+  // ========================================
   const allShips = [
     ...fleet1.map((ship, i) => ({ ship, fleet: 1, index: i })),
     ...fleet2.map((ship, i) => ({ ship, fleet: 2, index: i }))
-  ].filter(item => item.ship.current_hp > 0)
-   .sort((a, b) => b.ship.speed - a.ship.speed);
+  ];
 
-  // Каждый корабль атакует по очереди
   for (const attacker of allShips) {
-    // Проверяем что атакующий ещё жив
+    // Пропускаем мертвых или тех, у кого на кулдауне оружие
     if (attacker.ship.current_hp <= 0) continue;
+    if (attacker.ship.current_cooldown > 0) continue;
 
     const enemyFleet = attacker.fleet === 1 ? fleet2 : fleet1;
     const attackerRace = attacker.fleet === 1 ? race1 : race2;
-    const defenderRace = attacker.fleet === 1 ? race2 : race1;
 
     // Выбираем цель
     const target = selectTarget(enemyFleet, 'weakest');
-    if (!target) break; // Все враги мертвы
+    if (!target) continue;
 
-    // Рассчитываем урон
-    const damageResult = calculateDamage(
-      attacker.ship,
-      target.ship,
-      attackerRace,
-      defenderRace
-    );
+    // Получаем оружие корабля
+    const weaponType = attacker.ship.weapon_type || 'laser';
+    const weapon = WEAPONS[weaponType];
 
-    // Применяем урон
-    target.ship.current_hp = Math.max(0, target.ship.current_hp - damageResult.damage);
+    if (!weapon) {
+      console.error(`❌ Неизвестный тип оружия: ${weaponType}`);
+      continue;
+    }
 
-    // Записываем действие
+    // Планируем атаку
+    plannedAttacks.push({
+      attacker,
+      target,
+      weapon,
+      attackerRace
+    });
+
+    // Устанавливаем кулдаун (будет применен после выстрела)
+    attacker.ship.current_cooldown = weapon.cooldown;
+  }
+
+  // ========================================
+  // ФАЗА 3: Применение урона (ВСЕ АТАКИ СРАЗУ)
+  // ========================================
+  const damageQueue = []; // Очередь урона для одновременного применения
+
+  for (const attack of plannedAttacks) {
+    const { attacker, target, weapon, attackerRace } = attack;
+
+    // Рассчитываем урон через новую систему
+    const damage = FORMULAS.calculateDamage(weapon, attacker.ship, target.ship);
+
+    // Добавляем в очередь урона
+    damageQueue.push({
+      target: target.ship,
+      damage,
+      attacker: attacker.ship,
+      weapon
+    });
+
+    // Логируем действие
     actions.push({
       round: roundNumber,
       attacker: {
         fleet: attacker.fleet,
         index: attacker.index,
         shipId: attacker.ship.id,
-        shipType: attacker.ship.ship_type
+        shipType: attacker.ship.ship_type,
+        weapon: weapon.name
       },
       target: {
         fleet: attacker.fleet === 1 ? 2 : 1,
@@ -147,20 +190,38 @@ function simulateRound(fleet1, fleet2, race1, race2, roundNumber) {
         shipId: target.ship.id,
         shipType: target.ship.ship_type
       },
-      damage: damageResult.damage,
-      isCrit: damageResult.isCrit,
-      blocked: damageResult.blocked,
-      targetRemainingHP: target.ship.current_hp,
-      isKill: target.ship.current_hp === 0,
-      attackerFleet: attacker.fleet // Для определения победителя
+      damage,
+      weaponUsed: weapon.nameRu,
+      targetRemainingHP: 0, // Обновим после применения урона
+      isKill: false,
+      attackerFleet: attacker.fleet
     });
+  }
 
-    // Проверяем победу ПОСЛЕ КАЖДОГО ДЕЙСТВИЯ
-    const enemiesAlive = enemyFleet.filter(s => s.current_hp > 0).length;
-    if (enemiesAlive === 0) {
-      // Враги уничтожены - победа атакующего флота
+  // Применяем весь урон ОДНОВРЕМЕННО
+  damageQueue.forEach(({ target, damage }) => {
+    target.current_hp = Math.max(0, target.current_hp - damage);
+  });
+
+  // Обновляем логи с финальным HP и статусом kill
+  actions.forEach(action => {
+    const targetFleet = action.target.fleet === 1 ? fleet1 : fleet2;
+    const targetShip = targetFleet[action.target.index];
+    action.targetRemainingHP = targetShip.current_hp;
+    action.isKill = targetShip.current_hp === 0;
+  });
+
+  // ========================================
+  // ФАЗА 4: Проверка условий победы
+  // ========================================
+  const fleet1Alive = fleet1.filter(s => s.current_hp > 0).length;
+  const fleet2Alive = fleet2.filter(s => s.current_hp > 0).length;
+
+  if (fleet1Alive === 0 || fleet2Alive === 0) {
+    const winningFleet = fleet1Alive > 0 ? 1 : 2;
+    if (actions.length > 0) {
       actions[actions.length - 1].isWinningBlow = true;
-      break;
+      actions[actions.length - 1].attackerFleet = winningFleet;
     }
   }
 
@@ -187,6 +248,7 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const winningAction = roundActions.find(a => a.isWinningBlow);
     if (winningAction) {
       winner = winningAction.attackerFleet;
+      console.log(`🏆 Победа через isWinningBlow: флот ${winner} в раунде ${round}`);
       break;
     }
 
@@ -194,14 +256,19 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const fleet1Alive = f1.filter(s => s.current_hp > 0).length;
     const fleet2Alive = f2.filter(s => s.current_hp > 0).length;
 
+    console.log(`📊 Раунд ${round}: Флот 1 живых: ${fleet1Alive}, Флот 2 живых: ${fleet2Alive}`);
+
     if (fleet1Alive === 0 && fleet2Alive === 0) {
       winner = 'draw';
+      console.log(`🏆 Ничья - оба флота уничтожены в раунде ${round}`);
       break;
     } else if (fleet1Alive === 0) {
       winner = 2;
+      console.log(`🏆 Победа флота 2 - флот 1 уничтожен в раунде ${round}`);
       break;
     } else if (fleet2Alive === 0) {
       winner = 1;
+      console.log(`🏆 Победа флота 1 - флот 2 уничтожен в раунде ${round}`);
       break;
     }
 
@@ -213,10 +280,14 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const fleet1HP = f1.reduce((sum, s) => sum + s.current_hp, 0);
     const fleet2HP = f2.reduce((sum, s) => sum + s.current_hp, 0);
 
+    console.log(`⏱️ Превышен лимит раундов. HP: Флот 1 = ${fleet1HP}, Флот 2 = ${fleet2HP}`);
+
     if (fleet1HP > fleet2HP) winner = 1;
     else if (fleet2HP > fleet1HP) winner = 2;
     else winner = 'draw';
   }
+
+  console.log(`🏁 ФИНАЛЬНЫЙ РЕЗУЛЬТАТ: winner = ${winner}, rounds = ${round}`);
 
   return {
     winner,
@@ -294,12 +365,33 @@ router.post('/start-pve', async (req, res) => {
 
     const playerFleet = shipsResult.rows;
 
-    // Проверяем что все корабли живы
-    const allAlive = playerFleet.every(ship => ship.current_hp > 0);
-    if (!allAlive) {
-      await client.query('ROLLBACK');
-      client.release();
-      return res.status(400).json({ error: 'Some ships are damaged. Repair them first.' });
+    // ✅ Применяем регенерацию HP перед проверкой
+    const playerRace = player.race;
+    for (const ship of playerFleet) {
+      const regeneratedHP = calculateRegeneratedHP(ship, playerRace);
+      ship.current_hp = regeneratedHP; // Обновляем текущий HP с учетом регенерации
+    }
+
+    // Проверяем что все корабли живы и имеют минимум 10% HP
+    const minHpPercent = 0.1;
+    for (const ship of playerFleet) {
+      if (ship.current_hp <= 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({ error: 'Some ships are destroyed. Repair them first.' });
+      }
+
+      const hpPercent = ship.current_hp / ship.max_hp;
+      if (hpPercent < minHpPercent) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({
+          error: `Ship with less than 10% HP cannot battle. Repair it first.`,
+          shipId: ship.id,
+          currentHP: ship.current_hp,
+          maxHP: ship.max_hp
+        });
+      }
     }
 
     // Вычисляем силу флота игрока
@@ -309,30 +401,54 @@ router.post('/start-pve', async (req, res) => {
 
     // Генерируем флот бота (±5% от силы игрока)
     const variance = 0.95 + Math.random() * 0.1;
-    const botPower = playerPower * variance;
+    const targetBotPower = playerPower * variance;
 
     // Создаём простой флот бота из фрегатов и эсминцев
     const botFleet = [];
-    const botShipTypes = ['frigate_t1', 'frigate_t2', 'destroyer_t1'];
+    const botShipTypes = [
+      { type: 'frigate_t1', hp: 1000, attack: 100, defense: 50, speed: 100 },
+      { type: 'frigate_t2', hp: 1500, attack: 150, defense: 80, speed: 90 },
+      { type: 'destroyer_t1', hp: 2500, attack: 250, defense: 120, speed: 70 }
+    ];
     const shipsCount = Math.min(5, playerFleet.length);
 
+    // Создаем базовый флот бота
     for (let i = 0; i < shipsCount; i++) {
-      const shipType = botShipTypes[Math.floor(Math.random() * botShipTypes.length)];
-      const powerPerShip = botPower / shipsCount;
+      const shipConfig = botShipTypes[Math.floor(Math.random() * botShipTypes.length)];
 
       botFleet.push({
         id: `bot_${i}`,
-        ship_type: shipType,
-        ship_class: shipType.split('_')[0],
-        tier: parseInt(shipType.split('_')[1].replace('t', '')),
+        ship_type: shipConfig.type,
+        ship_class: shipConfig.type.split('_')[0],
+        tier: parseInt(shipConfig.type.split('_')[1].replace('t', '')),
         race: 'bot',
-        max_hp: Math.floor(powerPerShip * 0.4),
-        current_hp: Math.floor(powerPerShip * 0.4),
-        attack: Math.floor(powerPerShip * 0.3),
-        defense: Math.floor(powerPerShip * 0.2),
-        speed: Math.floor(50 + Math.random() * 50)
+        max_hp: shipConfig.hp,
+        current_hp: shipConfig.hp,
+        attack: shipConfig.attack,
+        defense: shipConfig.defense,
+        speed: shipConfig.speed
       });
     }
+
+    // ✅ МАСШТАБИРУЕМ: вычисляем текущую силу бота и корректируем
+    const currentBotPower = botFleet.reduce((sum, ship) => {
+      return sum + (ship.current_hp * 1.0) + (ship.attack * 2.0) + (ship.defense * 1.5) + (ship.speed * 0.5);
+    }, 0);
+
+    const scaleFactor = targetBotPower / currentBotPower;
+
+    // Применяем масштабирование ко всем статам (включая скорость)
+    botFleet.forEach(ship => {
+      ship.max_hp = Math.floor(ship.max_hp * scaleFactor);
+      ship.current_hp = Math.floor(ship.current_hp * scaleFactor);
+      ship.attack = Math.floor(ship.attack * scaleFactor);
+      ship.defense = Math.floor(ship.defense * scaleFactor);
+      ship.speed = Math.floor(ship.speed * scaleFactor);
+    });
+
+    // ✅ СОХРАНЯЕМ НАЧАЛЬНОЕ СОСТОЯНИЕ ДЛЯ ВИЗУАЛИЗАЦИИ (до боя)
+    const playerFleetInitial = playerFleet.map(s => ({ ...s }));
+    const botFleetInitial = botFleet.map(s => ({ ...s }));
 
     // Симулируем бой
     const battleResult = simulateBattle(playerFleet, botFleet, player.race, 'bot');
@@ -393,17 +509,17 @@ router.post('/start-pve', async (req, res) => {
 
     const battleId = battleInsertResult.rows[0].id;
 
-    // Восстанавливаем HP всех кораблей игрока до максимума после боя
+    // Сохраняем урон кораблей после боя
+    console.log(`💾 Сохраняем HP после боя (${battleResult.fleet1Final.length} кораблей):`);
     for (const ship of battleResult.fleet1Final) {
+      console.log(`  Ship ID ${ship.id}: ${ship.current_hp}/${ship.max_hp} HP`);
       await client.query(`
         UPDATE galactic_empire_ships
-        SET current_hp = max_hp, updated_at = NOW()
-        WHERE id = $1
-      `, [ship.id]);
-
-      // Обновляем HP в объекте для ответа
-      ship.current_hp = ship.max_hp;
+        SET current_hp = $1, updated_at = NOW()
+        WHERE id = $2
+      `, [ship.current_hp, ship.id]);
     }
+    console.log(`✅ HP кораблей сохранен в БД`);
 
     // Начисляем награду если победа
     if (battleResult.winner === 1) {
@@ -417,14 +533,16 @@ router.post('/start-pve', async (req, res) => {
     await client.query('COMMIT');
     client.release();
 
+    console.log(`📤 Отправляем клиенту: winner = ${battleResult.winner}, reward = ${battleResult.winner === 1 ? reward : 0}`);
+
     res.json({
       success: true,
       battleId,
       winner: battleResult.winner,
       rounds: battleResult.rounds,
       battleLog: battleResult.battleLog,
-      playerFleet: battleResult.fleet1Final, // Теперь с восстановленным HP
-      botFleet: battleResult.fleet2Final,
+      playerFleet: playerFleetInitial, // ✅ Отправляем НАЧАЛЬНОЕ состояние - BattleLog покажет изменения
+      botFleet: botFleetInitial,
       reward: battleResult.winner === 1 ? reward : 0
     });
 

@@ -158,7 +158,16 @@ class TonDepositMonitor {
                     // Ожидаем формат комментария: "deposit_123456789" или просто "123456789"
                     const telegramIdMatch = comment.match(/(?:deposit_)?(\d{8,12})/);
                     if (telegramIdMatch) {
-                        return telegramIdMatch[1];
+                        const playerId = telegramIdMatch[1];
+
+                        // ✅ ФИЛЬТР: Игнорируем известные фантомные ID
+                        const phantomIds = ['00000000', '000000005749', '000000005245'];
+                        if (phantomIds.includes(playerId)) {
+                            // Не логируем ошибку - просто пропускаем
+                            return null;
+                        }
+
+                        return playerId;
                     }
                 } catch (commentErr) {
                     // Если не удалось извлечь комментарий, продолжаем
@@ -199,7 +208,11 @@ class TonDepositMonitor {
             );
 
             if (playerResult.rows.length === 0) {
-                console.log(`❌ Игрок ${playerId} не найден`);
+                // ⚠️ Не логируем для фантомных ID
+                const phantomIds = ['00000000', '000000005749', '000000005245'];
+                if (!phantomIds.includes(playerId)) {
+                    console.log(`❌ Игрок ${playerId} не найден`);
+                }
                 await client.query('ROLLBACK');
                 return;
             }

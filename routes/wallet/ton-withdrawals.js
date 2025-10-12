@@ -7,9 +7,9 @@ const router = express.Router();
 
 // POST /prepare - Подготовка вывода с блокировкой баланса
 router.post('/prepare', async (req, res) => {
-  const { telegram_id, amount } = req.body;
+  const { telegram_id, amount, wallet_address } = req.body;
 
-  console.log('Preparing withdrawal:', { telegram_id, amount });
+  console.log('Preparing withdrawal:', { telegram_id, amount, wallet_address });
 
   if (!telegram_id || !amount) {
     return res.status(400).json({ error: 'Telegram ID and amount are required' });
@@ -47,15 +47,29 @@ router.post('/prepare', async (req, res) => {
     const player = playerResult.rows[0];
     const playerBalance = parseFloat(player.ton || '0');
     const reservedBalance = parseFloat(player.ton_reserved || '0');
-    const availableBalance = playerBalance - reservedBalance;
     const withdrawAmount = parseFloat(amount);
+
+    // 🔒 SECURITY: Check active staking
+    const stakingResult = await client.query(`
+      SELECT COALESCE(SUM(stake_amount), 0) as total_staked
+      FROM ton_staking
+      WHERE player_id = $1 AND status = 'active'
+    `, [telegram_id]);
+
+    const totalStaked = parseFloat(stakingResult.rows[0]?.total_staked) || 0;
+
+    // Available balance = ton - ton_reserved - staked
+    const availableBalance = playerBalance - reservedBalance - totalStaked;
 
     if (withdrawAmount <= 0 || withdrawAmount > availableBalance || withdrawAmount < 0.1) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         error: 'Invalid amount',
-        available_balance: availableBalance,
-        requested_amount: withdrawAmount
+        available_balance: availableBalance.toFixed(4),
+        requested_amount: withdrawAmount,
+        staked: totalStaked.toFixed(4),
+        total_balance: playerBalance.toFixed(4),
+        reserved: reservedBalance.toFixed(4)
       });
     }
 
@@ -108,7 +122,9 @@ router.post('/prepare', async (req, res) => {
 router.post('/confirm', async (req, res) => {
   const { telegram_id, amount, transaction_hash, wallet_address, admin_key } = req.body;
 
-  if (admin_key !== 'cosmo_admin_2025') {
+  // 🔒 SECURITY: Check admin key from environment variable
+  const ADMIN_KEY = process.env.MANUAL_DEPOSIT_ADMIN_KEY;
+  if (!ADMIN_KEY || admin_key !== ADMIN_KEY) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
 

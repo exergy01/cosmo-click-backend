@@ -32,7 +32,7 @@ router.get('/daily-finance', async (req, res) => {
           COALESCE((SELECT SUM(mh.win_amount) FROM minigames_history mh WHERE DATE(mh.timestamp) = DATE(td.created_at)), 0) as games_payout,
           COALESCE((SELECT COUNT(*) FROM minigames_history mh WHERE DATE(mh.timestamp) = DATE(td.created_at)), 0) as games_count
         FROM ton_deposits td
-        WHERE td.created_at >= NOW() - INTERVAL '${parseInt(days)} days'
+        WHERE td.created_at >= NOW() - ($1 || ' days')::INTERVAL
         GROUP BY DATE(td.created_at)
 
         UNION ALL
@@ -69,7 +69,8 @@ router.get('/daily-finance', async (req, res) => {
       ORDER BY date DESC
     `;
 
-    const result = await pool.query(query);
+    // 🔒 SECURITY: Use parameterized query to prevent SQL injection
+    const result = await pool.query(query, [parseInt(days)]);
 
     // Подсчитываем общую статистику
     const summary = result.rows.reduce((acc, day) => ({

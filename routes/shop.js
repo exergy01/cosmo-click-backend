@@ -281,12 +281,18 @@ router.post('/buy', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
-    const player = await getPlayer(telegramId);
-    if (!player) {
+
+    // 🔒 SECURITY: Lock player row to prevent race conditions
+    const playerResult = await client.query(`
+      SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE
+    `, [telegramId]);
+
+    if (playerResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
+
+    const player = playerResult.rows[0];
 
     // 🔄 Автосбор перед покупкой
     const updatedBalance = await autoCollectBeforePurchase(client, player, systemId);
@@ -470,12 +476,19 @@ router.post('/buy-system', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const player = await getPlayer(telegramId);
-    if (!player) {
+
+    // 🔒 SECURITY: Lock player row to prevent race conditions
+    const playerResult = await client.query(`
+      SELECT * FROM players WHERE telegram_id = $1 FOR UPDATE
+    `, [telegramId]);
+
+    if (playerResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
-    
+
+    const player = playerResult.rows[0];
+
     const systemToBuy = shopData.systemData.find(system => system.id === systemId);
     if (!systemToBuy) {
       await client.query('ROLLBACK');
