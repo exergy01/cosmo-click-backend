@@ -318,8 +318,8 @@ router.post('/buy', async (req, res) => {
     
     if (!currencyToUse) {
       // 💣 ПРОВЕРЯЕМ, ЭТО БОМБА?
-      const isBomb = itemData.isBomb || itemId === 13;
-      
+      const isBomb = itemData.isBomb === true;
+
       if (isBomb && itemData.currency) {
         // Для бомбы используем указанную в shopData валюту
         currencyToUse = itemData.currency;
@@ -359,8 +359,8 @@ router.post('/buy', async (req, res) => {
       return res.status(400).json({ error: 'Insufficient funds' });
     }
 
-    // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБЫ (id=13)
-    const isBomb = itemData.isBomb || itemId === 13;
+    // 💣 ОСОБАЯ ЛОГИКА ДЛЯ БОМБЫ (только по флагу isBomb из shopData)
+    const isBomb = itemData.isBomb === true;
     
     if (isBomb) {
       console.log('💣 ПОКУПКА БОМБЫ - восстанавливаем лимиты астероидов!');

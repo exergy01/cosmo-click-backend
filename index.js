@@ -36,7 +36,7 @@ console.log('⏰ Cron задача для ежедневной сводки на
 // 🛡️ RATE LIMITING CONFIGURATION
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60, // 60 requests per minute per IP
+  max: 600, // 600 requests per minute per IP (увеличено для shop)
   message: { error: 'Too many requests, please slow down' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -62,7 +62,7 @@ app.use(express.json());
 
 // 🛡️ APPLY RATE LIMITING
 app.use('/api/', apiLimiter);
-app.use('/api/shop', financialLimiter);
+// app.use('/api/shop', financialLimiter); // ❌ ОТКЛЮЧЕНО - блокирует покупки в магазине
 app.use('/api/exchange', financialLimiter);
 app.use('/api/wallet', financialLimiter);
 

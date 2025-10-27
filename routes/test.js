@@ -384,6 +384,141 @@ ${message}
   }
 });
 
+// 👑 POST /api/test/grant-vip - Простая активация VIP (для теста)
+router.post('/grant-vip', async (req, res) => {
+  try {
+    const { playerId } = req.body;
+
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId обязателен' });
+    }
+
+    console.log('🧪 Активация VIP для тестового аккаунта:', playerId);
+
+    const pool = require('../db');
+
+    const result = await pool.query(`
+      UPDATE players
+      SET premium_no_ads_until = NOW() + INTERVAL '30 days'
+      WHERE telegram_id = $1
+      RETURNING telegram_id, first_name, premium_no_ads_until, premium_no_ads_forever
+    `, [playerId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Игрок не найден' });
+    }
+
+    const player = result.rows[0];
+
+    res.json({
+      success: true,
+      message: 'VIP успешно активирован на 30 дней!',
+      player: {
+        telegram_id: player.telegram_id,
+        name: player.first_name,
+        vip_until: player.premium_no_ads_until,
+        vip_forever: player.premium_no_ads_forever
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка активации VIP:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🔄 POST /api/test/reset-player - Полный сброс игрока
+router.post('/reset-player', async (req, res) => {
+  try {
+    const { playerId } = req.body;
+
+    if (!playerId) {
+      return res.status(400).json({ error: 'playerId обязателен' });
+    }
+
+    console.log('🧪 === ПОЛНЫЙ СБРОС ИГРОКА ===');
+    console.log('📋 Player ID:', playerId);
+
+    const pool = require('../db');
+
+    // Удаляем связанные данные БЕЗ транзакции (чтобы ошибки не ломали весь процесс)
+    console.log('🗑️ Удаляем связанные данные игрока...');
+
+    const deleteQueries = [
+      { table: 'balance_history', query: 'DELETE FROM balance_history WHERE telegram_id = $1' },
+      { table: 'player_actions', query: 'DELETE FROM player_actions WHERE telegram_id = $1' },
+      { table: 'player_quests', query: 'DELETE FROM player_quests WHERE telegram_id = $1' },
+      { table: 'quests', query: 'DELETE FROM quests WHERE telegram_id = $1' },
+      { table: 'suspicious_activity', query: 'DELETE FROM suspicious_activity WHERE telegram_id = $1' },
+      { table: 'ton_staking', query: 'DELETE FROM ton_staking WHERE telegram_id = $1' },
+      { table: 'systems', query: 'DELETE FROM systems WHERE telegram_id = $1' },
+      { table: 'honor_board', query: 'DELETE FROM honor_board WHERE telegram_id = $1' },
+      { table: 'referrals', query: 'DELETE FROM referrals WHERE referred_telegram_id = $1 OR referrer_telegram_id = $1' },
+      { table: 'galactic_empire_ships', query: 'DELETE FROM galactic_empire_ships WHERE player_id = $1' },
+      { table: 'galactic_empire_modules', query: 'DELETE FROM galactic_empire_modules WHERE player_id = $1' },
+      { table: 'cosmic_fleet_ships', query: 'DELETE FROM cosmic_fleet_ships WHERE player_id = $1' },
+      { table: 'cosmic_fleet_formations', query: 'DELETE FROM cosmic_fleet_formations WHERE telegram_id = $1' },
+      { table: 'battle_history', query: 'DELETE FROM battle_history WHERE player1_id = $1 OR player2_id = $1' },
+    ];
+
+    // Удаляем записи по одной БЕЗ транзакции
+    for (const { table, query } of deleteQueries) {
+      try {
+        const result = await pool.query(query, [playerId]);
+        console.log(`   ✅ ${table}: удалено ${result.rowCount} записей`);
+      } catch (err) {
+        console.log(`   ⚠️ ${table}: ${err.message} (пропускаем)`);
+      }
+    }
+
+    // Удаляем игрока
+    console.log('🗑️ Удаляем игрока из таблицы players...');
+    try {
+      await pool.query('DELETE FROM players WHERE telegram_id = $1', [playerId]);
+      console.log('   ✅ Игрок удален');
+    } catch (err) {
+      console.log(`   ⚠️ Ошибка удаления игрока: ${err.message}`);
+    }
+
+    // Создаем игрока заново
+    console.log('👤 Создаем игрока заново...');
+    try {
+      await pool.query(`
+        INSERT INTO players (
+          telegram_id, username, ccc, cs, ton,
+          asteroids, drones, cargo_levels, unlocked_systems,
+          asteroid_total_data, max_cargo_capacity_data, mining_speed_data,
+          collected_by_system, last_collection_time, color, created_at
+        ) VALUES (
+          $1, 'TestUser', 0, 0, 0,
+          '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[1]'::jsonb,
+          '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+          '{"1": 0, "2": 0, "3": 0, "4": 0}'::jsonb,
+          jsonb_build_object(
+            '1', NOW(), '2', NOW(), '3', NOW(), '4', NOW()
+          ),
+          '#00f0ff', NOW()
+        )
+      `, [playerId]);
+      console.log('   ✅ Игрок создан заново!');
+    } catch (err) {
+      throw new Error(`Не удалось создать игрока: ${err.message}`);
+    }
+
+    res.json({
+      success: true,
+      message: `Игрок ${playerId} полностью обнулен и создан заново!`,
+      player_id: playerId,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка сброса игрока:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 📋 Список всех доступных тестовых эндпоинтов
 router.get('/endpoints', (req, res) => {
   res.json({
