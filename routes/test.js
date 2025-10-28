@@ -29,7 +29,7 @@ const adminAuth = (req, res, next) => {
 // 📊 Тестовая ежедневная сводка
 router.post('/daily-summary', adminAuth, async (req, res) => {
   try {
-    console.log('🧪 Тестовый запрос ежедневной сводки от админа');
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовый запрос ежедневной сводки от админа');
     
     await sendDailySummary();
     
@@ -61,7 +61,7 @@ router.post('/notify-stars', adminAuth, async (req, res) => {
       });
     }
     
-    console.log('🧪 Тестовое Stars уведомление:', { playerData, amount });
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовое Stars уведомление:', { playerData, amount });
     
     await notifyStarsDeposit(playerData, amount);
     
@@ -94,7 +94,7 @@ router.post('/notify-ton', adminAuth, async (req, res) => {
       });
     }
     
-    console.log('🧪 Тестовое TON уведомление:', { playerData, amount, transactionHash });
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовое TON уведомление:', { playerData, amount, transactionHash });
     
     await notifyTonDeposit(playerData, amount, transactionHash || 'test_transaction_hash');
     
@@ -122,8 +122,8 @@ router.post('/send-player-message', async (req, res) => {
   try {
     const { playerId, message } = req.body;
     
-    console.log('🧪 === ТЕСТОВАЯ ОТПРАВКА СООБЩЕНИЯ ИГРОКУ ===');
-    console.log('📋 Параметры:', { playerId, message });
+    if (process.env.NODE_ENV === 'development') console.log('🧪 === ТЕСТОВАЯ ОТПРАВКА СООБЩЕНИЯ ИГРОКУ ===');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Параметры:', { playerId, message });
     
     if (!playerId || !message) {
       return res.status(400).json({ 
@@ -148,7 +148,7 @@ router.post('/send-player-message', async (req, res) => {
     }
     
     const player = playerResult.rows[0];
-    console.log('👤 Найден игрок:', player);
+    if (process.env.NODE_ENV === 'development') console.log('👤 Найден игрок:', player);
     
     // Отправляем сообщение
     const axios = require('axios');
@@ -164,7 +164,7 @@ router.post('/send-player-message', async (req, res) => {
     const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
     const testMessage = `🧪 <b>Тестовое сообщение от CosmoClick</b>\n\n${message}\n\n⏰ ${new Date().toLocaleString('ru-RU')}`;
     
-    console.log('📤 Отправляем в Telegram:', {
+    if (process.env.NODE_ENV === 'development') console.log('📤 Отправляем в Telegram:', {
       url: telegramUrl.replace(BOT_TOKEN, 'HIDDEN'),
       chat_id: playerId,
       message_preview: testMessage.substring(0, 100)
@@ -176,7 +176,7 @@ router.post('/send-player-message', async (req, res) => {
       parse_mode: 'HTML'
     });
     
-    console.log('📥 Ответ Telegram:', telegramResponse.data);
+    if (process.env.NODE_ENV === 'development') console.log('📥 Ответ Telegram:', telegramResponse.data);
     
     if (telegramResponse.data.ok) {
       res.json({
@@ -219,7 +219,7 @@ router.post('/notify-withdrawal', adminAuth, async (req, res) => {
       });
     }
     
-    console.log('🧪 Тестовое Withdrawal уведомление:', { playerData, amount, withdrawalId });
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовое Withdrawal уведомление:', { playerData, amount, withdrawalId });
     
     await notifyWithdrawalRequest(playerData, amount, withdrawalId);
     
@@ -252,7 +252,7 @@ router.post('/notify-critical', async (req, res) => {
       });
     }
     
-    console.log('🧪 Тестовое критическое уведомление:', { eventType, details });
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовое критическое уведомление:', { eventType, details });
     
     await notifyCriticalEvent(eventType, details);
     
@@ -285,7 +285,7 @@ router.post('/update-ton-rate', adminAuth, async (req, res) => {
       });
     }
     
-    console.log('🧪 Тестовое обновление курса TON:', newRate);
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовое обновление курса TON:', newRate);
     
     const pool = require('../db');
     
@@ -359,7 +359,7 @@ router.post('/simple-message', adminAuth, async (req, res) => {
       });
     }
     
-    console.log('🧪 Простое тестовое сообщение:', message);
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Простое тестовое сообщение:', message);
     
     await sendAdminNotification(`🧪 <b>Тестовое сообщение</b>
 
@@ -393,7 +393,7 @@ router.post('/grant-vip', async (req, res) => {
       return res.status(400).json({ error: 'playerId обязателен' });
     }
 
-    console.log('🧪 Активация VIP для тестового аккаунта:', playerId);
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Активация VIP для тестового аккаунта:', playerId);
 
     const pool = require('../db');
 
@@ -437,13 +437,13 @@ router.post('/reset-player', async (req, res) => {
       return res.status(400).json({ error: 'playerId обязателен' });
     }
 
-    console.log('🧪 === ПОЛНЫЙ СБРОС ИГРОКА ===');
-    console.log('📋 Player ID:', playerId);
+    if (process.env.NODE_ENV === 'development') console.log('🧪 === ПОЛНЫЙ СБРОС ИГРОКА ===');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Player ID:', playerId);
 
     const pool = require('../db');
 
     // Удаляем связанные данные БЕЗ транзакции (чтобы ошибки не ломали весь процесс)
-    console.log('🗑️ Удаляем связанные данные игрока...');
+    if (process.env.NODE_ENV === 'development') console.log('🗑️ Удаляем связанные данные игрока...');
 
     const deleteQueries = [
       { table: 'balance_history', query: 'DELETE FROM balance_history WHERE telegram_id = $1' },
@@ -466,23 +466,23 @@ router.post('/reset-player', async (req, res) => {
     for (const { table, query } of deleteQueries) {
       try {
         const result = await pool.query(query, [playerId]);
-        console.log(`   ✅ ${table}: удалено ${result.rowCount} записей`);
+        if (process.env.NODE_ENV === 'development') console.log(`   ✅ ${table}: удалено ${result.rowCount} записей`);
       } catch (err) {
-        console.log(`   ⚠️ ${table}: ${err.message} (пропускаем)`);
+        if (process.env.NODE_ENV === 'development') console.log(`   ⚠️ ${table}: ${err.message} (пропускаем)`);
       }
     }
 
     // Удаляем игрока
-    console.log('🗑️ Удаляем игрока из таблицы players...');
+    if (process.env.NODE_ENV === 'development') console.log('🗑️ Удаляем игрока из таблицы players...');
     try {
       await pool.query('DELETE FROM players WHERE telegram_id = $1', [playerId]);
-      console.log('   ✅ Игрок удален');
+      if (process.env.NODE_ENV === 'development') console.log('   ✅ Игрок удален');
     } catch (err) {
-      console.log(`   ⚠️ Ошибка удаления игрока: ${err.message}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   ⚠️ Ошибка удаления игрока: ${err.message}`);
     }
 
     // Создаем игрока заново
-    console.log('👤 Создаем игрока заново...');
+    if (process.env.NODE_ENV === 'development') console.log('👤 Создаем игрока заново...');
     try {
       await pool.query(`
         INSERT INTO players (
@@ -501,7 +501,7 @@ router.post('/reset-player', async (req, res) => {
           '#00f0ff', NOW()
         )
       `, [playerId]);
-      console.log('   ✅ Игрок создан заново!');
+      if (process.env.NODE_ENV === 'development') console.log('   ✅ Игрок создан заново!');
     } catch (err) {
       throw new Error(`Не удалось создать игрока: ${err.message}`);
     }

@@ -5,14 +5,14 @@ const { isAdmin } = require('./auth');
 
 const router = express.Router();
 
-console.log('🏦 Загружаем модуль финансового управления...');
+if (process.env.NODE_ENV === 'development') console.log('🏦 Загружаем модуль финансового управления...');
 
 // Получить список TON депозитов
 router.get('/ton-deposits', async (req, res) => {
     const { admin_id, status = 'unidentified' } = req.query;
 
     try {
-      console.log(`📋 Запрос TON депозитов от админа ${admin_id}, статус: ${status}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📋 Запрос TON депозитов от админа ${admin_id}, статус: ${status}`);
 
       if (!isAdmin(admin_id)) {
         return res.status(403).json({ error: 'Доступ запрещен' });
@@ -35,7 +35,7 @@ router.get('/ton-deposits', async (req, res) => {
 
       const result = await pool.query(query, params);
 
-      console.log(`✅ Найдено ${result.rows.length} TON депозитов`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} TON депозитов`);
 
       res.json({
         success: true,
@@ -57,7 +57,7 @@ router.get('/ton-stats', async (req, res) => {
     const { admin_id } = req.query;
 
     try {
-      console.log(`📊 Запрос статистики TON от админа ${admin_id}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📊 Запрос статистики TON от админа ${admin_id}`);
 
       if (!isAdmin(admin_id)) {
         return res.status(403).json({ error: 'Доступ запрещен' });
@@ -76,7 +76,7 @@ router.get('/ton-stats', async (req, res) => {
       const result = await pool.query(statsQuery);
       const stats = result.rows[0];
 
-      console.log('✅ Статистика TON собрана:', stats);
+      if (process.env.NODE_ENV === 'development') console.log('✅ Статистика TON собрана:', stats);
 
       res.json({
         success: true,
@@ -101,7 +101,7 @@ router.post('/process-ton-deposit', async (req, res) => {
     const { admin_id, deposit_id, player_id } = req.body;
 
     try {
-      console.log(`⚡ Обработка TON депозита: admin=${admin_id}, deposit=${deposit_id}, player=${player_id}`);
+      if (process.env.NODE_ENV === 'development') console.log(`⚡ Обработка TON депозита: admin=${admin_id}, deposit=${deposit_id}, player=${player_id}`);
 
       if (!isAdmin(admin_id)) {
         return res.status(403).json({ error: 'Доступ запрещен' });
@@ -180,7 +180,7 @@ router.post('/process-ton-deposit', async (req, res) => {
 
         await client.query('COMMIT');
 
-        console.log(`✅ Депозит обработан: ${player_id} +${depositAmount} TON (${currentBalance} → ${newBalance})`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Депозит обработан: ${player_id} +${depositAmount} TON (${currentBalance} → ${newBalance})`);
 
         res.json({
           success: true,
@@ -213,7 +213,7 @@ router.get('/withdrawals/pending', async (req, res) => {
   const { admin_id } = req.query;
 
   try {
-    console.log(`💸 Запрос ожидающих выводов от админа ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💸 Запрос ожидающих выводов от админа ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -242,7 +242,7 @@ router.get('/withdrawals/pending', async (req, res) => {
 
     const result = await pool.query(query);
 
-    console.log(`✅ Найдено ${result.rows.length} ожидающих выводов`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} ожидающих выводов`);
 
     res.json({
       success: true,
@@ -264,7 +264,7 @@ router.post('/withdrawals/approve', async (req, res) => {
   const { admin_id, withdrawal_id, action, reason } = req.body;
 
   try {
-    console.log(`✅ ${action} вывода ${withdrawal_id} админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ ${action} вывода ${withdrawal_id} админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -362,7 +362,7 @@ router.post('/withdrawals/approve', async (req, res) => {
 
       await client.query('COMMIT');
 
-      console.log(`✅ Вывод ${withdrawal_id} ${action === 'approve' ? 'одобрен' : 'отклонен'}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Вывод ${withdrawal_id} ${action === 'approve' ? 'одобрен' : 'отклонен'}`);
 
       res.json({
         success: true,
@@ -393,7 +393,7 @@ router.get('/deposits/orphaned', async (req, res) => {
   const { admin_id, min_amount = 0, time_hours = 24 } = req.query;
 
   try {
-    console.log(`🔍 Поиск потерянных депозитов админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Поиск потерянных депозитов админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -428,7 +428,7 @@ router.get('/deposits/orphaned', async (req, res) => {
 
     const result = await pool.query(query, [parseFloat(min_amount)]);
 
-    console.log(`✅ Найдено ${result.rows.length} потерянных депозитов`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} потерянных депозитов`);
 
     res.json({
       success: true,
@@ -454,7 +454,7 @@ router.post('/deposits/investigate', async (req, res) => {
   const { admin_id, deposit_id, search_params = {} } = req.body;
 
   try {
-    console.log(`🕵️ Расследование депозита ${deposit_id} админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🕵️ Расследование депозита ${deposit_id} админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -564,7 +564,7 @@ router.get('/alerts/critical', async (req, res) => {
   const { admin_id } = req.query;
 
   try {
-    console.log(`🚨 Получение критических алертов для админа ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚨 Получение критических алертов для админа ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -628,7 +628,7 @@ router.get('/alerts/critical', async (req, res) => {
       return priority_order[a.priority] - priority_order[b.priority];
     });
 
-    console.log(`🚨 Найдено ${all_alerts.length} критических алертов`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚨 Найдено ${all_alerts.length} критических алертов`);
 
     res.json({
       success: true,
@@ -650,6 +650,6 @@ router.get('/alerts/critical', async (req, res) => {
   }
 });
 
-console.log('✅ Модуль финансового управления загружен');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль финансового управления загружен');
 
 module.exports = router;

@@ -20,7 +20,7 @@ router.post('/fix-player-ids', async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    console.log('🔧 Starting migration: fix player_id in cosmic_fleet_ships');
+    if (process.env.NODE_ENV === 'development') console.log('🔧 Starting migration: fix player_id in cosmic_fleet_ships');
 
     // Begin transaction
     await pool.query('BEGIN');
@@ -39,7 +39,7 @@ router.post('/fix-player-ids', async (req, res) => {
         ORDER BY s.id
       `);
 
-      console.log('📊 Ships before migration:', beforeQuery.rows);
+      if (process.env.NODE_ENV === 'development') console.log('📊 Ships before migration:', beforeQuery.rows);
 
       // Step 1: Update ships to use telegram_id (while player_id is still integer)
       const updateResult = await pool.query(`
@@ -49,7 +49,7 @@ router.post('/fix-player-ids', async (req, res) => {
         WHERE s.player_id = p.id
       `);
 
-      console.log('✅ Step 1: Ensured player_id references are correct');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Step 1: Ensured player_id references are correct');
 
       // Step 2: Create mapping table temporarily
       await pool.query(`
@@ -66,7 +66,7 @@ router.post('/fix-player-ids', async (req, res) => {
         WHERE s.player_id = p.id
       `);
 
-      console.log('✅ Step 2: Updated player_id to telegram_id values');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Step 2: Updated player_id to telegram_id values');
 
       // Step 4: Change column type to text
       await pool.query(`
@@ -74,9 +74,9 @@ router.post('/fix-player-ids', async (req, res) => {
         ALTER COLUMN player_id TYPE text USING player_id::text
       `);
 
-      console.log('✅ Step 3: Changed column type to TEXT');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Step 3: Changed column type to TEXT');
 
-      console.log('✅ Updated ships:', updateResult.rows);
+      if (process.env.NODE_ENV === 'development') console.log('✅ Updated ships:', updateResult.rows);
 
       // Verify the migration
       const afterQuery = await pool.query(`
@@ -94,7 +94,7 @@ router.post('/fix-player-ids', async (req, res) => {
         ORDER BY s.id
       `);
 
-      console.log('🔍 Ships after migration:', afterQuery.rows);
+      if (process.env.NODE_ENV === 'development') console.log('🔍 Ships after migration:', afterQuery.rows);
 
       // Check if all ships are correctly migrated
       const mismatches = afterQuery.rows.filter(row => row.status !== 'CORRECT');

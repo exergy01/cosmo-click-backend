@@ -13,7 +13,7 @@ const bot = new Telegraf(BOT_TOKEN);
 router.post('/create-invoice', async (req, res) => {
   const { telegram_id, amount, description } = req.body;
   
-  console.log('Creating Stars invoice:', { telegram_id, amount });
+  if (process.env.NODE_ENV === 'development') console.log('Creating Stars invoice:', { telegram_id, amount });
   
   if (!telegram_id || !amount) {
     return res.status(400).json({ error: 'Telegram ID and amount are required' });
@@ -43,7 +43,7 @@ router.post('/create-invoice', async (req, res) => {
       prices: [{ label: `${amount} Stars`, amount: amount }]
     });
 
-    console.log('Stars invoice created:', { telegram_id, amount, invoice });
+    if (process.env.NODE_ENV === 'development') console.log('Stars invoice created:', { telegram_id, amount, invoice });
     
     // НОВОЕ: Записываем попытку пополнения в базу
     try {
@@ -61,7 +61,7 @@ router.post('/create-invoice', async (req, res) => {
           'pending' // Статус: ожидание оплаты
         ]
       );
-      console.log('Invoice attempt recorded in database');
+      if (process.env.NODE_ENV === 'development') console.log('Invoice attempt recorded in database');
     } catch (dbErr) {
       console.error('Failed to record invoice attempt:', dbErr);
       // Не падаем, продолжаем работу
@@ -94,7 +94,7 @@ router.post('/create-invoice', async (req, res) => {
 
 // POST /webhook - Webhook для обработки Stars платежей
 router.post('/webhook', async (req, res) => {
-  console.log('Stars webhook received:', req.body);
+  if (process.env.NODE_ENV === 'development') console.log('Stars webhook received:', req.body);
   
   const { pre_checkout_query, message } = req.body;
   
@@ -184,7 +184,7 @@ router.post('/webhook', async (req, res) => {
         
         await client.query('COMMIT');
         
-        console.log('Stars payment processed:', { playerId, amount });
+        if (process.env.NODE_ENV === 'development') console.log('Stars payment processed:', { playerId, amount });
         
         // Отправляем уведомления
         await notifyStarsDeposit(playerData, amount);
@@ -237,7 +237,7 @@ router.post('/webhook', async (req, res) => {
 router.post('/cancel-invoice', async (req, res) => {
   const { telegram_id, amount, status } = req.body;
   
-  console.log('Cancelling Stars invoice:', { telegram_id, amount, status });
+  if (process.env.NODE_ENV === 'development') console.log('Cancelling Stars invoice:', { telegram_id, amount, status });
   
   try {
     // Обновляем статус pending транзакции

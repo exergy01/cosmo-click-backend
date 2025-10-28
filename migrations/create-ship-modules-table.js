@@ -6,8 +6,8 @@
 const pool = require('../db');
 
 async function createShipModulesTable() {
-  console.log('🔧 === CREATING SHIP MODULES TABLE ===');
-  console.log('⏰ Time:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🔧 === CREATING SHIP MODULES TABLE ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Time:', new Date().toISOString());
 
   const client = await pool.connect();
 
@@ -17,7 +17,7 @@ async function createShipModulesTable() {
     // ========================================
     // 1. Создаем таблицу ship_modules
     // ========================================
-    console.log('📝 Creating ship_modules table...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Creating ship_modules table...');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS ship_modules (
@@ -39,12 +39,12 @@ async function createShipModulesTable() {
       )
     `);
 
-    console.log('✅ ship_modules table created');
+    if (process.env.NODE_ENV === 'development') console.log('✅ ship_modules table created');
 
     // ========================================
     // 2. Создаем таблицу module_inventory (инвентарь модулей игрока)
     // ========================================
-    console.log('📝 Creating module_inventory table...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Creating module_inventory table...');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS module_inventory (
@@ -64,12 +64,12 @@ async function createShipModulesTable() {
       )
     `);
 
-    console.log('✅ module_inventory table created');
+    if (process.env.NODE_ENV === 'development') console.log('✅ module_inventory table created');
 
     // ========================================
     // 3. Создаем таблицу module_upgrades (история апгрейдов)
     // ========================================
-    console.log('📝 Creating module_upgrades table...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Creating module_upgrades table...');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS module_upgrades (
@@ -87,12 +87,12 @@ async function createShipModulesTable() {
       )
     `);
 
-    console.log('✅ module_upgrades table created');
+    if (process.env.NODE_ENV === 'development') console.log('✅ module_upgrades table created');
 
     // ========================================
     // 4. Добавляем индексы для производительности
     // ========================================
-    console.log('📝 Creating indexes...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Creating indexes...');
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_ship_modules_ship_id
@@ -114,12 +114,12 @@ async function createShipModulesTable() {
         ON module_upgrades(player_id);
     `);
 
-    console.log('✅ Indexes created');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Indexes created');
 
     // ========================================
     // 5. Добавляем колонку materials к игрокам (если нет)
     // ========================================
-    console.log('📝 Adding materials column to players...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Adding materials column to players...');
 
     await client.query(`
       DO $$
@@ -135,11 +135,11 @@ async function createShipModulesTable() {
       END $$;
     `);
 
-    console.log('✅ materials column checked/added');
+    if (process.env.NODE_ENV === 'development') console.log('✅ materials column checked/added');
 
     await client.query('COMMIT');
 
-    console.log('\\n🏁 Ship modules tables migration completed successfully');
+    if (process.env.NODE_ENV === 'development') console.log('\\n🏁 Ship modules tables migration completed successfully');
 
     // ========================================
     // 6. Показываем структуру таблиц
@@ -151,7 +151,7 @@ async function createShipModulesTable() {
       ORDER BY table_name, ordinal_position
     `);
 
-    console.log('\\n📊 Tables structure:');
+    if (process.env.NODE_ENV === 'development') console.log('\\n📊 Tables structure:');
     console.table(tableInfo.rows);
 
     return { success: true };
@@ -170,7 +170,7 @@ async function createShipModulesTable() {
 if (require.main === module) {
   createShipModulesTable()
     .then(() => {
-      console.log('\\n✅ Migration script completed');
+      if (process.env.NODE_ENV === 'development') console.log('\\n✅ Migration script completed');
       process.exit(0);
     })
     .catch((error) => {

@@ -5,7 +5,7 @@ async function setupTestPlayer() {
   try {
     const testTelegramId = '123456789';
 
-    console.log('Setting up test player...');
+    if (process.env.NODE_ENV === 'development') console.log('Setting up test player...');
 
     // Проверяем, есть ли уже такой игрок
     const existingPlayer = await client.query(
@@ -21,7 +21,7 @@ async function setupTestPlayer() {
         WHERE telegram_id = $1
       `, [testTelegramId]);
 
-      console.log('✅ Test player updated:', {
+      if (process.env.NODE_ENV === 'development') console.log('✅ Test player updated:', {
         telegram_id: testTelegramId,
         ton_balance: 5.0,
         ton_reserved: 0
@@ -34,7 +34,7 @@ async function setupTestPlayer() {
         ) VALUES ($1, $2, $3, $4, $5, NOW())
       `, [testTelegramId, 'testuser', 'Test User', 5.0, 0]);
 
-      console.log('✅ Test player created:', {
+      if (process.env.NODE_ENV === 'development') console.log('✅ Test player created:', {
         telegram_id: testTelegramId,
         username: 'testuser',
         ton_balance: 5.0,
@@ -48,7 +48,7 @@ async function setupTestPlayer() {
       [testTelegramId]
     );
 
-    console.log('Final player state:', finalCheck.rows[0]);
+    if (process.env.NODE_ENV === 'development') console.log('Final player state:', finalCheck.rows[0]);
 
   } catch (err) {
     console.error('Setup error:', err);

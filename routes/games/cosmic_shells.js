@@ -49,7 +49,7 @@ function createSecureGame(betAmount) {
 
 // Функция получения лимитов с правильной логикой дат
 async function getGameLimits(telegramId) {
-    console.log('🛸 Getting game limits for:', telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('🛸 Getting game limits for:', telegramId);
     
     let limitsResult = await pool.query(`
         SELECT daily_games, daily_ads_watched, last_reset_date 
@@ -63,7 +63,7 @@ async function getGameLimits(telegramId) {
             INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
             VALUES ($1, 'cosmic_shells', 0, 0, CURRENT_DATE)
         `, [telegramId]);
-        console.log('🛸 Created new limits record for player:', telegramId);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Created new limits record for player:', telegramId);
         return { dailyGames: 0, dailyAds: 0 };
     }
 
@@ -84,7 +84,7 @@ async function getGameLimits(telegramId) {
     const resetInfo = needsReset.rows[0];
     const shouldReset = resetInfo.needs_reset;
     
-    console.log('🛸 DETAILED Date check:', {
+    if (process.env.NODE_ENV === 'development') console.log('🛸 DETAILED Date check:', {
         lastResetDate: resetInfo.last_reset,
         currentDate: resetInfo.current_date,
         shouldReset: shouldReset,
@@ -93,7 +93,7 @@ async function getGameLimits(telegramId) {
     });
     
     if (shouldReset) {
-        console.log('🛸 RESETTING limits - detected new day');
+        if (process.env.NODE_ENV === 'development') console.log('🛸 RESETTING limits - detected new day');
         
         await pool.query(`
             UPDATE player_game_limits 
@@ -105,7 +105,7 @@ async function getGameLimits(telegramId) {
     }
 
     // Тот же день - используем существующие значения
-    console.log('🛸 SAME DAY - using existing limits:', { 
+    if (process.env.NODE_ENV === 'development') console.log('🛸 SAME DAY - using existing limits:', {
         dailyGames: limits.daily_games, 
         dailyAds: limits.daily_ads_watched 
     });
@@ -123,7 +123,7 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
     const canPlayFree = gamesLeft > 0;
     const canWatchAd = dailyAds < MAX_AD_GAMES && gamesLeft === 0;
     
-    console.log('🛸 ИСПРАВЛЕННЫЙ расчет игр (25 + 10*20 = 250 MAX):', {
+    if (process.env.NODE_ENV === 'development') console.log('🛸 ИСПРАВЛЕННЫЙ расчет игр (25 + 10*20 = 250 MAX):', {
         dailyGames,
         dailyAds,
         totalGamesAvailable,
@@ -139,7 +139,7 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
 // Получить статус игры (лимиты, статистика)
 router.get('/status/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Cosmic shells status request for:', req.params.telegramId);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Cosmic shells status request for:', req.params.telegramId);
         const { telegramId } = req.params;
         
         const { dailyGames, dailyAds } = await getGameLimits(telegramId);
@@ -170,7 +170,7 @@ router.get('/status/:telegramId', async (req, res) => {
 
         const balance = balanceResult.rows[0]?.ccc || 0;
 
-        console.log('🛸 Cosmic shells status response:', { 
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Cosmic shells status response:', {
             balance: parseFloat(balance), 
             dailyGames, 
             dailyAds,
@@ -203,13 +203,13 @@ router.get('/status/:telegramId', async (req, res) => {
 // Начать новую игру
 router.post('/start-game/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Starting new cosmic shells game for:', req.params.telegramId, 'Bet:', req.body.betAmount);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Starting new cosmic shells game for:', req.params.telegramId, 'Bet:', req.body.betAmount);
         const { telegramId } = req.params;
         const { betAmount } = req.body;
 
         // Валидация ставки
         if (!betAmount || betAmount < MIN_BET || betAmount > MAX_BET) {
-            console.log('🛸❌ Invalid bet amount:', betAmount);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Invalid bet amount:', betAmount);
             return res.status(400).json({
                 success: false,
                 error: `Ставка должна быть от ${MIN_BET} до ${MAX_BET} CCC`
@@ -234,7 +234,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
             }
 
             const currentBalance = parseFloat(balanceResult.rows[0].ccc);
-            console.log('🛸 Player balance:', currentBalance, 'Bet:', betAmount);
+            if (process.env.NODE_ENV === 'development') console.log('🛸 Player balance:', currentBalance, 'Bet:', betAmount);
             
             if (currentBalance < betAmount) {
                 await pool.query('ROLLBACK');
@@ -264,7 +264,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
 
             // Создаем безопасную игру
             const game = createSecureGame(betAmount);
-            console.log('🛸 Created game:', { gameId: game.gameId, winningPosition: game.winningPosition, positions: game.positions });
+            if (process.env.NODE_ENV === 'development') console.log('🛸 Created game:', { gameId: game.gameId, winningPosition: game.winningPosition, positions: game.positions });
 
             // Сохраняем игру в базе
             await pool.query(`
@@ -280,7 +280,7 @@ router.post('/start-game/:telegramId', async (req, res) => {
 
             await pool.query('COMMIT');
 
-            console.log('🛸✅ Game started successfully:', game.gameId);
+            if (process.env.NODE_ENV === 'development') console.log('🛸✅ Game started successfully:', game.gameId);
             res.json({
                 success: true,
                 gameId: game.gameId,
@@ -301,13 +301,13 @@ router.post('/start-game/:telegramId', async (req, res) => {
 // Сделать выбор тарелки
 router.post('/make-choice/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Making choice for:', req.params.telegramId, 'Body:', req.body);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Making choice for:', req.params.telegramId, 'Body:', req.body);
         const { telegramId } = req.params;
         const { gameId, chosenPosition } = req.body;
 
         // Валидация выбора
         if (chosenPosition < 0 || chosenPosition > 2) {
-            console.log('🛸❌ Invalid position:', chosenPosition);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Invalid position:', chosenPosition);
             return res.status(400).json({
                 success: false,
                 error: 'Неверная позиция тарелки'
@@ -315,7 +315,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
         }
 
         // Находим игру в истории
-        console.log('🛸 Looking for game:', gameId);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Looking for game:', gameId);
         const gameResult = await pool.query(`
             SELECT * FROM minigames_history 
             WHERE telegram_id = $1 AND game_result->>'gameId' = $2 
@@ -323,7 +323,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
         `, [telegramId, gameId]);
 
         if (gameResult.rows.length === 0) {
-            console.log('🛸❌ Game not found:', gameId);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Game not found:', gameId);
             return res.status(400).json({
                 success: false,
                 error: 'Игра не найдена'
@@ -332,11 +332,11 @@ router.post('/make-choice/:telegramId', async (req, res) => {
 
         const gameData = gameResult.rows[0].game_result;
         const betAmount = gameResult.rows[0].bet_amount;
-        console.log('🛸 Found game data:', gameData);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Found game data:', gameData);
 
         // Проверяем что игра еще не завершена
         if (gameData.status !== 'started') {
-            console.log('🛸❌ Game already completed:', gameData.status);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Game already completed:', gameData.status);
             return res.status(400).json({
                 success: false,
                 error: 'Игра уже завершена'
@@ -348,7 +348,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
         const winAmount = isWin ? betAmount * WIN_MULTIPLIER : 0;
         const profit = winAmount - betAmount;
 
-        console.log('🛸 Game result:', { 
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Game result:', {
             chosenPosition, 
             winningPosition: gameData.winningPosition, 
             isWin, 
@@ -366,9 +366,9 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                     'UPDATE players SET ccc = ccc + $1 WHERE telegram_id = $2',
                     [winAmount, telegramId]
                 );
-                console.log('🛸✅ Win! Added to balance:', winAmount);
+                if (process.env.NODE_ENV === 'development') console.log('🛸✅ Win! Added to balance:', winAmount);
             } else {
-                console.log('🛸💀 Loss! No money returned');
+                if (process.env.NODE_ENV === 'development') console.log('🛸💀 Loss! No money returned');
             }
 
             // Обновляем джекпот при проигрыше
@@ -385,9 +385,9 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                     WHERE id = 1
                 `, [jackpotContribution]);
                 
-                console.log('🛸💰 Added to jackpot:', jackpotContribution, 'from bet:', betAmount);
+                if (process.env.NODE_ENV === 'development') console.log('🛸💰 Added to jackpot:', jackpotContribution, 'from bet:', betAmount);
             } else {
-                console.log('🛸🎉 Win! No jackpot contribution');
+                if (process.env.NODE_ENV === 'development') console.log('🛸🎉 Win! No jackpot contribution');
             }
 
             // Обновляем историю игры
@@ -428,11 +428,11 @@ router.post('/make-choice/:telegramId', async (req, res) => {
                 WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
             `, [telegramId]);
 
-            console.log('🛸🎮 Increased daily_games counter for player:', telegramId);
+            if (process.env.NODE_ENV === 'development') console.log('🛸🎮 Increased daily_games counter for player:', telegramId);
 
             await pool.query('COMMIT');
 
-            console.log('🛸✅ Choice processed successfully');
+            if (process.env.NODE_ENV === 'development') console.log('🛸✅ Choice processed successfully');
             res.json({
                 success: true,
                 result: {
@@ -460,7 +460,7 @@ router.post('/make-choice/:telegramId', async (req, res) => {
 // Получить историю игр
 router.get('/history/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Getting game history for:', req.params.telegramId);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Getting game history for:', req.params.telegramId);
         const { telegramId } = req.params;
         const { limit = 1000, offset = 0 } = req.query; // ✅ ИСПРАВЛЕНО: по умолчанию 1000 вместо 20
 
@@ -508,7 +508,7 @@ router.get('/history/:telegramId', async (req, res) => {
             WHERE telegram_id = $1 AND game_type = 'cosmic_shells'
         `, [telegramId]);
 
-        console.log('🛸 Game history response:', { 
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Game history response:', {
             total: parseInt(totalResult.rows[0].total_games),
             games: formattedHistory.length,
             limit: parseInt(limit),
@@ -531,15 +531,15 @@ router.get('/history/:telegramId', async (req, res) => {
 // ✅ ИСПРАВЛЕНО: Реклама дает 20 игр за раз (как в слотах)
 router.post('/watch-ad/:telegramId', async (req, res) => {
     try {
-        console.log('🛸 Watch ad request for shells:', req.params.telegramId);
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Watch ad request for shells:', req.params.telegramId);
         const { telegramId } = req.params;
 
         const { dailyGames, dailyAds } = await getGameLimits(telegramId);
         
-        console.log('🛸 Current shell limits before ad:', { dailyGames, dailyAds });
+        if (process.env.NODE_ENV === 'development') console.log('🛸 Current shell limits before ad:', { dailyGames, dailyAds });
         
         if (dailyAds >= MAX_AD_GAMES) {
-            console.log('🛸❌ Shell ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Shell ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
             return res.status(400).json({
                 success: false,
                 error: `Дневной лимит рекламы исчерпан (${MAX_AD_GAMES}/${MAX_AD_GAMES})`,
@@ -551,7 +551,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
         const maxTotalGames = DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD);
         
         if (totalGamesPlayed >= maxTotalGames) {
-            console.log('🛸❌ Total shell games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
+            if (process.env.NODE_ENV === 'development') console.log('🛸❌ Total shell games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
             return res.status(400).json({
                 success: false,
                 error: `Максимальный дневной лимит игр исчерпан (${maxTotalGames} игр)`,
@@ -569,7 +569,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
         const newAdsWatched = dailyAds + 1;
         const adsRemaining = MAX_AD_GAMES - newAdsWatched;
 
-        console.log('🛸✅ Shell ad watched successfully! New stats:', {
+        if (process.env.NODE_ENV === 'development') console.log('🛸✅ Shell ad watched successfully! New stats:', {
             adsWatched: newAdsWatched,
             adsRemaining,
             maxAds: MAX_AD_GAMES,

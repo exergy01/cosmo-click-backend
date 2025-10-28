@@ -10,7 +10,7 @@ async function testApprove() {
   try {
     const submissionId = 10; // pending заявка
 
-    console.log(`🧪 Тестируем одобрение заявки ID: ${submissionId}\n`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 Тестируем одобрение заявки ID: ${submissionId}\n`);
 
     // Получаем заявку
     const submissionResult = await pool.query(
@@ -19,15 +19,15 @@ async function testApprove() {
     );
 
     if (submissionResult.rows.length === 0) {
-      console.log('❌ Заявка не найдена');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Заявка не найдена');
       return;
     }
 
     const submission = submissionResult.rows[0];
-    console.log('📋 Заявка:');
-    console.log(`  telegram_id: ${submission.telegram_id}`);
-    console.log(`  quest_key: ${submission.quest_key}`);
-    console.log(`  status: ${submission.status}\n`);
+    if (process.env.NODE_ENV === 'development') console.log('📋 Заявка:');
+    if (process.env.NODE_ENV === 'development') console.log(`  telegram_id: ${submission.telegram_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  quest_key: ${submission.quest_key}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  status: ${submission.status}\n`);
 
     // Маппинг quest_key → quest_name
     const questKeyToName = {
@@ -40,7 +40,7 @@ async function testApprove() {
     };
 
     const questName = questKeyToName[submission.quest_key] || submission.quest_key;
-    console.log(`🔄 Маппинг: "${submission.quest_key}" → "${questName}"\n`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔄 Маппинг: "${submission.quest_key}" → "${questName}"\n`);
 
     // Ищем квест в таблице quests
     const questResult = await pool.query(
@@ -49,24 +49,24 @@ async function testApprove() {
     );
 
     if (questResult.rows.length === 0) {
-      console.log(`❌ Квест "${questName}" НЕ НАЙДЕН в таблице quests!`);
-      console.log('\n📝 Доступные квесты брокеров:');
+      if (process.env.NODE_ENV === 'development') console.log(`❌ Квест "${questName}" НЕ НАЙДЕН в таблице quests!`);
+      if (process.env.NODE_ENV === 'development') console.log('\n📝 Доступные квесты брокеров:');
       const allQuests = await pool.query(`
         SELECT quest_id, quest_name, quest_type
         FROM quests
         WHERE quest_name ILIKE '%roboforex%' OR quest_name ILIKE '%instaforex%' OR quest_name ILIKE '%exness%'
       `);
       allQuests.rows.forEach(q => {
-        console.log(`  - ID: ${q.quest_id}, Name: "${q.quest_name}", Type: ${q.quest_type}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  - ID: ${q.quest_id}, Name: "${q.quest_name}", Type: ${q.quest_type}`);
       });
       return;
     }
 
     const quest = questResult.rows[0];
-    console.log('✅ Квест найден:');
-    console.log(`  quest_id: ${quest.quest_id}`);
-    console.log(`  quest_name: ${quest.quest_name}`);
-    console.log(`  reward_cs: ${quest.reward_cs}\n`);
+    if (process.env.NODE_ENV === 'development') console.log('✅ Квест найден:');
+    if (process.env.NODE_ENV === 'development') console.log(`  quest_id: ${quest.quest_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  quest_name: ${quest.quest_name}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  reward_cs: ${quest.reward_cs}\n`);
 
     // Проверяем есть ли уже выполненное задание
     const existingQuest = await pool.query(`
@@ -77,20 +77,20 @@ async function testApprove() {
     `, [submission.telegram_id, questName]);
 
     if (existingQuest.rows.length > 0) {
-      console.log('⚠️ Игрок уже выполнил это задание!');
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Игрок уже выполнил это задание!');
       return;
     }
 
-    console.log('✅ Игрок ещё не выполнял это задание\n');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Игрок ещё не выполнял это задание\n');
 
-    console.log('📝 Симуляция INSERT в player_quests:');
-    console.log(`  telegram_id: ${submission.telegram_id}`);
-    console.log(`  quest_id: ${quest.quest_id}`);
-    console.log(`  completed: false`);
-    console.log(`  quest_key: ${submission.quest_key}`);
-    console.log(`  reward_cs: ${quest.reward_cs}`);
+    if (process.env.NODE_ENV === 'development') console.log('📝 Симуляция INSERT в player_quests:');
+    if (process.env.NODE_ENV === 'development') console.log(`  telegram_id: ${submission.telegram_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  quest_id: ${quest.quest_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  completed: false`);
+    if (process.env.NODE_ENV === 'development') console.log(`  quest_key: ${submission.quest_key}`);
+    if (process.env.NODE_ENV === 'development') console.log(`  reward_cs: ${quest.reward_cs}`);
 
-    console.log('\n✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ! Одобрение должно работать.');
+    if (process.env.NODE_ENV === 'development') console.log('\n✅ ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ! Одобрение должно работать.');
 
   } catch (err) {
     console.error('\n❌ ОШИБКА:', err.message);

@@ -98,6 +98,24 @@ function selectTarget(enemyFleet, strategy = 'weakest') {
 }
 
 /**
+ * Обновить кулдауны всех кораблей
+ */
+function updateCooldowns(ships) {
+  ships.forEach(ship => {
+    if (ship.current_hp > 0 && ship.current_cooldown > 0) {
+      ship.current_cooldown = Math.max(0, ship.current_cooldown - 1000); // -1 секунда
+    }
+  });
+}
+
+/**
+ * Проверить, может ли корабль стрелять
+ */
+function canShoot(ship) {
+  return ship.current_hp > 0 && ship.current_cooldown <= 0;
+}
+
+/**
  * ⚔️ НОВАЯ 4-ФАЗНАЯ СИСТЕМА БОЯ (ОДНОВРЕМЕННЫЕ АТАКИ)
  * Все корабли атакуют одновременно, урон применяется в конце раунда
  */
@@ -108,11 +126,7 @@ function simulateRound(fleet1, fleet2, race1, race2, roundNumber) {
   // ========================================
   // ФАЗА 1: Обновление кулдаунов оружия
   // ========================================
-  [...fleet1, ...fleet2].forEach(ship => {
-    if (ship.current_hp > 0 && ship.current_cooldown > 0) {
-      ship.current_cooldown = Math.max(0, ship.current_cooldown - 1000); // -1 секунда
-    }
-  });
+  updateCooldowns([...fleet1, ...fleet2]);
 
   // ========================================
   // ФАЗА 2: Планирование атак (ВСЕ ОДНОВРЕМЕННО)
@@ -123,9 +137,8 @@ function simulateRound(fleet1, fleet2, race1, race2, roundNumber) {
   ];
 
   for (const attacker of allShips) {
-    // Пропускаем мертвых или тех, у кого на кулдауне оружие
-    if (attacker.ship.current_hp <= 0) continue;
-    if (attacker.ship.current_cooldown > 0) continue;
+    // Пропускаем тех, кто не может стрелять
+    if (!canShoot(attacker.ship)) continue;
 
     const enemyFleet = attacker.fleet === 1 ? fleet2 : fleet1;
     const attackerRace = attacker.fleet === 1 ? race1 : race2;
@@ -248,7 +261,7 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const winningAction = roundActions.find(a => a.isWinningBlow);
     if (winningAction) {
       winner = winningAction.attackerFleet;
-      console.log(`🏆 Победа через isWinningBlow: флот ${winner} в раунде ${round}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🏆 Победа через isWinningBlow: флот ${winner} в раунде ${round}`);
       break;
     }
 
@@ -256,19 +269,19 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const fleet1Alive = f1.filter(s => s.current_hp > 0).length;
     const fleet2Alive = f2.filter(s => s.current_hp > 0).length;
 
-    console.log(`📊 Раунд ${round}: Флот 1 живых: ${fleet1Alive}, Флот 2 живых: ${fleet2Alive}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Раунд ${round}: Флот 1 живых: ${fleet1Alive}, Флот 2 живых: ${fleet2Alive}`);
 
     if (fleet1Alive === 0 && fleet2Alive === 0) {
       winner = 'draw';
-      console.log(`🏆 Ничья - оба флота уничтожены в раунде ${round}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🏆 Ничья - оба флота уничтожены в раунде ${round}`);
       break;
     } else if (fleet1Alive === 0) {
       winner = 2;
-      console.log(`🏆 Победа флота 2 - флот 1 уничтожен в раунде ${round}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🏆 Победа флота 2 - флот 1 уничтожен в раунде ${round}`);
       break;
     } else if (fleet2Alive === 0) {
       winner = 1;
-      console.log(`🏆 Победа флота 1 - флот 2 уничтожен в раунде ${round}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🏆 Победа флота 1 - флот 2 уничтожен в раунде ${round}`);
       break;
     }
 
@@ -280,14 +293,14 @@ function simulateBattle(fleet1, fleet2, race1, race2) {
     const fleet1HP = f1.reduce((sum, s) => sum + s.current_hp, 0);
     const fleet2HP = f2.reduce((sum, s) => sum + s.current_hp, 0);
 
-    console.log(`⏱️ Превышен лимит раундов. HP: Флот 1 = ${fleet1HP}, Флот 2 = ${fleet2HP}`);
+    if (process.env.NODE_ENV === 'development') console.log(`⏱️ Превышен лимит раундов. HP: Флот 1 = ${fleet1HP}, Флот 2 = ${fleet2HP}`);
 
     if (fleet1HP > fleet2HP) winner = 1;
     else if (fleet2HP > fleet1HP) winner = 2;
     else winner = 'draw';
   }
 
-  console.log(`🏁 ФИНАЛЬНЫЙ РЕЗУЛЬТАТ: winner = ${winner}, rounds = ${round}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🏁 ФИНАЛЬНЫЙ РЕЗУЛЬТАТ: winner = ${winner}, rounds = ${round}`);
 
   return {
     winner,
@@ -510,16 +523,16 @@ router.post('/start-pve', async (req, res) => {
     const battleId = battleInsertResult.rows[0].id;
 
     // Сохраняем урон кораблей после боя
-    console.log(`💾 Сохраняем HP после боя (${battleResult.fleet1Final.length} кораблей):`);
+    if (process.env.NODE_ENV === 'development') console.log(`💾 Сохраняем HP после боя (${battleResult.fleet1Final.length} кораблей):`);
     for (const ship of battleResult.fleet1Final) {
-      console.log(`  Ship ID ${ship.id}: ${ship.current_hp}/${ship.max_hp} HP`);
+      if (process.env.NODE_ENV === 'development') console.log(`  Ship ID ${ship.id}: ${ship.current_hp}/${ship.max_hp} HP`);
       await client.query(`
         UPDATE galactic_empire_ships
         SET current_hp = $1, updated_at = NOW()
         WHERE id = $2
       `, [ship.current_hp, ship.id]);
     }
-    console.log(`✅ HP кораблей сохранен в БД`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ HP кораблей сохранен в БД`);
 
     // Начисляем награду если победа
     if (battleResult.winner === 1) {
@@ -533,7 +546,7 @@ router.post('/start-pve', async (req, res) => {
     await client.query('COMMIT');
     client.release();
 
-    console.log(`📤 Отправляем клиенту: winner = ${battleResult.winner}, reward = ${battleResult.winner === 1 ? reward : 0}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📤 Отправляем клиенту: winner = ${battleResult.winner}, reward = ${battleResult.winner === 1 ? reward : 0}`);
 
     res.json({
       success: true,

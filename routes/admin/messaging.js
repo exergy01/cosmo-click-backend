@@ -13,49 +13,49 @@ router.use(adminAuth);
 router.post('/send-message/:telegramId', async (req, res) => {
   const { playerId, message } = req.body;
   
-  console.log('🔍 === ОТЛАДКА ОТПРАВКИ СООБЩЕНИЯ ===');
-  console.log('📦 Полученные данные:', { playerId, message, adminId: req.params.telegramId });
+  if (process.env.NODE_ENV === 'development') console.log('🔍 === ОТЛАДКА ОТПРАВКИ СООБЩЕНИЯ ===');
+  if (process.env.NODE_ENV === 'development') console.log('📦 Полученные данные:', { playerId, message, adminId: req.params.telegramId });
   
   if (!playerId || !message?.trim()) {
-    console.log('❌ Отсутствуют обязательные поля');
+    if (process.env.NODE_ENV === 'development') console.log('❌ Отсутствуют обязательные поля');
     return res.status(400).json({ error: 'Player ID and message are required' });
   }
   
   try {
-    console.log(`📱 Отправка сообщения игроку ${playerId}: "${message}"`);
+    if (process.env.NODE_ENV === 'development') console.log(`📱 Отправка сообщения игроку ${playerId}: "${message}"`);
     
     // Проверяем, что игрок существует
-    console.log('🔍 Проверяем существование игрока...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Проверяем существование игрока...');
     const player = await getPlayer(playerId);
-    console.log('👤 Данные игрока:', player ? {
+    if (process.env.NODE_ENV === 'development') console.log('👤 Данные игрока:', player ? {
       telegram_id: player.telegram_id,
       username: player.username,
       first_name: player.first_name
     } : 'НЕ НАЙДЕН');
     
     if (!player) {
-      console.log('❌ Игрок не найден в базе данных');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Игрок не найден в базе данных');
       return res.status(404).json({ error: 'Player not found' });
     }
     
     // Формируем сообщение
     const fullMessage = `💬 <b>Сообщение от администрации CosmoClick</b>\n\n${message}\n\n🕐 Отправлено: ${new Date().toLocaleString('ru-RU')}`;
-    console.log('📝 Сформированное сообщение:', fullMessage);
+    if (process.env.NODE_ENV === 'development') console.log('📝 Сформированное сообщение:', fullMessage);
     
     // Пытаемся отправить через разные способы
-    console.log('📤 Начинаем отправку сообщения...');
+    if (process.env.NODE_ENV === 'development') console.log('📤 Начинаем отправку сообщения...');
     
     // Способ 1: Через существующую функцию (если есть)
     try {
       const { sendTelegramMessage } = require('../telegramBot');
-      console.log('✅ Функция sendTelegramMessage найдена, используем её');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Функция sendTelegramMessage найдена, используем её');
       await sendTelegramMessage(playerId, fullMessage);
-      console.log('✅ Сообщение отправлено через sendTelegramMessage');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Сообщение отправлено через sendTelegramMessage');
     } catch (telegramBotError) {
-      console.log('⚠️ Ошибка через telegramBot:', telegramBotError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Ошибка через telegramBot:', telegramBotError.message);
       
       // Способ 2: Прямой вызов Telegram API
-      console.log('🔄 Пробуем прямой вызов Telegram API...');
+      if (process.env.NODE_ENV === 'development') console.log('🔄 Пробуем прямой вызов Telegram API...');
       
       const axios = require('axios');
       const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -64,7 +64,7 @@ router.post('/send-message/:telegramId', async (req, res) => {
         throw new Error('TELEGRAM_BOT_TOKEN не установлен в переменных окружения');
       }
       
-      console.log('🔑 BOT_TOKEN найден:', BOT_TOKEN ? 'ДА (длина: ' + BOT_TOKEN.length + ')' : 'НЕТ');
+      if (process.env.NODE_ENV === 'development') console.log('🔑 BOT_TOKEN найден:', BOT_TOKEN ? 'ДА (длина: ' + BOT_TOKEN.length + ')' : 'НЕТ');
       
       const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
       const payload = {
@@ -74,14 +74,14 @@ router.post('/send-message/:telegramId', async (req, res) => {
         disable_web_page_preview: true
       };
       
-      console.log('🌐 URL для запроса:', telegramUrl.replace(BOT_TOKEN, 'HIDDEN_TOKEN'));
-      console.log('📦 Payload для Telegram:', { ...payload, text: payload.text.substring(0, 50) + '...' });
+      if (process.env.NODE_ENV === 'development') console.log('🌐 URL для запроса:', telegramUrl.replace(BOT_TOKEN, 'HIDDEN_TOKEN'));
+      if (process.env.NODE_ENV === 'development') console.log('📦 Payload для Telegram:', { ...payload, text: payload.text.substring(0, 50) + '...' });
       
       const telegramResponse = await axios.post(telegramUrl, payload, {
         timeout: 10000 // 10 секунд таймаут
       });
       
-      console.log('📥 Ответ от Telegram API:', {
+      if (process.env.NODE_ENV === 'development') console.log('📥 Ответ от Telegram API:', {
         ok: telegramResponse.data.ok,
         message_id: telegramResponse.data.result?.message_id,
         error_code: telegramResponse.data.error_code,
@@ -108,12 +108,12 @@ router.post('/send-message/:telegramId', async (req, res) => {
           success: true
         })
       ]);
-      console.log('📝 Действие залогировано в базу данных');
+      if (process.env.NODE_ENV === 'development') console.log('📝 Действие залогировано в базу данных');
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать отправку сообщения:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать отправку сообщения:', logError.message);
     }
     
-    console.log(`✅ Сообщение успешно отправлено игроку ${playerId} (${player.first_name || player.username})`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Сообщение успешно отправлено игроку ${playerId} (${player.first_name || player.username})`);
     
     res.json({
       success: true,
@@ -135,13 +135,13 @@ router.post('/send-message/:telegramId', async (req, res) => {
     console.error('❌ Stack trace:', err.stack);
     
     // Дополнительная диагностика
-    console.log('🔍 Дополнительная диагностика:');
-    console.log('- Player ID тип:', typeof playerId);
-    console.log('- Player ID значение:', playerId);
-    console.log('- Message тип:', typeof message);
-    console.log('- Message длина:', message?.length);
-    console.log('- BOT_TOKEN установлен:', !!process.env.TELEGRAM_BOT_TOKEN);
-    console.log('- Текущее время:', new Date().toISOString());
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Дополнительная диагностика:');
+    if (process.env.NODE_ENV === 'development') console.log('- Player ID тип:', typeof playerId);
+    if (process.env.NODE_ENV === 'development') console.log('- Player ID значение:', playerId);
+    if (process.env.NODE_ENV === 'development') console.log('- Message тип:', typeof message);
+    if (process.env.NODE_ENV === 'development') console.log('- Message длина:', message?.length);
+    if (process.env.NODE_ENV === 'development') console.log('- BOT_TOKEN установлен:', !!process.env.TELEGRAM_BOT_TOKEN);
+    if (process.env.NODE_ENV === 'development') console.log('- Текущее время:', new Date().toISOString());
     
     res.status(500).json({ 
       error: 'Internal server error', 
@@ -165,7 +165,7 @@ router.post('/broadcast-message/:telegramId', async (req, res) => {
   }
   
   try {
-    console.log(`📢 Начинаем рассылку всем игрокам${onlyVerified ? ' (только верифицированным)' : ''}: "${message}"`);
+    if (process.env.NODE_ENV === 'development') console.log(`📢 Начинаем рассылку всем игрокам${onlyVerified ? ' (только верифицированным)' : ''}: "${message}"`);
     
     // Получаем список игроков для рассылки
     const playersQuery = onlyVerified 
@@ -179,7 +179,7 @@ router.post('/broadcast-message/:telegramId', async (req, res) => {
       return res.status(400).json({ error: 'Нет игроков для рассылки' });
     }
     
-    console.log(`📊 Найдено ${players.length} игроков для рассылки`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Найдено ${players.length} игроков для рассылки`);
     
     // Формируем сообщение для рассылки
     const { sendTelegramMessage } = require('../telegramBot');
@@ -198,7 +198,7 @@ router.post('/broadcast-message/:telegramId', async (req, res) => {
       try {
         await sendTelegramMessage(player.telegram_id, fullMessage);
         sentCount++;
-        console.log(`✅ Отправлено ${i + 1}/${players.length}: ${player.telegram_id}`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Отправлено ${i + 1}/${players.length}: ${player.telegram_id}`);
         
         // Задержка 50ms между сообщениями (20 сообщений в секунду)
         if (i < players.length - 1) {
@@ -235,10 +235,10 @@ router.post('/broadcast-message/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать рассылку:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать рассылку:', logError.message);
     }
     
-    console.log(`✅ Рассылка завершена. Отправлено: ${sentCount}, ошибок: ${errorCount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Рассылка завершена. Отправлено: ${sentCount}, ошибок: ${errorCount}`);
     
     res.json({
       success: true,

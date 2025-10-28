@@ -66,7 +66,7 @@ router.get('/status/:telegramId', async (req, res) => {
 // POST /api/daily-bonus/test-simple/:telegramId - ПРОСТОЙ ТЕСТ без БД
 router.post('/test-simple/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
-  console.log(`🧪 Simple test for ${telegramId}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🧪 Simple test for ${telegramId}`);
 
   res.json({
     success: true,
@@ -80,7 +80,7 @@ router.post('/test-simple/:telegramId', async (req, res) => {
 router.post('/test-tomorrow/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
-    console.log(`🧪 Tomorrow test for ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 Tomorrow test for ${telegramId}`);
 
     if (!telegramId) {
       return res.status(400).json({
@@ -93,13 +93,13 @@ router.post('/test-tomorrow/:telegramId', async (req, res) => {
     const tomorrowTime = new Date();
     tomorrowTime.setDate(tomorrowTime.getDate() + 1);
 
-    console.log(`🧪 About to update DB for tomorrow test...`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 About to update DB for tomorrow test...`);
     await pool.query(`
       UPDATE players
       SET daily_bonus_last_claim = $1
       WHERE telegram_id = $2
     `, [tomorrowTime, telegramId]);
-    console.log(`🧪 DB updated successfully for tomorrow test`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 DB updated successfully for tomorrow test`);
 
     res.json({
       success: true,
@@ -128,7 +128,7 @@ router.post('/claim/:telegramId', async (req, res) => {
       });
     }
 
-    console.log(`🎁 Claim request for ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎁 Claim request for ${telegramId}`);
 
     // ✅ ПРОСТАЯ ЛОГИКА как в watch_ad из заданий
     const playerResult = await pool.query(
@@ -136,7 +136,7 @@ router.post('/claim/:telegramId', async (req, res) => {
       [telegramId]
     );
 
-    console.log(`📊 Player query result: ${playerResult.rows.length} rows`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Player query result: ${playerResult.rows.length} rows`);
 
     if (playerResult.rows.length === 0) {
       return res.status(404).json({
@@ -146,68 +146,68 @@ router.post('/claim/:telegramId', async (req, res) => {
     }
 
     const player = playerResult.rows[0];
-    console.log(`👤 Player data:`, {
+    if (process.env.NODE_ENV === 'development') console.log(`👤 Player data:`, {
       telegram_id: player.telegram_id,
       daily_bonus_streak: player.daily_bonus_streak,
       daily_bonus_last_claim: player.daily_bonus_last_claim
     });
 
     const currentTime = new Date();
-    console.log(`⏰ Current time:`, currentTime);
+    if (process.env.NODE_ENV === 'development') console.log(`⏰ Current time:`, currentTime);
 
     const today = currentTime.toDateString();
-    console.log(`📅 Today:`, today);
+    if (process.env.NODE_ENV === 'development') console.log(`📅 Today:`, today);
 
     const lastClaimDate = player.daily_bonus_last_claim ? new Date(player.daily_bonus_last_claim).toDateString() : null;
-    console.log(`📅 Last claim date:`, lastClaimDate);
+    if (process.env.NODE_ENV === 'development') console.log(`📅 Last claim date:`, lastClaimDate);
 
     // Проверяем, можно ли забрать бонус сегодня
     if (lastClaimDate === today) {
-      console.log(`❌ Already claimed today`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ Already claimed today`);
       return res.status(400).json({
         success: false,
         error: 'Ежедневный бонус уже получен сегодня'
       });
     }
 
-    console.log(`🧮 Calculating streak...`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧮 Calculating streak...`);
 
     // Рассчитываем новый стрик
     let newStreak = 1;
     let currentStreak = player.daily_bonus_streak || 0;
-    console.log(`📊 Current streak:`, currentStreak);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Current streak:`, currentStreak);
 
     if (lastClaimDate) {
       const yesterday = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000).toDateString();
-      console.log(`📅 Yesterday:`, yesterday);
+      if (process.env.NODE_ENV === 'development') console.log(`📅 Yesterday:`, yesterday);
 
       if (lastClaimDate === yesterday) {
         // Продолжаем стрик
         newStreak = currentStreak < 7 ? currentStreak + 1 : 1;
-        console.log(`✅ Continuing streak to:`, newStreak);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Continuing streak to:`, newStreak);
       } else {
-        console.log(`🔄 Streak reset to 1`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔄 Streak reset to 1`);
       }
       // Если пропустил день - стрик сбрасывается на 1
     } else {
-      console.log(`🆕 First time claiming`);
+      if (process.env.NODE_ENV === 'development') console.log(`🆕 First time claiming`);
     }
 
     const bonusAmount = DAILY_BONUS_AMOUNTS[newStreak - 1];
-    console.log(`💰 Bonus amount for day ${newStreak}:`, bonusAmount);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 Bonus amount for day ${newStreak}:`, bonusAmount);
 
-    console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 Начисляем бонус: день ${newStreak}, сумма ${bonusAmount} CCC`);
 
     // ✅ ПРОСТОЙ UPDATE БЕЗ ТРАНЗАКЦИЙ (транзакции блокируются!)
     try {
-      console.log(`🔧 About to execute UPDATE with params:`, {
+      if (process.env.NODE_ENV === 'development') console.log(`🔧 About to execute UPDATE with params:`, {
         newStreak,
         currentTime: currentTime.toISOString(),
         bonusAmount,
         telegramId
       });
 
-      console.log(`🔧 Calling pool.query now...`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔧 Calling pool.query now...`);
 
       // 🚨 ЭКСТРЕННЫЙ ФИКС: убираем RETURNING который может блокироваться
       await pool.query(`
@@ -218,9 +218,9 @@ router.post('/claim/:telegramId', async (req, res) => {
         WHERE telegram_id = $4
       `, [newStreak, currentTime, bonusAmount, telegramId]);
 
-      console.log(`🔧 pool.query completed successfully`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔧 pool.query completed successfully`);
 
-      console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} получил ежедневный бонус: день ${newStreak}, ${bonusAmount} CCC`);
 
       res.json({
         success: true,

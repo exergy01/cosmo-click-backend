@@ -13,63 +13,63 @@ async function applyMigration() {
   const client = await pool.connect();
 
   try {
-    console.log('\n========================================');
-    console.log('🚀 ПРИМЕНЕНИЕ МИГРАЦИИ 008: КВЕСТЫ');
-    console.log('========================================\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n========================================');
+    if (process.env.NODE_ENV === 'development') console.log('🚀 ПРИМЕНЕНИЕ МИГРАЦИИ 008: КВЕСТЫ');
+    if (process.env.NODE_ENV === 'development') console.log('========================================\n');
 
     // Читаем SQL файл
     const migrationPath = path.join(__dirname, 'migrations', '008_migrate_old_quests.sql');
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
-    console.log('📄 Файл миграции:', migrationPath);
-    console.log('📊 Размер:', migrationSQL.length, 'байт\n');
+    if (process.env.NODE_ENV === 'development') console.log('📄 Файл миграции:', migrationPath);
+    if (process.env.NODE_ENV === 'development') console.log('📊 Размер:', migrationSQL.length, 'байт\n');
 
     // Проверяем текущее состояние
-    console.log('📊 Текущее состояние базы данных:\n');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Текущее состояние базы данных:\n');
 
     const oldQuests = await client.query('SELECT COUNT(*) as count FROM quests WHERE is_active = true');
-    console.log('   Старых квестов (quests):', oldQuests.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Старых квестов (quests):', oldQuests.rows[0].count);
 
     const newQuests = await client.query('SELECT COUNT(*) as count FROM quest_templates');
-    console.log('   Новых квестов (quest_templates):', newQuests.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Новых квестов (quest_templates):', newQuests.rows[0].count);
 
     const playerQuests = await client.query('SELECT COUNT(*) as count FROM player_quests WHERE quest_key IS NULL');
-    console.log('   Player quests без quest_key:', playerQuests.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Player quests без quest_key:', playerQuests.rows[0].count);
 
-    console.log('\n⏳ Применяю миграцию...\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n⏳ Применяю миграцию...\n');
 
     // Применяем миграцию
     await client.query(migrationSQL);
 
-    console.log('\n✅ Миграция применена успешно!\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n✅ Миграция применена успешно!\n');
 
     // Проверяем результат
-    console.log('========================================');
-    console.log('📊 РЕЗУЛЬТАТЫ МИГРАЦИИ');
-    console.log('========================================\n');
+    if (process.env.NODE_ENV === 'development') console.log('========================================');
+    if (process.env.NODE_ENV === 'development') console.log('📊 РЕЗУЛЬТАТЫ МИГРАЦИИ');
+    if (process.env.NODE_ENV === 'development') console.log('========================================\n');
 
     const newQuestsAfter = await client.query('SELECT COUNT(*) as count FROM quest_templates');
-    console.log('   Всего quest_templates:', newQuestsAfter.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Всего quest_templates:', newQuestsAfter.rows[0].count);
 
     const migratedQuests = await client.query("SELECT COUNT(*) as count FROM quest_templates WHERE created_by = 'migration_008'");
-    console.log('   Добавлено миграцией:', migratedQuests.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Добавлено миграцией:', migratedQuests.rows[0].count);
 
     const ruTranslations = await client.query("SELECT COUNT(*) as count FROM quest_translations WHERE language_code = 'ru'");
-    console.log('   Русских переводов:', ruTranslations.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Русских переводов:', ruTranslations.rows[0].count);
 
     const enTranslations = await client.query("SELECT COUNT(*) as count FROM quest_translations WHERE language_code = 'en'");
-    console.log('   Английских переводов:', enTranslations.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Английских переводов:', enTranslations.rows[0].count);
 
     const updatedPlayerQuests = await client.query('SELECT COUNT(*) as count FROM player_quests WHERE quest_key IS NOT NULL');
-    console.log('   Player quests с quest_key:', updatedPlayerQuests.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Player quests с quest_key:', updatedPlayerQuests.rows[0].count);
 
     const stillNoKey = await client.query('SELECT COUNT(*) as count FROM player_quests WHERE quest_key IS NULL');
-    console.log('   Player quests без quest_key:', stillNoKey.rows[0].count);
+    if (process.env.NODE_ENV === 'development') console.log('   Player quests без quest_key:', stillNoKey.rows[0].count);
 
     // Показываем список всех квестов
-    console.log('\n========================================');
-    console.log('📋 ВСЕ КВЕСТЫ В НОВОЙ СИСТЕМЕ:');
-    console.log('========================================\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n========================================');
+    if (process.env.NODE_ENV === 'development') console.log('📋 ВСЕ КВЕСТЫ В НОВОЙ СИСТЕМЕ:');
+    if (process.env.NODE_ENV === 'development') console.log('========================================\n');
 
     const allQuests = await client.query(`
       SELECT
@@ -86,16 +86,16 @@ async function applyMigration() {
 
     allQuests.rows.forEach((quest, idx) => {
       const status = quest.is_active ? '✅' : '❌';
-      console.log(`${idx + 1}. ${status} ${quest.name}`);
-      console.log(`   Key: ${quest.quest_key}`);
-      console.log(`   Type: ${quest.quest_type}`);
-      console.log(`   Reward: ${quest.reward_cs} CS`);
-      console.log('');
+      if (process.env.NODE_ENV === 'development') console.log(`${idx + 1}. ${status} ${quest.name}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   Key: ${quest.quest_key}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   Type: ${quest.quest_type}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   Reward: ${quest.reward_cs} CS`);
+      if (process.env.NODE_ENV === 'development') console.log('');
     });
 
-    console.log('========================================');
-    console.log('✅ МИГРАЦИЯ ЗАВЕРШЕНА УСПЕШНО!');
-    console.log('========================================\n');
+    if (process.env.NODE_ENV === 'development') console.log('========================================');
+    if (process.env.NODE_ENV === 'development') console.log('✅ МИГРАЦИЯ ЗАВЕРШЕНА УСПЕШНО!');
+    if (process.env.NODE_ENV === 'development') console.log('========================================\n');
 
   } catch (error) {
     console.error('\n❌ ОШИБКА при применении миграции:');

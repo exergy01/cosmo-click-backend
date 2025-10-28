@@ -3,7 +3,7 @@ const pool = require('../db');
 
 async function migrate() {
   try {
-    console.log('📝 Добавляем поле broker_name в manual_quest_submissions...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Добавляем поле broker_name в manual_quest_submissions...');
 
     // Добавляем колонку broker_name
     await pool.query(`
@@ -11,7 +11,7 @@ async function migrate() {
       ADD COLUMN IF NOT EXISTS broker_name VARCHAR(100)
     `);
 
-    console.log('✅ Поле broker_name добавлено');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Поле broker_name добавлено');
 
     // Обновляем существующие записи
     await pool.query(`
@@ -20,7 +20,7 @@ async function migrate() {
       WHERE quest_key = 'roboforex_trade' AND broker_name IS NULL
     `);
 
-    console.log('✅ Существующие записи обновлены');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Существующие записи обновлены');
 
     process.exit(0);
   } catch (error) {

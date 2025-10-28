@@ -14,7 +14,7 @@ router.get('/player/:telegramId/:playerId', async (req, res) => {
   const { playerId } = req.params;
   
   try {
-    console.log(`👤 Запрос информации об игроке: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`👤 Запрос информации об игроке: ${playerId}`);
     
     const player = await getPlayer(playerId);
     if (!player) {
@@ -32,7 +32,7 @@ router.get('/player/:telegramId/:playerId', async (req, res) => {
         LIMIT 50
       `, [playerId]);
     } catch (actionsError) {
-      console.log('⚠️ Таблица player_actions недоступна:', actionsError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица player_actions недоступна:', actionsError.message);
     }
     
     // История обменов Stars
@@ -47,7 +47,7 @@ router.get('/player/:telegramId/:playerId', async (req, res) => {
         LIMIT 20
       `, [playerId]);
     } catch (starsError) {
-      console.log('⚠️ Не удалось загрузить историю Stars:', starsError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось загрузить историю Stars:', starsError.message);
     }
     
     // Статистика рефералов
@@ -59,7 +59,7 @@ router.get('/player/:telegramId/:playerId', async (req, res) => {
         WHERE referrer_id = $1
       `, [playerId]);
     } catch (referralError) {
-      console.log('⚠️ Ошибка загрузки рефералов:', referralError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Ошибка загрузки рефералов:', referralError.message);
     }
     
     res.json({
@@ -88,7 +88,7 @@ router.post('/update-balance/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`💰 Обновление баланса: ${playerId}, ${currency}, ${operation} ${amount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 Обновление баланса: ${playerId}, ${currency}, ${operation} ${amount}`);
     
     const player = await getPlayer(playerId);
     if (!player) {
@@ -161,14 +161,14 @@ router.post('/update-balance/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать действие:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать действие:', logError.message);
     }
     
     await client.query('COMMIT');
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ Баланс обновлен: ${playerId} ${currency} ${operation} ${amount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Баланс обновлен: ${playerId} ${currency} ${operation} ${amount}`);
     
     res.json({
       success: true,
@@ -199,7 +199,7 @@ router.post('/verify-player/:telegramId', async (req, res) => {
   }
   
   try {
-    console.log(`🔧 Изменение базовой верификации: ${playerId} -> ${verified}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔧 Изменение базовой верификации: ${playerId} -> ${verified}`);
     
     // Работаем ТОЛЬКО с базовой верификацией, НЕ трогаем премиум поля
     await pool.query(
@@ -223,12 +223,12 @@ router.post('/verify-player/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать верификацию:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать верификацию:', logError.message);
     }
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ Базовая верификация изменена: ${playerId} -> verified = ${verified}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Базовая верификация изменена: ${playerId} -> verified = ${verified}`);
     
     res.json({
       success: true,
@@ -251,7 +251,7 @@ router.get('/search/:telegramId', async (req, res) => {
   }
   
   try {
-    console.log(`🔍 Поиск игроков: "${q}"`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Поиск игроков: "${q}"`);
     
     const result = await pool.query(`
       SELECT 

@@ -5,14 +5,14 @@ const { isAdmin } = require('./auth');
 
 const router = express.Router();
 
-console.log('📊 Загружаем модуль аналитики...');
+if (process.env.NODE_ENV === 'development') console.log('📊 Загружаем модуль аналитики...');
 
 // 📈 Ежедневная финансовая статистика
 router.get('/daily-finance', async (req, res) => {
   const { admin_id, days = 30 } = req.query;
 
   try {
-    console.log(`📈 Запрос ежедневной статистики от админа ${admin_id} за ${days} дней`);
+    if (process.env.NODE_ENV === 'development') console.log(`📈 Запрос ежедневной статистики от админа ${admin_id} за ${days} дней`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -93,7 +93,7 @@ router.get('/daily-finance', async (req, res) => {
     summary.avg_deposit = summary.total_deposits_count > 0 ? summary.total_deposits / summary.total_deposits_count : 0;
     summary.avg_withdrawal = summary.total_withdrawals_count > 0 ? summary.total_withdrawals / summary.total_withdrawals_count : 0;
 
-    console.log(`✅ Статистика за ${days} дней: депозиты ${summary.total_deposits} TON, выводы ${summary.total_withdrawals} TON`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Статистика за ${days} дней: депозиты ${summary.total_deposits} TON, выводы ${summary.total_withdrawals} TON`);
 
     res.json({
       success: true,
@@ -116,7 +116,7 @@ router.get('/top-players', async (req, res) => {
   const { admin_id, period = 30, limit = 50 } = req.query;
 
   try {
-    console.log(`👑 Запрос топа игроков от админа ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`👑 Запрос топа игроков от админа ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -164,7 +164,7 @@ router.get('/top-players', async (req, res) => {
 
     const result = await pool.query(query);
 
-    console.log(`✅ Найдено ${result.rows.length} топ игроков`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} топ игроков`);
 
     res.json({
       success: true,
@@ -187,7 +187,7 @@ router.get('/suspicious-patterns', async (req, res) => {
   const { admin_id } = req.query;
 
   try {
-    console.log(`🔍 Анализ подозрительных паттернов админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Анализ подозрительных паттернов админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -299,7 +299,7 @@ router.get('/suspicious-patterns', async (req, res) => {
       }
     };
 
-    console.log(`🔍 Найдено подозрительных паттернов: ${analysis_results.summary.total_patterns}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Найдено подозрительных паттернов: ${analysis_results.summary.total_patterns}`);
 
     res.json({
       success: true,
@@ -320,7 +320,7 @@ router.post('/export-report', async (req, res) => {
   const { admin_id, report_type, params = {} } = req.body;
 
   try {
-    console.log(`📊 Экспорт отчета ${report_type} админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Экспорт отчета ${report_type} админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -418,6 +418,6 @@ router.post('/export-report', async (req, res) => {
   }
 });
 
-console.log('✅ Модуль аналитики загружен');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль аналитики загружен');
 
 module.exports = router;

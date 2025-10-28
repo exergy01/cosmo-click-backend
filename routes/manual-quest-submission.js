@@ -27,7 +27,7 @@ router.post('/submit-manual', async (req, res) => {
     }
 
     const brokerName = BROKER_NAMES[quest_key] || 'Unknown Broker';
-    console.log(`📝 Игрок ${telegram_id} отправляет заявку на ${brokerName} (${quest_key}): ${account_number}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📝 Игрок ${telegram_id} отправляет заявку на ${brokerName} (${quest_key}): ${account_number}`);
 
     // Проверяем есть ли уже pending заявка от этого игрока на это задание
     const existingPending = await pool.query(`
@@ -72,7 +72,7 @@ router.post('/submit-manual', async (req, res) => {
         `ID заявки: #${submissionId}`
       );
 
-      console.log(`✅ Уведомление отправлено админу ${ADMIN_TELEGRAM_ID}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Уведомление отправлено админу ${ADMIN_TELEGRAM_ID}`);
     } catch (err) {
       console.error('❌ Не удалось отправить уведомление админу:', err.message);
     }

@@ -19,10 +19,10 @@ app.use('/api/ton-webhook', tonWebhookRouter);
 
 // 📊 НАСТРОЙКА ЕЖЕДНЕВНОЙ СВОДКИ В 12:00 ПО МОСКОВСКОМУ ВРЕМЕНИ
 cron.schedule('0 12 * * *', async () => {
-  console.log('📊 Запуск ежедневной сводки...');
+  if (process.env.NODE_ENV === 'development') console.log('📊 Запуск ежедневной сводки...');
   try {
     await sendDailySummary();
-    console.log('✅ Ежедневная сводка отправлена успешно');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ежедневная сводка отправлена успешно');
   } catch (error) {
     console.error('❌ Ошибка отправки ежедневной сводки:', error);
   }
@@ -31,7 +31,7 @@ cron.schedule('0 12 * * *', async () => {
   timezone: "Europe/Moscow" // Московское время
 });
 
-console.log('⏰ Cron задача для ежедневной сводки настроена на 12:00 МСК');
+if (process.env.NODE_ENV === 'development') console.log('⏰ Cron задача для ежедневной сводки настроена на 12:00 МСК');
 
 // 🛡️ RATE LIMITING CONFIGURATION
 const apiLimiter = rateLimit({
@@ -72,7 +72,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Telegram-ID');
 
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  if (process.env.NODE_ENV === 'development') console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
@@ -191,7 +191,7 @@ try {
 try {
   const testRoutes = require('./routes/test');
   app.use('/api/test', testRoutes);
-  console.log('✅ Тестовые роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Тестовые роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения тестовых роутов:', err);
 }
@@ -201,7 +201,7 @@ try {
   const adminRoutes = require('./routes/admin/index');
 
   app.use('/api/admin', adminRoutes);
-  console.log('✅ Админские роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Админские роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения админских роутов:', err);
 }
@@ -210,7 +210,7 @@ try {
 try {
   const manualQuestSubmissionRoutes = require('./routes/manual-quest-submission');
   app.use('/api/quests', manualQuestSubmissionRoutes);
-  console.log('✅ Ручные задания роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Ручные задания роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения ручных заданий:', err);
 }
@@ -219,7 +219,7 @@ try {
 try {
   const cosmicFleetRoutes = require('./routes/cosmic-fleet/index');
   app.use('/api/cosmic-fleet', cosmicFleetRoutes);
-  console.log('✅ Cosmic Fleet основные роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet основные роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet основных роутов:', err);
 }
@@ -227,7 +227,7 @@ try {
 try {
   const cosmicFleetShipsRoutes = require('./routes/cosmic-fleet/ships');
   app.use('/api/cosmic-fleet/ships', cosmicFleetShipsRoutes);
-  console.log('✅ Cosmic Fleet корабли роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet корабли роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet кораблей роутов:', err);
 }
@@ -235,7 +235,7 @@ try {
 try {
   const cosmicFleetBattleRoutes = require('./routes/cosmic-fleet/battle');
   app.use('/api/cosmic-fleet/battle', cosmicFleetBattleRoutes);
-  console.log('✅ Cosmic Fleet боевые роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet боевые роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet боевых роутов:', err);
 }
@@ -244,7 +244,7 @@ try {
 try {
   const cosmicFleetFormationsRoutes = require('./routes/cosmic-fleet/formations');
   app.use('/api/cosmic-fleet/formation', cosmicFleetFormationsRoutes);
-  console.log('✅ Cosmic Fleet формации роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet формации роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet формаций роутов:', err);
 }
@@ -252,12 +252,12 @@ try {
 try {
   const cosmicFleetBattlesRoutes = require('./routes/cosmic-fleet/battles');
   app.use('/api/cosmic-fleet/battles', cosmicFleetBattlesRoutes);
-  console.log('✅ Cosmic Fleet система боёв роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet система боёв роуты подключены');
 
   // 🔧 Cosmic Fleet миграции
   const cosmicFleetMigrateRoutes = require('./routes/cosmic-fleet/migrate');
   app.use('/api/cosmic-fleet/migrate', cosmicFleetMigrateRoutes);
-  console.log('✅ Cosmic Fleet миграции роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Cosmic Fleet миграции роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Cosmic Fleet системы боёв роутов:', err);
 }
@@ -266,7 +266,7 @@ try {
 try {
   const galacticEmpireRoutes = require('./routes/galactic-empire');
   app.use('/api/galactic-empire', galacticEmpireRoutes);
-  console.log('✅ Galactic Empire v2.0 роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Galactic Empire v2.0 роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Galactic Empire роутов:', err);
 }
@@ -275,7 +275,7 @@ try {
 try {
   const galacticEmpireShipsRoutes = require('./routes/galactic-empire/ships');
   app.use('/api/galactic-empire/ships', galacticEmpireShipsRoutes);
-  console.log('✅ Galactic Empire Ships роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Galactic Empire Ships роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Galactic Empire Ships роутов:', err);
 }
@@ -284,7 +284,7 @@ try {
 try {
   const galacticEmpireBattlesRoutes = require('./routes/galactic-empire/battles');
   app.use('/api/galactic-empire/battles', galacticEmpireBattlesRoutes);
-  console.log('✅ Galactic Empire Battles роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Galactic Empire Battles роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Galactic Empire Battles роутов:', err);
 }
@@ -293,7 +293,7 @@ try {
 try {
   const galacticEmpireModulesRoutes = require('./routes/galactic-empire/modules');
   app.use('/api/galactic-empire/modules', galacticEmpireModulesRoutes);
-  console.log('✅ Galactic Empire Modules роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Galactic Empire Modules роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Galactic Empire Modules роутов:', err);
 }
@@ -302,7 +302,7 @@ try {
 try {
   const luminiosRoutes = require('./routes/luminios');
   app.use('/api/luminios', luminiosRoutes);
-  console.log('✅ Luminios валютные роуты подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Luminios валютные роуты подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения Luminios валютных роутов:', err);
 }
@@ -311,7 +311,7 @@ try {
 try {
   const migrateBattleV2Routes = require('./routes/migrate-battle-v2');
   app.use('/api/migrate-battle-v2', migrateBattleV2Routes);
-  console.log('✅ Battle v2 миграции подключены');
+  if (process.env.NODE_ENV === 'development') console.log('✅ Battle v2 миграции подключены');
 } catch (err) {
   console.error('❌ Ошибка подключения миграций:', err);
 }
@@ -322,12 +322,12 @@ app.post('/webhook', (req, res) => {
   
   // Если это платеж Stars - игнорируем здесь (обрабатывается в /api/wallet/webhook-stars)
   if (pre_checkout_query || successful_payment) {
-    console.log('💰 Stars платеж обнаружен, но обрабатывается в /api/wallet/webhook-stars');
+    if (process.env.NODE_ENV === 'development') console.log('💰 Stars платеж обнаружен, но обрабатывается в /api/wallet/webhook-stars');
     return res.json({ success: true });
   }
   
   // Обычные сообщения бота (/start, /help и т.д.) обрабатываем через Telegraf
-  console.log('📨 Обычное сообщение бота:', req.body?.message?.text || 'unknown');
+  if (process.env.NODE_ENV === 'development') console.log('📨 Обычное сообщение бота:', req.body?.message?.text || 'unknown');
   bot.handleUpdate(req.body, res);
 });
 
@@ -376,12 +376,12 @@ app.use((req, res) => {
 
 // 🔥 ОБНОВЛЕННАЯ функция для премиум подписок с UNIFIED VERIFICATION
 const cleanupExpiredPremium = async () => {
-  console.log('🧹 === НАЧИНАЕМ ОЧИСТКУ ИСТЕКШИХ ПРЕМИУМ ПОДПИСОК (UNIFIED) ===');
-  console.log('⏰ Время:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🧹 === НАЧИНАЕМ ОЧИСТКУ ИСТЕКШИХ ПРЕМИУМ ПОДПИСОК (UNIFIED) ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Время:', new Date().toISOString());
   
   try {
     // 1. Обновляем статус истекших подписок в таблице premium_subscriptions
-    console.log('📋 Шаг 1: Обновляем статус истекших подписок...');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Шаг 1: Обновляем статус истекших подписок...');
     const expiredSubscriptionsResult = await pool.query(
       `UPDATE premium_subscriptions 
        SET status = 'expired' 
@@ -392,16 +392,16 @@ const cleanupExpiredPremium = async () => {
     );
     
     const expiredSubscriptions = expiredSubscriptionsResult.rows;
-    console.log(`   ✅ Обновлено подписок: ${expiredSubscriptions.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   ✅ Обновлено подписок: ${expiredSubscriptions.length}`);
     
     if (expiredSubscriptions.length > 0) {
-      console.log('   📄 Истекшие подписки:', expiredSubscriptions.map(s => 
+      if (process.env.NODE_ENV === 'development') console.log('   📄 Истекшие подписки:', expiredSubscriptions.map(s =>
         `ID: ${s.telegram_id}, тип: ${s.subscription_type}, истек: ${s.end_date}`
       ));
     }
 
     // 🔥 2. ГЛАВНОЕ ИЗМЕНЕНИЕ: Очищаем премиум поля И СБРАСЫВАЕМ VERIFIED
-    console.log('🔥 Шаг 2: Очищаем премиум статус И verified у игроков...');
+    if (process.env.NODE_ENV === 'development') console.log('🔥 Шаг 2: Очищаем премиум статус И verified у игроков...');
     const cleanedPlayersResult = await pool.query(
       `UPDATE players 
        SET premium_no_ads_until = NULL,
@@ -413,11 +413,11 @@ const cleanupExpiredPremium = async () => {
     );
     
     const cleanedPlayers = cleanedPlayersResult.rows;
-    console.log(`   ✅ Очищено игроков: ${cleanedPlayers.length}`);
-    console.log(`   🚫 Verified сброшен у: ${cleanedPlayers.map(p => `${p.telegram_id} (${p.first_name || p.username})`).join(', ')}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   ✅ Очищено игроков: ${cleanedPlayers.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   🚫 Verified сброшен у: ${cleanedPlayers.map(p => `${p.telegram_id} (${p.first_name || p.username})`).join(', ')}`);
 
     // 3. Логируем транзакции для аудита
-    console.log('📝 Шаг 3: Логируем транзакции expiration...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Шаг 3: Логируем транзакции expiration...');
     for (const player of cleanedPlayers) {
       try {
         await pool.query(
@@ -446,7 +446,7 @@ const cleanupExpiredPremium = async () => {
     }
 
     // 4. Уведомляем игроков об истечении (опционально)
-    console.log('📬 Шаг 4: Отправляем уведомления об истечении...');
+    if (process.env.NODE_ENV === 'development') console.log('📬 Шаг 4: Отправляем уведомления об истечении...');
     let notificationsSent = 0;
     
     for (const player of cleanedPlayers) {
@@ -469,7 +469,7 @@ const cleanupExpiredPremium = async () => {
         );
         
         notificationsSent++;
-        console.log(`   📧 Уведомление отправлено: ${player.telegram_id}`);
+        if (process.env.NODE_ENV === 'development') console.log(`   📧 Уведомление отправлено: ${player.telegram_id}`);
         
         // Небольшая задержка между уведомлениями
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -480,12 +480,12 @@ const cleanupExpiredPremium = async () => {
     }
 
     // 5. Итоговая статистика
-    console.log('📊 === РЕЗУЛЬТАТЫ UNIFIED ОЧИСТКИ ===');
-    console.log(`✅ Истекших подписок обновлено: ${expiredSubscriptions.length}`);
-    console.log(`✅ Игроков очищено: ${cleanedPlayers.length}`);
-    console.log(`✅ Verified статус сброшен у: ${cleanedPlayers.length} игроков`);
-    console.log(`✅ Уведомлений отправлено: ${notificationsSent}`);
-    console.log('🏁 UNIFIED очистка истекших премиум подписок завершена успешно');
+    if (process.env.NODE_ENV === 'development') console.log('📊 === РЕЗУЛЬТАТЫ UNIFIED ОЧИСТКИ ===');
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Истекших подписок обновлено: ${expiredSubscriptions.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Игроков очищено: ${cleanedPlayers.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Verified статус сброшен у: ${cleanedPlayers.length} игроков`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Уведомлений отправлено: ${notificationsSent}`);
+    if (process.env.NODE_ENV === 'development') console.log('🏁 UNIFIED очистка истекших премиум подписок завершена успешно');
 
     // 6. Возвращаем результат для внешних вызовов
     return {
@@ -533,7 +533,7 @@ app.post('/api/admin/manual-cleanup-premium', async (req, res) => {
   }
   
   try {
-    console.log('🔧 Ручная UNIFIED очистка премиум подписок запущена админом:', admin_id);
+    if (process.env.NODE_ENV === 'development') console.log('🔧 Ручная UNIFIED очистка премиум подписок запущена админом:', admin_id);
     const result = await cleanupExpiredPremium();
     
     res.json({
@@ -552,7 +552,7 @@ app.post('/api/admin/manual-cleanup-premium', async (req, res) => {
 
 // 🔥 НОВЫЙ CRON JOB ДЛЯ ПРЕМИУМ ОЧИСТКИ (каждый час)
 cron.schedule('0 * * * *', async () => {
-  console.log('⏰ Запуск UNIFIED cron job: очистка истекших премиум подписок');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Запуск UNIFIED cron job: очистка истекших премиум подписок');
   try {
     await cleanupExpiredPremium();
   } catch (error) {
@@ -563,14 +563,14 @@ cron.schedule('0 * * * *', async () => {
   timezone: "Europe/Moscow"
 });
 
-console.log('⏰ UNIFIED Cron задача для очистки премиума настроена на каждый час');
+if (process.env.NODE_ENV === 'development') console.log('⏰ UNIFIED Cron задача для очистки премиума настроена на каждый час');
 
 // Добавляем НОВЫЙ CRON JOB в index.js (после существующих cron jobs)
 
 // 🔄 НОВЫЙ CRON JOB: Ежедневный сброс счетчиков рекламы заданий в полночь МСК
 cron.schedule('0 0 * * *', async () => {
-  console.log('🔄 === ЕЖЕДНЕВНЫЙ СБРОС РЕКЛАМЫ ЗАДАНИЙ ===');
-  console.log('⏰ Время:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🔄 === ЕЖЕДНЕВНЫЙ СБРОС РЕКЛАМЫ ЗАДАНИЙ ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Время:', new Date().toISOString());
   
   try {
     // Получаем игроков, у которых нужно сбросить счетчик
@@ -583,7 +583,7 @@ cron.schedule('0 0 * * *', async () => {
     `);
     
     const playersToReset = playersToResetResult.rows;
-    console.log(`📊 Игроков для сброса: ${playersToReset.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Игроков для сброса: ${playersToReset.length}`);
     
     if (playersToReset.length > 0) {
       // Сбрасываем счетчики
@@ -596,8 +596,8 @@ cron.schedule('0 0 * * *', async () => {
            OR quest_ad_last_reset IS NULL
       `);
       
-      console.log(`✅ Сброшено счетчиков рекламы заданий: ${resetResult.rowCount}`);
-      console.log(`📋 Игроки: ${playersToReset.slice(0, 10).map(p => 
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Сброшено счетчиков рекламы заданий: ${resetResult.rowCount}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📋 Игроки: ${playersToReset.slice(0, 10).map(p =>
         `${p.telegram_id}(${p.first_name || p.username})`
       ).join(', ')}${playersToReset.length > 10 ? '...' : ''}`);
       
@@ -615,10 +615,10 @@ cron.schedule('0 0 * * *', async () => {
         console.error('⚠️ Не удалось уведомить админа о сбросе:', adminNotifyError.message);
       }
     } else {
-      console.log('✅ Все счетчики рекламы заданий уже актуальны');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Все счетчики рекламы заданий уже актуальны');
     }
     
-    console.log('🏁 Ежедневный сброс рекламы заданий завершен успешно');
+    if (process.env.NODE_ENV === 'development') console.log('🏁 Ежедневный сброс рекламы заданий завершен успешно');
     
   } catch (error) {
     console.error('❌ ОШИБКА ежедневного сброса рекламы заданий:', error);
@@ -642,7 +642,7 @@ cron.schedule('0 0 * * *', async () => {
   timezone: "Europe/Moscow"
 });
 
-console.log('⏰ НОВЫЙ Cron задача для ежедневного сброса рекламы заданий настроена на 00:00 МСК');
+if (process.env.NODE_ENV === 'development') console.log('⏰ НОВЫЙ Cron задача для ежедневного сброса рекламы заданий настроена на 00:00 МСК');
 
 // ========================
 // 📅 ПЛАНИРОВЩИК ЗАДАНИЙ - CRON АВТОМАТИЗАЦИЯ
@@ -651,8 +651,8 @@ console.log('⏰ НОВЫЙ Cron задача для ежедневного сб
 
 // 📅 ФУНКЦИЯ АВТОМАТИЧЕСКОЙ АКТИВАЦИИ ЗАДАНИЙ
 const processScheduledQuests = async () => {
-  console.log('📅 === ЗАПУСК ПЛАНИРОВЩИКА ЗАДАНИЙ ===');
-  console.log('⏰ Время:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('📅 === ЗАПУСК ПЛАНИРОВЩИКА ЗАДАНИЙ ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Время:', new Date().toISOString());
   
   try {
     // Получаем задания готовые к активации
@@ -673,11 +673,11 @@ const processScheduledQuests = async () => {
     `);
     
     if (readyQuests.rows.length === 0) {
-      console.log('📅 Нет заданий готовых к активации');
+      if (process.env.NODE_ENV === 'development') console.log('📅 Нет заданий готовых к активации');
       return { processed: 0, activated: 0, errors: 0 };
     }
     
-    console.log(`📋 Найдено заданий к обработке: ${readyQuests.rows.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📋 Найдено заданий к обработке: ${readyQuests.rows.length}`);
     
     let processedCount = 0;
     let activatedCount = 0;
@@ -687,13 +687,13 @@ const processScheduledQuests = async () => {
       try {
         processedCount++;
         
-        console.log(`🔄 Обрабатываем задание: ${quest.quest_key} (${quest.quest_type})`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔄 Обрабатываем задание: ${quest.quest_key} (${quest.quest_type})`);
         
         await pool.query('BEGIN');
         
         // Проверяем не истекло ли расписание
         if (quest.schedule_end_date && new Date(quest.schedule_end_date) < new Date()) {
-          console.log(`⏰ Расписание истекло для ${quest.quest_key}, деактивируем`);
+          if (process.env.NODE_ENV === 'development') console.log(`⏰ Расписание истекло для ${quest.quest_key}, деактивируем`);
           
           await pool.query(`
             UPDATE quest_templates 
@@ -725,7 +725,7 @@ const processScheduledQuests = async () => {
           );
           
           activatedCount++;
-          console.log(`✅ Активировано задание: ${quest.quest_key}`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Активировано задание: ${quest.quest_key}`);
           
           // Логируем активацию
           await pool.query(`
@@ -749,7 +749,7 @@ const processScheduledQuests = async () => {
           WHERE id = $2
         `, [nextActivation, quest.id]);
         
-        console.log(`🔄 Следующая активация ${quest.quest_key}: ${nextActivation || 'не запланирована'}`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔄 Следующая активация ${quest.quest_key}: ${nextActivation || 'не запланирована'}`);
         
         await pool.query('COMMIT');
         
@@ -783,11 +783,11 @@ const processScheduledQuests = async () => {
       timestamp: new Date().toISOString()
     };
     
-    console.log('📊 === РЕЗУЛЬТАТЫ ПЛАНИРОВЩИКА ===');
-    console.log(`✅ Обработано заданий: ${processedCount}`);
-    console.log(`🚀 Активировано заданий: ${activatedCount}`);
-    console.log(`❌ Ошибок: ${errorCount}`);
-    console.log('🏁 Планировщик заданий завершен');
+    if (process.env.NODE_ENV === 'development') console.log('📊 === РЕЗУЛЬТАТЫ ПЛАНИРОВЩИКА ===');
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Обработано заданий: ${processedCount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚀 Активировано заданий: ${activatedCount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`❌ Ошибок: ${errorCount}`);
+    if (process.env.NODE_ENV === 'development') console.log('🏁 Планировщик заданий завершен');
     
     // Уведомляем админа при ошибках
     if (errorCount > 0) {
@@ -891,7 +891,7 @@ function calculateNextActivationForQuest(quest) {
 
 // 📅 НОВЫЙ CRON JOB: Планировщик заданий (каждые 5 минут)
 cron.schedule('*/5 * * * *', async () => {
-  console.log('📅 Запуск CRON: Планировщик заданий');
+  if (process.env.NODE_ENV === 'development') console.log('📅 Запуск CRON: Планировщик заданий');
   try {
     await processScheduledQuests();
   } catch (error) {
@@ -902,7 +902,7 @@ cron.schedule('*/5 * * * *', async () => {
   timezone: "Europe/Moscow"
 });
 
-console.log('⏰ НОВЫЙ Cron задача планировщика заданий настроена на каждые 5 минут');
+if (process.env.NODE_ENV === 'development') console.log('⏰ НОВЫЙ Cron задача планировщика заданий настроена на каждые 5 минут');
 
 // 📅 ENDPOINT ДЛЯ РУЧНОГО ЗАПУСКА ПЛАНИРОВЩИКА
 app.post('/api/admin/manual-run-scheduler', async (req, res) => {
@@ -914,7 +914,7 @@ app.post('/api/admin/manual-run-scheduler', async (req, res) => {
   }
   
   try {
-    console.log('🔧 Ручной запуск планировщика заданий админом:', admin_id);
+    if (process.env.NODE_ENV === 'development') console.log('🔧 Ручной запуск планировщика заданий админом:', admin_id);
     const result = await processScheduledQuests();
     
     res.json({
@@ -945,7 +945,7 @@ const createDailyBonusTable = async () => {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    console.log('✅ Таблица daily_bonus_streaks проверена/создана');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Таблица daily_bonus_streaks проверена/создана');
   } catch (error) {
     console.error('❌ Ошибка создания таблицы daily_bonus_streaks:', error);
   }
@@ -967,9 +967,9 @@ const addBuiltAtColumn = async () => {
         ALTER TABLE galactic_empire_ships
         ADD COLUMN built_at TIMESTAMP DEFAULT NOW()
       `);
-      console.log('✅ Колонка built_at добавлена в galactic_empire_ships');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Колонка built_at добавлена в galactic_empire_ships');
     } else {
-      console.log('✅ Колонка built_at уже существует в galactic_empire_ships');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Колонка built_at уже существует в galactic_empire_ships');
     }
   } catch (error) {
     console.error('❌ Ошибка добавления колонки built_at:', error);
@@ -978,9 +978,9 @@ const addBuiltAtColumn = async () => {
 
 // Запуск сервера
 app.listen(PORT, async () => {
-  console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
-  console.log(`🔥 UNIFIED система верификации активирована!`);
-  console.log(`✅ CORS обновлен - X-Telegram-ID header разрешен!`);
+  if (process.env.NODE_ENV === 'development') console.log(`🚀 CosmoClick Backend запущен на порту ${PORT}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🔥 UNIFIED система верификации активирована!`);
+  if (process.env.NODE_ENV === 'development') console.log(`✅ CORS обновлен - X-Telegram-ID header разрешен!`);
 
   // Создаем таблицу ежедневных бонусов
   await createDailyBonusTable();
@@ -996,8 +996,8 @@ app.listen(PORT, async () => {
       allowed_updates: ['message', 'callback_query', 'pre_checkout_query', 'successful_payment']
     });
     
-    console.log(`Webhook установлен: ${success ? 'Успешно' : 'Ошибка'}`);
-    console.log(`Webhook URL: ${webhookUrl}`);
+    if (process.env.NODE_ENV === 'development') console.log(`Webhook установлен: ${success ? 'Успешно' : 'Ошибка'}`);
+    if (process.env.NODE_ENV === 'development') console.log(`Webhook URL: ${webhookUrl}`);
   } catch (error) {
     console.error('Ошибка установки webhook:', error.message);
   }
@@ -1007,12 +1007,12 @@ app.listen(PORT, async () => {
     try {
       const tonRateService = require('./services/tonRateService');
       await tonRateService.startAutoUpdate();
-      console.log('Сервис курсов TON запущен');
+      if (process.env.NODE_ENV === 'development') console.log('Сервис курсов TON запущен');
 
       // Запуск мониторинга TON депозитов
       const { tonDepositMonitor } = require('./services/tonDepositMonitor');
       await tonDepositMonitor.start();
-      console.log('Мониторинг TON депозитов запущен');
+      if (process.env.NODE_ENV === 'development') console.log('Мониторинг TON депозитов запущен');
 
     } catch (error) {
       console.error('Ошибка запуска TON сервисов:', error);
@@ -1022,7 +1022,7 @@ app.listen(PORT, async () => {
   // 🔥 ПЕРВЫЙ ЗАПУСК UNIFIED ОЧИСТКИ (через 10 секунд после старта)
   setTimeout(async () => {
     try {
-      console.log('🧹 Первый запуск UNIFIED очистки премиума после старта сервера...');
+      if (process.env.NODE_ENV === 'development') console.log('🧹 Первый запуск UNIFIED очистки премиума после старта сервера...');
       await cleanupExpiredPremium();
     } catch (error) {
       console.error('❌ Ошибка первого запуска UNIFIED очистки:', error);

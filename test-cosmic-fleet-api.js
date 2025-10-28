@@ -4,52 +4,52 @@ const API_BASE = 'http://localhost:5002';
 const DEBUG_TELEGRAM_ID = 123456789; // Локальный тестовый ID
 
 async function testCosmicFleetAPI() {
-  console.log('🚀 === ТЕСТИРОВАНИЕ COSMIC FLEET API ===');
-  console.log('⏰ Время:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🚀 === ТЕСТИРОВАНИЕ COSMIC FLEET API ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Время:', new Date().toISOString());
 
   try {
     // 1. Тест инициализации игрока
-    console.log('\n1. 🎯 Тестируем инициализацию игрока...');
+    if (process.env.NODE_ENV === 'development') console.log('\n1. 🎯 Тестируем инициализацию игрока...');
     const initResponse = await axios.post(`${API_BASE}/api/cosmic-fleet/user/${DEBUG_TELEGRAM_ID}/init`);
-    console.log('✅ Инициализация успешна:', initResponse.data);
+    if (process.env.NODE_ENV === 'development') console.log('✅ Инициализация успешна:', initResponse.data);
 
     // 2. Тест получения профиля
-    console.log('\n2. 🎯 Тестируем получение профиля...');
+    if (process.env.NODE_ENV === 'development') console.log('\n2. 🎯 Тестируем получение профиля...');
     const profileResponse = await axios.get(`${API_BASE}/api/cosmic-fleet/user/${DEBUG_TELEGRAM_ID}`);
-    console.log('✅ Профиль получен:', profileResponse.data);
+    if (process.env.NODE_ENV === 'development') console.log('✅ Профиль получен:', profileResponse.data);
 
     // 3. Тест получения флота
-    console.log('\n3. 🎯 Тестируем получение флота...');
+    if (process.env.NODE_ENV === 'development') console.log('\n3. 🎯 Тестируем получение флота...');
     const fleetResponse = await axios.get(`${API_BASE}/api/cosmic-fleet/fleet/${DEBUG_TELEGRAM_ID}`);
-    console.log('✅ Флот получен:', fleetResponse.data);
+    if (process.env.NODE_ENV === 'development') console.log('✅ Флот получен:', fleetResponse.data);
 
     if (fleetResponse.data.length > 0) {
       const shipId = fleetResponse.data[0].id;
 
       // 4. Тест PvE боя
-      console.log('\n4. 🎯 Тестируем PvE бой...');
+      if (process.env.NODE_ENV === 'development') console.log('\n4. 🎯 Тестируем PvE бой...');
       const battleResponse = await axios.post(`${API_BASE}/api/cosmic-fleet/battle/pve`, {
         telegramId: DEBUG_TELEGRAM_ID,
         shipId: shipId
       });
-      console.log('✅ PvE бой проведен:', battleResponse.data);
+      if (process.env.NODE_ENV === 'development') console.log('✅ PvE бой проведен:', battleResponse.data);
     }
 
     // 5. Тест баланса Luminios
-    console.log('\n5. 🎯 Тестируем баланс Luminios...');
+    if (process.env.NODE_ENV === 'development') console.log('\n5. 🎯 Тестируем баланс Luminios...');
     const balanceResponse = await axios.get(`${API_BASE}/api/luminios/balance/${DEBUG_TELEGRAM_ID}`);
-    console.log('✅ Баланс Luminios:', balanceResponse.data);
+    if (process.env.NODE_ENV === 'development') console.log('✅ Баланс Luminios:', balanceResponse.data);
 
     // 6. Тест шаблонов кораблей (GET endpoint для магазина)
-    console.log('\n6. 🎯 Тестируем доступность API кораблей...');
+    if (process.env.NODE_ENV === 'development') console.log('\n6. 🎯 Тестируем доступность API кораблей...');
     try {
       const shipsResponse = await axios.get(`${API_BASE}/api/cosmic-fleet/ships`);
-      console.log('ℹ️ Ships endpoint:', shipsResponse.status);
+      if (process.env.NODE_ENV === 'development') console.log('ℹ️ Ships endpoint:', shipsResponse.status);
     } catch (err) {
-      console.log('ℹ️ Ships endpoint не найден (ожидаемо)');
+      if (process.env.NODE_ENV === 'development') console.log('ℹ️ Ships endpoint не найден (ожидаемо)');
     }
 
-    console.log('\n🎉 === ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО ===');
+    if (process.env.NODE_ENV === 'development') console.log('\n🎉 === ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО ===');
     return {
       success: true,
       timestamp: new Date().toISOString()
@@ -76,7 +76,7 @@ if (require.main === module) {
   testCosmicFleetAPI()
     .then((result) => {
       if (result.success) {
-        console.log('🎊 Тестирование завершено успешно!');
+        if (process.env.NODE_ENV === 'development') console.log('🎊 Тестирование завершено успешно!');
         process.exit(0);
       } else {
         console.error('💥 Тестирование провалено:', result.error);

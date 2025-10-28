@@ -3,11 +3,11 @@ const pool = require('../db');
 
 async function clearManualSubmissions() {
   try {
-    console.log('🗑️  Очистка заявок на ручную проверку...');
+    if (process.env.NODE_ENV === 'development') console.log('🗑️  Очистка заявок на ручную проверку...');
 
     const result = await pool.query('DELETE FROM manual_quest_submissions');
 
-    console.log(`✅ Удалено заявок: ${result.rowCount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Удалено заявок: ${result.rowCount}`);
 
     process.exit(0);
   } catch (error) {

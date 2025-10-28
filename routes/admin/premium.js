@@ -21,7 +21,7 @@ router.post('/grant-premium-30days/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`🏆 Админ выдает 30-дневный премиум игроку: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🏆 Админ выдает 30-дневный премиум игроку: ${playerId}`);
     
     // Проверяем, что игрок существует
     const player = await getPlayer(playerId);
@@ -109,14 +109,14 @@ router.post('/grant-premium-30days/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать админское действие:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать админское действие:', logError.message);
     }
     
     await client.query('COMMIT');
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ 30-дневный премиум выдан игроку ${playerId} + verified = true`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ 30-дневный премиум выдан игроку ${playerId} + verified = true`);
     
     res.json({
       success: true,
@@ -146,7 +146,7 @@ router.post('/grant-premium-forever/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`🏆 Админ выдает постоянный премиум игроку: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🏆 Админ выдает постоянный премиум игроку: ${playerId}`);
     
     // Проверяем, что игрок существует
     const player = await getPlayer(playerId);
@@ -232,14 +232,14 @@ router.post('/grant-premium-forever/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать админское действие:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать админское действие:', logError.message);
     }
     
     await client.query('COMMIT');
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ Постоянный премиум выдан игроку ${playerId} + verified = true`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Постоянный премиум выдан игроку ${playerId} + verified = true`);
     
     res.json({
       success: true,
@@ -269,7 +269,7 @@ router.post('/revoke-premium/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`🚫 Админ отменяет все премиум статусы игрока: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚫 Админ отменяет все премиум статусы игрока: ${playerId}`);
     
     // Проверяем, что игрок существует
     const player = await getPlayer(playerId);
@@ -348,14 +348,14 @@ router.post('/revoke-premium/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать админское действие:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать админское действие:', logError.message);
     }
     
     await client.query('COMMIT');
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ Все премиум статусы отменены для игрока ${playerId} + verified = false`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Все премиум статусы отменены для игрока ${playerId} + verified = false`);
     
     res.json({
       success: true,
@@ -382,7 +382,7 @@ router.post('/grant-basic-verification/:telegramId', async (req, res) => {
   }
   
   try {
-    console.log(`✅ Админ выдает базовую верификацию игроку: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Админ выдает базовую верификацию игроку: ${playerId}`);
     
     // Проверяем, что игрок существует
     const player = await getPlayer(playerId);
@@ -411,12 +411,12 @@ router.post('/grant-basic-verification/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать верификацию:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать верификацию:', logError.message);
     }
     
     const updatedPlayer = await getPlayer(playerId);
     
-    console.log(`✅ Базовая верификация выдана игроку ${playerId} (без премиум функций)`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Базовая верификация выдана игроку ${playerId} (без премиум функций)`);
     
     res.json({
       success: true,
@@ -434,7 +434,7 @@ router.post('/grant-basic-verification/:telegramId', async (req, res) => {
 // 📊 GET /premium-overview/:telegramId - Обзор премиум статистики
 router.get('/premium-overview/:telegramId', async (req, res) => {
   try {
-    console.log('📊 Админ запрашивает обзор премиум статистики');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Админ запрашивает обзор премиум статистики');
     
     // Общая статистика премиум игроков
     const premiumStats = await pool.query(`
@@ -498,7 +498,7 @@ router.get('/premium-overview/:telegramId', async (req, res) => {
 // 🧪 POST /test-premium-cleanup/:telegramId - Тестовая очистка премиума
 router.post('/test-premium-cleanup/:telegramId', async (req, res) => {
   try {
-    console.log('🧪 Админ запускает тестовую очистку премиум подписок');
+    if (process.env.NODE_ENV === 'development') console.log('🧪 Админ запускает тестовую очистку премиум подписок');
     
     const axios = require('axios');
     const apiUrl = process.env.NODE_ENV === 'production'

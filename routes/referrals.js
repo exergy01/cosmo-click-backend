@@ -22,7 +22,7 @@ router.post('/register', async (req, res) => {
     // 🛡️ ПРОВЕРКА НА ПОДОЗРИТЕЛЬНУЮ АКТИВНОСТЬ
     const suspicious = await detectSuspiciousActivity(telegramId, 'register_referral', 0, null);
     if (suspicious) {
-      console.log(`🚨 Подозрительная активность при регистрации реферала: ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🚨 Подозрительная активность при регистрации реферала: ${telegramId}`);
     }
 
     // Получаем данные реферера для проверки
@@ -86,7 +86,7 @@ router.post('/register', async (req, res) => {
 router.get('/list/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   try {
-    console.log(`🔍 Загружаем рефералов для: ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Загружаем рефералов для: ${telegramId}`);
     
     // 🔥 ИСПРАВЛЕННЫЙ ЗАПРОС: правильные поля + JOIN для получения username
     const referrals = await pool.query(`
@@ -104,8 +104,8 @@ router.get('/list/:telegramId', async (req, res) => {
       ORDER BY r.created_at DESC
     `, [telegramId]);
     
-    console.log(`✅ Найдено рефералов: ${referrals.rows.length}`);
-    console.log('📋 Данные рефералов:', referrals.rows);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено рефералов: ${referrals.rows.length}`);
+    if (process.env.NODE_ENV === 'development') console.log('📋 Данные рефералов:', referrals.rows);
     
     res.json(referrals.rows);
   } catch (err) {
@@ -117,7 +117,7 @@ router.get('/list/:telegramId', async (req, res) => {
 // GET /api/referrals/honor-board - ИСПРАВЛЕННЫЙ (считаем из players.referrer_id)
 router.get('/honor-board', async (req, res) => {
   try {
-    console.log('🏆 Загружаем доску почета...');
+    if (process.env.NODE_ENV === 'development') console.log('🏆 Загружаем доску почета...');
     
     // 🔥 ПРАВИЛЬНЫЙ ПОДСЧЕТ: считаем сколько раз каждый ID встречается в поле referrer_id
     const honorBoardResult = await pool.query(`
@@ -141,7 +141,7 @@ router.get('/honor-board', async (req, res) => {
       referrals_count: parseInt(row.actual_referrals_count)
     }));
     
-    console.log('🏆 Доска почета:', result);
+    if (process.env.NODE_ENV === 'development') console.log('🏆 Доска почета:', result);
     res.json(result);
   } catch (err) {
     console.error('Error fetching honor board:', err);
@@ -162,7 +162,7 @@ router.post('/create', async (req, res) => {
     if (player.referral_link.includes('?start=')) {
       const newReferralLink = player.referral_link.replace('?start=', '?startapp=');
       await pool.query('UPDATE players SET referral_link = $1 WHERE telegram_id = $2', [newReferralLink, telegramId]);
-      console.log(`🔄 Обновлена реферальная ссылка: ${telegramId} -> ${newReferralLink}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔄 Обновлена реферальная ссылка: ${telegramId} -> ${newReferralLink}`);
       
       const updatedPlayer = await getPlayer(telegramId);
       return res.json({ referral_link: updatedPlayer.referral_link });

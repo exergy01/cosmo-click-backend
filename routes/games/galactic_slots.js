@@ -89,11 +89,11 @@ function selectComboLength() {
 
 // ✅ ИСПРАВЛЕНО: Умная генерация поля с правильной экономикой
 function generateSmartField(betAmount) {
-  console.log('🎰 ИСПРАВЛЕННАЯ ЛОГИКА: Starting smart field generation...');
+  if (process.env.NODE_ENV === 'development') console.log('🎰 ИСПРАВЛЕННАЯ ЛОГИКА: Starting smart field generation...');
   
   // Шаг 1: Решаем будет ли выигрыш (15% шанс)
   const hasWin = willHaveWin();
-  console.log('🎰 Will have win:', hasWin, '(35% chance)');
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Will have win:', hasWin, '(35% chance)');
   
   // Инициализируем пустое поле
   const field = Array(15).fill(null);
@@ -102,14 +102,14 @@ function generateSmartField(betAmount) {
   if (hasWin) {
     // Шаг 2: Выбираем количество линий (1-4, акцент на 1)
     const linesCount = selectWinningLinesCount();
-    console.log('🎰 Winning lines count:', linesCount);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Winning lines count:', linesCount);
     
     // Шаг 3: Для каждой линии выбираем символ и длину
     for (let i = 0; i < linesCount; i++) {
       const symbol = selectSymbolForLine();
       const length = selectComboLength();
       
-      console.log(`🎰 Line ${i + 1}: ${symbol} x${length}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎰 Line ${i + 1}: ${symbol} x${length}`);
       
       // Шаг 4: Размещаем выигрышные символы на линиях
       const availableLines = PAYLINES.filter((line, index) => {
@@ -145,7 +145,7 @@ function generateSmartField(betAmount) {
   // Шаг 6: Добавляем 2-3 мертвых символа
   const deadSymbolsCount = 2 + Math.floor(Math.random() * 2); // 2 или 3
   
-  console.log('🎰 Adding dead symbols:', deadSymbolsCount);
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Adding dead symbols:', deadSymbolsCount);
   
   for (let i = 0; i < deadSymbolsCount; i++) {
     let attempts = 0;
@@ -156,15 +156,15 @@ function generateSmartField(betAmount) {
       // НЕ размещаем на выигрышных позициях
       if (!plannedWins.some(win => win.positions.includes(randomPos)) && field[randomPos] !== '🛸') {
         field[randomPos] = '🛸';
-        console.log('🎰 Placed dead symbol at position:', randomPos);
+        if (process.env.NODE_ENV === 'development') console.log('🎰 Placed dead symbol at position:', randomPos);
         placed = true;
       }
       attempts++;
     }
   }
   
-  console.log('🎰 Generated field:', field);
-  console.log('🎰 Planned wins:', plannedWins);
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Generated field:', field);
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Planned wins:', plannedWins);
   
   return field;
 }
@@ -247,7 +247,7 @@ function createSecureSlotGame(betAmount) {
   const randomBytes = crypto.randomBytes(32);
   const gameId = randomBytes.toString('hex');
   
-  console.log('🎰 Creating secure slot game for bet:', betAmount);
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Creating secure slot game for bet:', betAmount);
   
   // Генерируем умное поле
   const symbols = generateSmartField(betAmount);
@@ -255,7 +255,7 @@ function createSecureSlotGame(betAmount) {
   // Проверяем итоговые выигрыши
   const { totalWin, winningLines } = calculateFieldWinnings(symbols, betAmount);
   
-  console.log('🎰 Final game result:', {
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Final game result:', {
     gameId: gameId.substring(0, 8),
     totalWin,
     winRatio: (totalWin / betAmount).toFixed(2),
@@ -276,7 +276,7 @@ function createSecureSlotGame(betAmount) {
 
 // Безопасное получение лимитов
 async function getGameLimits(telegramId) {
-  console.log('🎰 Getting slot game limits for:', telegramId);
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Getting slot game limits for:', telegramId);
   
   let limitsResult = await pool.query(`
     SELECT daily_games, daily_ads_watched, last_reset_date 
@@ -289,7 +289,7 @@ async function getGameLimits(telegramId) {
       INSERT INTO player_game_limits (telegram_id, game_type, daily_games, daily_ads_watched, last_reset_date)
       VALUES ($1, 'galactic_slots', 0, 0, CURRENT_DATE)
     `, [telegramId]);
-    console.log('🎰 Created new slot limits record for player:', telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Created new slot limits record for player:', telegramId);
     return { dailyGames: 0, dailyAds: 0 };
   }
 
@@ -306,7 +306,7 @@ async function getGameLimits(telegramId) {
   const shouldReset = needsReset.rows[0].needs_reset;
   
   if (shouldReset) {
-    console.log('🎰 Resetting slot limits - detected new day');
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Resetting slot limits - detected new day');
     await pool.query(`
       UPDATE player_game_limits 
       SET daily_games = 0, daily_ads_watched = 0, last_reset_date = CURRENT_DATE
@@ -315,7 +315,7 @@ async function getGameLimits(telegramId) {
     return { dailyGames: 0, dailyAds: 0 };
   }
 
-  console.log('🎰 Same day - using existing slot limits:', { 
+  if (process.env.NODE_ENV === 'development') console.log('🎰 Same day - using existing slot limits:', {
     dailyGames: limits.daily_games, 
     dailyAds: limits.daily_ads_watched 
   });
@@ -333,7 +333,7 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
   const canPlayFree = gamesLeft > 0;
   const canWatchAd = dailyAds < MAX_AD_GAMES && gamesLeft === 0;
   
-  console.log('🎰 ИСПРАВЛЕННЫЙ расчет игр (50 + 10*20 = 250 MAX):', {
+  if (process.env.NODE_ENV === 'development') console.log('🎰 ИСПРАВЛЕННЫЙ расчет игр (50 + 10*20 = 250 MAX):', {
     dailyGames,
     dailyAds,
     totalGamesAvailable,
@@ -349,7 +349,7 @@ function calculateGamesAvailable(dailyGames, dailyAds) {
 // Получить статус игры
 router.get('/status/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Galactic slots status request for:', req.params.telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Galactic slots status request for:', req.params.telegramId);
     const { telegramId } = req.params;
     
     const { dailyGames, dailyAds } = await getGameLimits(telegramId);
@@ -380,7 +380,7 @@ router.get('/status/:telegramId', async (req, res) => {
 
     const balance = balanceResult.rows[0]?.ccc || 0;
 
-    console.log('🎰 Galactic slots status response:', { 
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Galactic slots status response:', {
       balance: parseFloat(balance), 
       dailyGames, 
       dailyAds,
@@ -413,13 +413,13 @@ router.get('/status/:telegramId', async (req, res) => {
 // Крутить слоты с улучшенной валидацией
 router.post('/spin/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Starting galactic slots spin for:', req.params.telegramId, 'Bet:', req.body.betAmount);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Starting galactic slots spin for:', req.params.telegramId, 'Bet:', req.body.betAmount);
     const { telegramId } = req.params;
     const { betAmount } = req.body;
 
     const parsedBetAmount = Number(betAmount);
     if (!parsedBetAmount || isNaN(parsedBetAmount) || parsedBetAmount < MIN_BET || parsedBetAmount > MAX_BET) {
-      console.log('🎰❌ Invalid bet amount:', betAmount, 'parsed:', parsedBetAmount);
+      if (process.env.NODE_ENV === 'development') console.log('🎰❌ Invalid bet amount:', betAmount, 'parsed:', parsedBetAmount);
       return res.status(400).json({
         success: false,
         error: `Ставка должна быть от ${MIN_BET} до ${MAX_BET} CCC`
@@ -444,7 +444,7 @@ router.post('/spin/:telegramId', async (req, res) => {
       }
 
       const currentBalance = parseFloat(balanceResult.rows[0].ccc);
-      console.log('🎰 Player balance:', currentBalance, 'Bet:', parsedBetAmount);
+      if (process.env.NODE_ENV === 'development') console.log('🎰 Player balance:', currentBalance, 'Bet:', parsedBetAmount);
       
       if (currentBalance < parsedBetAmount) {
         await pool.query('ROLLBACK');
@@ -480,7 +480,7 @@ router.post('/spin/:telegramId', async (req, res) => {
       const isWin = totalWin > 0;
       const profit = totalWin - parsedBetAmount;
 
-      console.log('🎰 ИСПРАВЛЕННЫЙ slot result:', { 
+      if (process.env.NODE_ENV === 'development') console.log('🎰 ИСПРАВЛЕННЫЙ slot result:', {
         symbols: game.symbols,
         totalWin,
         profit,
@@ -495,7 +495,7 @@ router.post('/spin/:telegramId', async (req, res) => {
           'UPDATE players SET ccc = ccc + $1 WHERE telegram_id = $2',
           [totalWin, telegramId]
         );
-        console.log('🎰✅ Win! Added to balance:', totalWin);
+        if (process.env.NODE_ENV === 'development') console.log('🎰✅ Win! Added to balance:', totalWin);
       }
 
       // Обновляем джекпот при проигрыше
@@ -511,7 +511,7 @@ router.post('/spin/:telegramId', async (req, res) => {
           WHERE id = 1
         `, [jackpotContribution]);
         
-        console.log('🎰💰 Added to jackpot:', jackpotContribution);
+        if (process.env.NODE_ENV === 'development') console.log('🎰💰 Added to jackpot:', jackpotContribution);
       }
 
       // Сохраняем в историю с серверным временем
@@ -552,7 +552,7 @@ router.post('/spin/:telegramId', async (req, res) => {
 
       await pool.query('COMMIT');
 
-      console.log('🎰✅ Slot spin completed successfully');
+      if (process.env.NODE_ENV === 'development') console.log('🎰✅ Slot spin completed successfully');
       res.json({
         success: true,
         result: {
@@ -580,15 +580,15 @@ router.post('/spin/:telegramId', async (req, res) => {
 // ✅ ИСПРАВЛЕНО: Реклама дает 10 игр за раз
 router.post('/watch-ad/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Watch ad request for slots:', req.params.telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Watch ad request for slots:', req.params.telegramId);
     const { telegramId } = req.params;
 
     const { dailyGames, dailyAds } = await getGameLimits(telegramId);
     
-    console.log('🎰 Current slot limits before ad:', { dailyGames, dailyAds });
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Current slot limits before ad:', { dailyGames, dailyAds });
     
     if (dailyAds >= MAX_AD_GAMES) {
-      console.log('🎰❌ Slot ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
+      if (process.env.NODE_ENV === 'development') console.log('🎰❌ Slot ad limit exceeded:', dailyAds, '>=', MAX_AD_GAMES);
       return res.status(400).json({
         success: false,
         error: `Дневной лимит рекламы исчерпан (${MAX_AD_GAMES}/${MAX_AD_GAMES})`,
@@ -600,7 +600,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
     const maxTotalGames = DAILY_GAME_LIMIT + (MAX_AD_GAMES * GAMES_PER_AD);
     
     if (totalGamesPlayed >= maxTotalGames) {
-      console.log('🎰❌ Total slot games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
+      if (process.env.NODE_ENV === 'development') console.log('🎰❌ Total slot games limit exceeded:', totalGamesPlayed, '>=', maxTotalGames);
       return res.status(400).json({
         success: false,
         error: `Максимальный дневной лимит игр исчерпан (${maxTotalGames} игр)`,
@@ -618,7 +618,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
     const newAdsWatched = dailyAds + 1;
     const adsRemaining = MAX_AD_GAMES - newAdsWatched;
 
-    console.log('🎰✅ Slot ad watched successfully! New stats:', {
+    if (process.env.NODE_ENV === 'development') console.log('🎰✅ Slot ad watched successfully! New stats:', {
       adsWatched: newAdsWatched,
       adsRemaining,
       maxAds: MAX_AD_GAMES,
@@ -644,7 +644,7 @@ router.post('/watch-ad/:telegramId', async (req, res) => {
 
 router.get('/history/:telegramId', async (req, res) => {
   try {
-    console.log('🎰 Getting FULL slot history for:', req.params.telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('🎰 Getting FULL slot history for:', req.params.telegramId);
     const { telegramId } = req.params;
     
     const historyResult = await pool.query(`
@@ -683,7 +683,7 @@ router.get('/history/:telegramId', async (req, res) => {
       jackpotContribution: parseInt(game.jackpot_contribution || 0)
     }));
 
-    console.log('🎰 FULL history loaded:', { 
+    if (process.env.NODE_ENV === 'development') console.log('🎰 FULL history loaded:', {
       totalGames,
       loaded: history.length 
     });

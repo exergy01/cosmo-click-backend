@@ -7,57 +7,57 @@ const router = express.Router();
 
 // POST /api/player/create-with-referrer - СОЗДАНИЕ ИГРОКА С РЕФЕРАЛЬНЫМИ ДАННЫМИ
 router.post('/create-with-referrer', async (req, res) => {
-  console.log('🎯🎯🎯 НОВЫЙ ENDPOINT ВЫЗВАН! 🎯🎯🎯');
-  console.log('📦 Полные данные запроса:', JSON.stringify(req.body, null, 2));
+  if (process.env.NODE_ENV === 'development') console.log('🎯🎯🎯 НОВЫЙ ENDPOINT ВЫЗВАН! 🎯🎯🎯');
+  if (process.env.NODE_ENV === 'development') console.log('📦 Полные данные запроса:', JSON.stringify(req.body, null, 2));
   
   const { telegramId, referralData } = req.body;
   if (!telegramId) {
-    console.log('❌ Нет telegramId в запросе');
+    if (process.env.NODE_ENV === 'development') console.log('❌ Нет telegramId в запросе');
     return res.status(400).json({ error: 'Telegram ID is required' });
   }
 
-  console.log(`🎯 Создание игрока с реферальными данными: ${telegramId}`);
-  console.log(`🔗 Реферальные данные:`, JSON.stringify(referralData, null, 2));
+  if (process.env.NODE_ENV === 'development') console.log(`🎯 Создание игрока с реферальными данными: ${telegramId}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🔗 Реферальные данные:`, JSON.stringify(referralData, null, 2));
 
   try {
     // 🔥 ИЗВЛЕКАЕМ РЕФЕРЕРА ИЗ ДАННЫХ
     let referrerId = '1222791281'; // дефолтный
 
-    console.log('🔍 Начинаем поиск реферера...');
-    console.log('🔍 Проверяем referralData?.tgWebAppStartParam:', referralData?.tgWebAppStartParam);
-    console.log('🔍 Проверяем referralData?.start_param:', referralData?.start_param);
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Начинаем поиск реферера...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Проверяем referralData?.tgWebAppStartParam:', referralData?.tgWebAppStartParam);
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Проверяем referralData?.start_param:', referralData?.start_param);
     
     // Приоритет 1: tgWebAppStartParam из URL
     if (referralData?.tgWebAppStartParam) {
       referrerId = referralData.tgWebAppStartParam;
-      console.log(`🎯🎯 НАЙДЕН РЕФЕРЕР в tgWebAppStartParam: ${referrerId} 🎯🎯`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎯🎯 НАЙДЕН РЕФЕРЕР в tgWebAppStartParam: ${referrerId} 🎯🎯`);
     }
     // Приоритет 2: start_param из Telegram WebApp
     else if (referralData?.start_param) {
       referrerId = referralData.start_param;
-      console.log(`🎯 Реферер найден в start_param: ${referrerId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎯 Реферер найден в start_param: ${referrerId}`);
     }
     // Приоритет 3: другие параметры
     else if (referralData?.startapp || referralData?.ref) {
       referrerId = referralData.startapp || referralData.ref;
-      console.log(`🎯 Реферер найден в других параметрах: ${referrerId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎯 Реферер найден в других параметрах: ${referrerId}`);
     } else {
-      console.log('⚠️ Реферер НЕ НАЙДЕН в данных, используем дефолтный');
-      console.log('⚠️ Содержимое referralData:', Object.keys(referralData || {}));
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Реферер НЕ НАЙДЕН в данных, используем дефолтный');
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Содержимое referralData:', Object.keys(referralData || {}));
     }
 
-    console.log(`🎯 ФИНАЛЬНЫЙ РЕФЕРЕР: ${referrerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 ФИНАЛЬНЫЙ РЕФЕРЕР: ${referrerId}`);
 
     // Проверяем, что игрок не существует
     const existingPlayer = await pool.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
     if (existingPlayer.rows.length > 0) {
-      console.log(`❌ Игрок ${telegramId} уже существует`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ Игрок ${telegramId} уже существует`);
       const player = await getPlayer(telegramId);
       return res.json(player);
     }
 
     // 🔥 СОЗДАЕМ НОВОГО ИГРОКА В БД
-    console.log('🔧 Создаем нового игрока в базе данных...');
+    if (process.env.NODE_ENV === 'development') console.log('🔧 Создаем нового игрока в базе данных...');
     
     const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
     
@@ -127,7 +127,7 @@ router.post('/create-with-referrer', async (req, res) => {
     const newPlayerResult = await pool.query(insertQuery, insertValues);
     const player = newPlayerResult.rows[0];
 
-    console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
 
 // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА (все игроки под реферером)
 if (referrerId !== telegramId) {
@@ -144,9 +144,9 @@ if (referrerId !== telegramId) {
             [referrerId, telegramId, 0, 0]
           );
           
-          console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
         } else {
-          console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
         }
       } catch (referralErr) {
         console.error('❌ Ошибка обновления статистики реферера:', referralErr);
@@ -157,7 +157,7 @@ if (referrerId !== telegramId) {
     // Получаем полные данные игрока через getPlayer
     const fullPlayer = await getPlayer(telegramId);
     
-    console.log(`✅ ОТВЕТ: Игрок готов с реферером: ${fullPlayer.referrer_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ ОТВЕТ: Игрок готов с реферером: ${fullPlayer.referrer_id}`);
     res.json(fullPlayer);
 
   } catch (err) {
@@ -171,8 +171,8 @@ router.post('/create', async (req, res) => {
   const { telegramId, referralData } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
 
-  console.log(`🎯 Создание нового игрока: ${telegramId}`);
-  console.log(`🔗 Данные реферала:`, referralData);
+  if (process.env.NODE_ENV === 'development') console.log(`🎯 Создание нового игрока: ${telegramId}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🔗 Данные реферала:`, referralData);
 
   const client = await pool.connect();
   try {
@@ -182,7 +182,7 @@ router.post('/create', async (req, res) => {
     const existingPlayer = await client.query('SELECT telegram_id FROM players WHERE telegram_id = $1', [telegramId]);
     if (existingPlayer.rows.length > 0) {
       await client.query('ROLLBACK');
-      console.log(`❌ Игрок ${telegramId} уже существует`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ Игрок ${telegramId} уже существует`);
       return res.status(400).json({ error: 'Player already exists' });
     }
 
@@ -192,12 +192,12 @@ router.post('/create', async (req, res) => {
     // Приоритет 1: Из переданного извлеченного реферера (фронтенд уже все проверил)
     if (referralData?.extractedReferrer) {
       referrerId = referralData.extractedReferrer;
-      console.log(`🎯 Используем извлеченного реферера: ${referrerId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎯 Используем извлеченного реферера: ${referrerId}`);
     }
     // Приоритет 2: Из start_param (для Mini Apps)
     else if (referralData?.start_param) {
       referrerId = referralData.start_param;
-      console.log(`🎯 Реферер из start_param: ${referrerId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎯 Реферер из start_param: ${referrerId}`);
     }
     // Приоритет 3: Парсинг initData
     else if (referralData?.initData) {
@@ -206,7 +206,7 @@ router.post('/create', async (req, res) => {
         const startParam = urlParams.get('start_param');
         if (startParam) {
           referrerId = startParam;
-          console.log(`🎯 Реферер из initData: ${referrerId}`);
+          if (process.env.NODE_ENV === 'development') console.log(`🎯 Реферер из initData: ${referrerId}`);
         }
       } catch (err) {
         console.error('❌ Ошибка парсинга initData:', err);
@@ -217,11 +217,11 @@ router.post('/create', async (req, res) => {
       const referrerFromUrl = extractReferrerFromUrl(referralData.url);
       if (referrerFromUrl) {
         referrerId = referrerFromUrl;
-        console.log(`🎯 Реферер из URL: ${referrerId}`);
+        if (process.env.NODE_ENV === 'development') console.log(`🎯 Реферер из URL: ${referrerId}`);
       }
     }
 
-    console.log(`🎯 Финальный реферер: ${referrerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 Финальный реферер: ${referrerId}`);
 
     // Создаем игрока
     const referralLink = `https://t.me/CosmoClickBot?startapp=${telegramId}`;
@@ -292,7 +292,7 @@ router.post('/create', async (req, res) => {
     const newPlayerResult = await client.query(insertQuery, insertValues);
     let player = newPlayerResult.rows[0];
 
-    console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} создан с реферером ${referrerId}`);
 
     // 🎯 ОБНОВЛЯЕМ СТАТИСТИКУ РЕФЕРЕРА
     if (referrerId && referrerId !== telegramId) {
@@ -309,9 +309,9 @@ router.post('/create', async (req, res) => {
             [referrerId, telegramId, 0, 0]
           );
           
-          console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Статистика реферера ${referrerId} обновлена (+1 реферал)`);
         } else {
-          console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ Рефер ${referrerId} не найден в базе данных`);
         }
       } catch (referralErr) {
         console.error('❌ Ошибка обновления статистики реферера:', referralErr);
@@ -324,8 +324,8 @@ router.post('/create', async (req, res) => {
     // Получаем полные данные игрока
     const fullPlayer = await getPlayer(telegramId);
     
-    console.log(`✅ Игрок ${telegramId} создан успешно с реферером ${referrerId}`);
-    console.log(`📊 Проверка: referrer_id в БД = ${fullPlayer?.referrer_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} создан успешно с реферером ${referrerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Проверка: referrer_id в БД = ${fullPlayer?.referrer_id}`);
     
     res.json(fullPlayer);
 
@@ -353,12 +353,12 @@ function extractReferrerFromUrl(url) {
     for (const pattern of patterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
-        console.log(`🔗 Найден реферер в URL: ${match[1]}`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔗 Найден реферер в URL: ${match[1]}`);
         return match[1];
       }
     }
     
-    console.log(`🔗 Реферер в URL не найден: ${url}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 Реферер в URL не найден: ${url}`);
     return null;
   } catch (err) {
     console.error('❌ Ошибка парсинга URL:', err);
@@ -425,7 +425,7 @@ router.get('/:telegramId', async (req, res) => {
   try {
     const player = await getPlayer(telegramId);
     if (!player) {
-      console.log(`❌ GET /api/player/${telegramId} - игрок не найден, возвращаем 404`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ GET /api/player/${telegramId} - игрок не найден, возвращаем 404`);
       return res.status(404).json({ error: 'Player not found' });
     }
     res.json(player);
@@ -526,7 +526,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     try {
       logStats = await getPlayerStatistics(telegramId);
     } catch (err) {
-      console.log('Player actions table not found, using calculated stats');
+      if (process.env.NODE_ENV === 'development') console.log('Player actions table not found, using calculated stats');
     }
 
     // Рассчитываем общую статистику
@@ -699,8 +699,8 @@ router.post('/watch_ad', async (req, res) => {
 
 // POST /api/player/connect-wallet - ПОДКЛЮЧЕНИЕ TELEGRAM WALLET
 router.post('/connect-wallet', async (req, res) => {
-  console.log('--- Endpoint /connect-wallet вызван ---');
-  console.log('Получено тело запроса:', JSON.stringify(req.body));
+  if (process.env.NODE_ENV === 'development') console.log('--- Endpoint /connect-wallet вызван ---');
+  if (process.env.NODE_ENV === 'development') console.log('Получено тело запроса:', JSON.stringify(req.body));
   
   const { telegram_id, wallet_address, signature } = req.body;
   
@@ -710,7 +710,7 @@ router.post('/connect-wallet', async (req, res) => {
 
   // ✅ НОВОЕ: Если передан реальный адрес кошелька
   if (wallet_address && signature) {
-    console.log(`🔗 Подключение реального кошелька: ${wallet_address}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 Подключение реального кошелька: ${wallet_address}`);
     
     // TODO: Верификация подписи (если нужна безопасность)
     // const isValidSignature = verifyWalletSignature(wallet_address, signature, telegram_id);
@@ -736,7 +736,7 @@ router.post('/connect-wallet', async (req, res) => {
 
       await client.query('COMMIT');
       const updatedPlayer = await getPlayer(telegram_id);
-      console.log(`✅ Реальный кошелек подключен для ${telegram_id}: ${wallet_address}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Реальный кошелек подключен для ${telegram_id}: ${wallet_address}`);
       
       res.json({
         success: true,
@@ -756,7 +756,7 @@ router.post('/connect-wallet', async (req, res) => {
   }
 
   // ✅ СТАРАЯ ЛОГИКА: Фиктивный кошелек для тестирования
-  console.log(`🔗 Создание тестового кошелька для игрока: ${telegram_id}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🔗 Создание тестового кошелька для игрока: ${telegram_id}`);
 
   const client = await pool.connect();
   try {
@@ -778,7 +778,7 @@ router.post('/connect-wallet', async (req, res) => {
 
     await client.query('COMMIT');
     const updatedPlayer = await getPlayer(telegram_id);
-    console.log(`✅ Тестовый кошелек создан для ${telegram_id}: ${testWalletAddress}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Тестовый кошелек создан для ${telegram_id}: ${testWalletAddress}`);
     
     res.json({
       success: true,

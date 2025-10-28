@@ -9,12 +9,12 @@ const router = express.Router();
 
 // Получение транзакций TON
 const getTonTransactions = async (gameWalletAddress, limit = 50) => {
-  console.log(`Получаем TON транзакции для ${gameWalletAddress}`);
+  if (process.env.NODE_ENV === 'development') console.log(`Получаем TON транзакции для ${gameWalletAddress}`);
   
   // ПРИОРИТЕТ: TONAPI с токеном
   if (process.env.TONAPI_TOKEN) {
     try {
-      console.log('Пробуем TONAPI с токеном...');
+      if (process.env.NODE_ENV === 'development') console.log('Пробуем TONAPI с токеном...');
       const response = await axios.get(`https://tonapi.io/v2/blockchain/accounts/${gameWalletAddress}/transactions`, {
         params: { 
           limit: Math.min(limit, 100),
@@ -39,18 +39,18 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
             value: tx.in_msg?.value
           }
         }));
-        console.log(`TONAPI работает! Получено ${transactions.length} транзакций`);
+        if (process.env.NODE_ENV === 'development') console.log(`TONAPI работает! Получено ${transactions.length} транзакций`);
         return transactions;
       }
     } catch (error) {
-      console.log('TONAPI ошибка:', error.message);
+      if (process.env.NODE_ENV === 'development') console.log('TONAPI ошибка:', error.message);
     }
   }
 
   // Резерв: TON Center
   if (process.env.TONCENTER_API_KEY) {
     try {
-      console.log('Пробуем TON Center с API ключом...');
+      if (process.env.NODE_ENV === 'development') console.log('Пробуем TON Center с API ключом...');
       const response = await axios.get('https://toncenter.com/api/v2/getTransactions', {
         params: {
           address: gameWalletAddress,
@@ -64,11 +64,11 @@ const getTonTransactions = async (gameWalletAddress, limit = 50) => {
       });
 
       if (response.data.ok && response.data.result) {
-        console.log(`TON Center работает! Получено ${response.data.result.length} транзакций`);
+        if (process.env.NODE_ENV === 'development') console.log(`TON Center работает! Получено ${response.data.result.length} транзакций`);
         return response.data.result;
       }
     } catch (error) {
-      console.log('TON Center ошибка:', error.message);
+      if (process.env.NODE_ENV === 'development') console.log('TON Center ошибка:', error.message);
     }
   }
 
@@ -101,7 +101,7 @@ const ensureExpectedDepositsTable = async () => {
       ON expected_deposits (expires_at, processed)
     `);
     
-    console.log('✅ Таблица expected_deposits готова');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Таблица expected_deposits готова');
   } catch (error) {
     console.error('Ошибка создания таблицы expected_deposits:', error);
   }
@@ -116,11 +116,11 @@ const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
     const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
     const amount = parseFloat(tx.in_msg.value) / 1000000000;
     
-    console.log(`🔍 Проверка депозита с временным окном:`);
-    console.log(`   - Сумма: ${amount} TON`);
-    console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
-    console.log(`   - Время: ${minutesAgo} минут назад`);
-    console.log(`   - Для игрока: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Проверка депозита с временным окном:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Сумма: ${amount} TON`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - От адреса: ${fromAddress || 'неизвестно'}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Время: ${minutesAgo} минут назад`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Для игрока: ${playerId}`);
     
     try {
       // ОСНОВНАЯ ПРОВЕРКА: Ищем ожидаемый депозит только по игроку и сумме (без адреса)
@@ -139,9 +139,9 @@ const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
         const expectedDeposit = expectedResult.rows[0];
         const expectedMinutesAgo = Math.floor((Date.now() - new Date(expectedDeposit.created_at).getTime()) / (1000 * 60));
         
-        console.log(`✅ НАЙДЕН ОЖИДАЕМЫЙ ДЕПОЗИТ: ${expectedDeposit.amount} TON (${expectedMinutesAgo} мин назад)`);
-        console.log(`   - Ожидался от: ${expectedDeposit.from_address}`);
-        console.log(`   - Пришел от: ${fromAddress}`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ НАЙДЕН ОЖИДАЕМЫЙ ДЕПОЗИТ: ${expectedDeposit.amount} TON (${expectedMinutesAgo} мин назад)`);
+        if (process.env.NODE_ENV === 'development') console.log(`   - Ожидался от: ${expectedDeposit.from_address}`);
+        if (process.env.NODE_ENV === 'development') console.log(`   - Пришел от: ${fromAddress}`);
         
         // Помечаем ожидаемый депозит как обработанный
         await pool.query(
@@ -158,7 +158,7 @@ const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
       
       // РЕЗЕРВНАЯ ПРОВЕРКА: Очень свежие транзакции (менее 2 минут)
       if (minutesAgo < 2) {
-        console.log(`⚠️ РАЗРЕШЕНО: Очень свежая транзакция (${minutesAgo} мин)`);
+        if (process.env.NODE_ENV === 'development') console.log(`⚠️ РАЗРЕШЕНО: Очень свежая транзакция (${minutesAgo} мин)`);
         return {
           valid: true,
           method: 'fallback_very_fresh',
@@ -170,7 +170,7 @@ const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
       console.error('Ошибка проверки ожидаемых депозитов:', error);
     }
     
-    console.log(`❌ ОТКЛОНЕНО: Нет ожидаемого депозита для игрока ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`❌ ОТКЛОНЕНО: Нет ожидаемого депозита для игрока ${playerId}`);
     return {
       valid: false,
       method: 'no_expected_deposit',
@@ -181,12 +181,12 @@ const isDepositForPlayerWithTimeWindow = async (tx, playerId, fromAddress) => {
 
 // Функция обработки депозита С ОТСЛЕЖИВАНИЕМ СТАТУСОВ
 async function processDeposit(playerId, amount, hash, fromAddress, validationInfo) {
-    console.log(`💰 ОБРАБОТКА ДЕПОЗИТА:`);
-    console.log(`   - Сумма: ${amount} TON`);
-    console.log(`   - От: ${fromAddress}`);
-    console.log(`   - Hash: ${hash}`);
-    console.log(`   - Игрок: ${playerId}`);
-    console.log(`   - Метод валидации: ${validationInfo.method}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 ОБРАБОТКА ДЕПОЗИТА:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Сумма: ${amount} TON`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - От: ${fromAddress}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Hash: ${hash}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Игрок: ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   - Метод валидации: ${validationInfo.method}`);
     
     const client = await pool.connect();
     try {
@@ -202,7 +202,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
         // ⚠️ Не логируем для фантомных ID
         const phantomIds = ['00000000', '000000005749', '000000005245'];
         if (!phantomIds.includes(playerId)) {
-          console.log(`❌ Игрок ${playerId} не найден`);
+          if (process.env.NODE_ENV === 'development') console.log(`❌ Игрок ${playerId} не найден`);
         }
         await client.query('ROLLBACK');
         return { success: false, error: 'Player not found' };
@@ -210,7 +210,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
   
       const playerData = playerResult.rows[0];
       const currentBalance = parseFloat(playerData.ton || '0');
-      console.log(`✅ Игрок: ${playerData.first_name}, баланс: ${currentBalance} TON`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок: ${playerData.first_name}, баланс: ${currentBalance} TON`);
       
       // ШАГ 2: Проверяем дублирование
       const existingCheck = await client.query(
@@ -219,14 +219,14 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       );
   
       if (existingCheck.rows.length > 0) {
-        console.log(`⚠️ Транзакция уже обработана: ${hash} (статус: ${existingCheck.rows[0].status})`);
+        if (process.env.NODE_ENV === 'development') console.log(`⚠️ Транзакция уже обработана: ${hash} (статус: ${existingCheck.rows[0].status})`);
         await client.query('ROLLBACK');
         return { success: false, error: 'Transaction already processed', skipped: true };
       }
       
       // ШАГ 3: Обновляем баланс игрока
       const newBalance = currentBalance + amount;
-      console.log(`💰 Обновляем баланс: ${currentBalance} + ${amount} = ${newBalance}`);
+      if (process.env.NODE_ENV === 'development') console.log(`💰 Обновляем баланс: ${currentBalance} + ${amount} = ${newBalance}`);
       
       const updateResult = await client.query(
         'UPDATE players SET ton = $1 WHERE telegram_id = $2 RETURNING ton',
@@ -234,7 +234,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       );
       
       if (updateResult.rows.length === 0) {
-        console.log(`❌ Не удалось обновить баланс`);
+        if (process.env.NODE_ENV === 'development') console.log(`❌ Не удалось обновить баланс`);
         await client.query('ROLLBACK');
         return { success: false, error: 'Failed to update balance' };
       }
@@ -248,7 +248,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
         [playerId, amount, hash]
       );
       
-      console.log(`✅ Депозит записан с ID: ${depositResult.rows[0].id}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Депозит записан с ID: ${depositResult.rows[0].id}`);
   
       // ШАГ 5: Записываем в balance_history (если таблица существует)
       try {
@@ -273,23 +273,23 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
             })
           ]
         );
-        console.log(`✅ История баланса записана`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ История баланса записана`);
       } catch (historyError) {
-        console.log('⚠️ Не удалось записать историю баланса (не критично):', historyError.message);
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось записать историю баланса (не критично):', historyError.message);
       }
   
       // Коммитим транзакцию
       await client.query('COMMIT');
-      console.log(`🎉 УСПЕХ! Депозит обработан: ${amount} TON для ${playerData.first_name}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🎉 УСПЕХ! Депозит обработан: ${amount} TON для ${playerData.first_name}`);
       
       // Отправляем уведомление (не критично)
       try {
         if (notifyTonDeposit) {
           await notifyTonDeposit(playerData, amount, hash);
-          console.log(`📧 Уведомление отправлено`);
+          if (process.env.NODE_ENV === 'development') console.log(`📧 Уведомление отправлено`);
         }
       } catch (notifyErr) {
-        console.log('⚠️ Уведомление не отправлено:', notifyErr.message);
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Уведомление не отправлено:', notifyErr.message);
       }
       
       return {
@@ -347,12 +347,12 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
             null // transaction_hash будет позже
           ]
         );
-        console.log('✅ Попытка депозита зарегистрирована со статусом pending');
+        if (process.env.NODE_ENV === 'development') console.log('✅ Попытка депозита зарегистрирована со статусом pending');
       } catch (depositErr) {
         console.error('Ошибка записи попытки депозита:', depositErr);
       }
       
-      console.log(`📝 Зарегистрирован ожидаемый депозит: ${amount} TON от ${from_address} для игрока ${player_id}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📝 Зарегистрирован ожидаемый депозит: ${amount} TON от ${from_address} для игрока ${player_id}`);
       
       res.json({ 
         success: true, 
@@ -370,7 +370,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
   router.post('/update-deposit-status', async (req, res) => {
     const { player_id, amount, status } = req.body;
     
-    console.log('Обновление статуса депозита:', { player_id, amount, status });
+    if (process.env.NODE_ENV === 'development') console.log('Обновление статуса депозита:', { player_id, amount, status });
     
     if (!player_id || !amount || !status) {
       return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
@@ -390,10 +390,10 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       );
       
       if (result.rows.length > 0) {
-        console.log(`✅ Статус депозита обновлен на '${status}'`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Статус депозита обновлен на '${status}'`);
         res.json({ success: true, message: `Статус обновлен: ${status}` });
       } else {
-        console.log('⚠️ Не найден pending депозит для обновления');
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Не найден pending депозит для обновления');
         res.json({ success: false, message: 'Pending депозит не найден' });
       }
       
@@ -408,11 +408,11 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
 router.post('/check-deposits', async (req, res) => {
     const { player_id, sender_address } = req.body;
     
-    console.log('🔒 ===============================================================');
-    console.log('🔒 ЗАЩИЩЕННАЯ ПРОВЕРКА ДЕПОЗИТОВ С ВРЕМЕННЫМ ОКНОМ');
-    console.log('🔒 Игрок:', player_id);
-    console.log('🔒 Адрес отправителя:', sender_address || 'не указан');
-    console.log('🔒 ===============================================================');
+    if (process.env.NODE_ENV === 'development') console.log('🔒 ===============================================================');
+    if (process.env.NODE_ENV === 'development') console.log('🔒 ЗАЩИЩЕННАЯ ПРОВЕРКА ДЕПОЗИТОВ С ВРЕМЕННЫМ ОКНОМ');
+    if (process.env.NODE_ENV === 'development') console.log('🔒 Игрок:', player_id);
+    if (process.env.NODE_ENV === 'development') console.log('🔒 Адрес отправителя:', sender_address || 'не указан');
+    if (process.env.NODE_ENV === 'development') console.log('🔒 ===============================================================');
     
     if (!player_id) {
       return res.status(400).json({ error: 'Player ID обязателен' });
@@ -426,7 +426,7 @@ router.post('/check-deposits', async (req, res) => {
       let transactions = [];
       try {
         transactions = await getTonTransactions(gameWalletAddress, 50);
-        console.log(`🔗 Получено ${transactions.length} транзакций из блокчейна`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔗 Получено ${transactions.length} транзакций из блокчейна`);
       } catch (apiError) {
         console.error('💥 Все API недоступны:', apiError.message);
         return res.json({ 
@@ -441,17 +441,17 @@ router.post('/check-deposits', async (req, res) => {
       let rejectedCount = 0;
       let errorCount = 0;
       
-      console.log('🔍 Анализ транзакций с проверкой временного окна...');
+      if (process.env.NODE_ENV === 'development') console.log('🔍 Анализ транзакций с проверкой временного окна...');
       
       // Обрабатываем каждую транзакцию
       for (let i = 0; i < transactions.length; i++) {
         const tx = transactions[i];
         
-        console.log(`\n📋 Транзакция ${i+1}/${transactions.length}:`);
+        if (process.env.NODE_ENV === 'development') console.log(`\n📋 Транзакция ${i+1}/${transactions.length}:`);
         
         // Пропускаем исходящие транзакции
         if (!tx.in_msg || !tx.in_msg.value || tx.in_msg.value === '0') {
-          console.log('⭕ Пропуск: исходящая или нулевая транзакция');
+          if (process.env.NODE_ENV === 'development') console.log('⭕ Пропуск: исходящая или нулевая транзакция');
           continue;
         }
   
@@ -461,14 +461,14 @@ router.post('/check-deposits', async (req, res) => {
         const txTime = new Date(tx.utime * 1000);
         const minutesAgo = Math.floor((Date.now() - txTime.getTime()) / (1000 * 60));
         
-        console.log(`💰 Сумма: ${amount} TON`);
-        console.log(`🔗 Hash: ${hash.substring(0, 20)}...`);
-        console.log(`👤 От: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'неизвестно'}`);
-        console.log(`⏰ Время: ${minutesAgo} минут назад`);
+        if (process.env.NODE_ENV === 'development') console.log(`💰 Сумма: ${amount} TON`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔗 Hash: ${hash.substring(0, 20)}...`);
+        if (process.env.NODE_ENV === 'development') console.log(`👤 От: ${fromAddress ? fromAddress.substring(0, 15) + '...' : 'неизвестно'}`);
+        if (process.env.NODE_ENV === 'development') console.log(`⏰ Время: ${minutesAgo} минут назад`);
         
         // Фильтр минимальной суммы
         if (amount < 0.005) {
-          console.log('⭕ Пропуск: сумма меньше 0.005 TON');
+          if (process.env.NODE_ENV === 'development') console.log('⭕ Пропуск: сумма меньше 0.005 TON');
           continue;
         }
         
@@ -476,36 +476,36 @@ router.post('/check-deposits', async (req, res) => {
         const validationResult = await isDepositForPlayerWithTimeWindow(tx, player_id, fromAddress);
         
         if (!validationResult.valid) {
-          console.log(`🚫 ОТКЛОНЕНО: ${validationResult.details}`);
+          if (process.env.NODE_ENV === 'development') console.log(`🚫 ОТКЛОНЕНО: ${validationResult.details}`);
           rejectedCount++;
           continue;
         }
         
-        console.log(`✅ ПРИНЯТО: ${validationResult.details}`);
-        console.log('🔄 Обработка депозита...');
+        if (process.env.NODE_ENV === 'development') console.log(`✅ ПРИНЯТО: ${validationResult.details}`);
+        if (process.env.NODE_ENV === 'development') console.log('🔄 Обработка депозита...');
         
         // ОБРАБАТЫВАЕМ ДЕПОЗИТ
         const result = await processDeposit(player_id, amount, hash, fromAddress, validationResult);
         
         if (result.success) {
           processed.push(result);
-          console.log(`🎉 УСПЕХ! Обработано: ${amount} TON`);
+          if (process.env.NODE_ENV === 'development') console.log(`🎉 УСПЕХ! Обработано: ${amount} TON`);
         } else if (result.skipped) {
           skippedCount++;
-          console.log(`⚠️ ПРОПУЩЕНО: ${result.error}`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ ПРОПУЩЕНО: ${result.error}`);
         } else {
           errorCount++;
-          console.log(`❌ ОШИБКА: ${result.error}`);
+          if (process.env.NODE_ENV === 'development') console.log(`❌ ОШИБКА: ${result.error}`);
         }
       }
       
-      console.log('\n🔒 ===============================================================');
-      console.log('🔒 ПРОВЕРКА ЗАВЕРШЕНА');
-      console.log(`🔒 Успешно обработано: ${processed.length}`);
-      console.log(`🔒 Уже обработано (пропущено): ${skippedCount}`);
-      console.log(`🔒 Отклонено по безопасности: ${rejectedCount}`);
-      console.log(`🔒 Ошибок: ${errorCount}`);
-      console.log('🔒 ===============================================================');
+      if (process.env.NODE_ENV === 'development') console.log('\n🔒 ===============================================================');
+      if (process.env.NODE_ENV === 'development') console.log('🔒 ПРОВЕРКА ЗАВЕРШЕНА');
+      if (process.env.NODE_ENV === 'development') console.log(`🔒 Успешно обработано: ${processed.length}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔒 Уже обработано (пропущено): ${skippedCount}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔒 Отклонено по безопасности: ${rejectedCount}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔒 Ошибок: ${errorCount}`);
+      if (process.env.NODE_ENV === 'development') console.log('🔒 ===============================================================');
       
       if (processed.length > 0) {
         const totalAmount = processed.reduce((sum, dep) => sum + dep.amount, 0);
@@ -594,7 +594,7 @@ router.post('/check-deposits', async (req, res) => {
         'DELETE FROM expected_deposits WHERE expires_at < NOW() - INTERVAL \'1 hour\''
       );
       if (result.rowCount > 0) {
-        console.log(`🧹 Очищено ${result.rowCount} устаревших ожидаемых депозитов`);
+        if (process.env.NODE_ENV === 'development') console.log(`🧹 Очищено ${result.rowCount} устаревших ожидаемых депозитов`);
       }
     } catch (error) {
       console.error('Ошибка очистки ожидаемых депозитов:', error);

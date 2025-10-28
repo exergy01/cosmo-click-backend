@@ -5,14 +5,14 @@ const { isAdmin } = require('./auth');
 
 const router = express.Router();
 
-console.log('🕵️ Загружаем модуль расследований...');
+if (process.env.NODE_ENV === 'development') console.log('🕵️ Загружаем модуль расследований...');
 
 // 🔍 Универсальный поиск по всем данным
 router.post('/search', async (req, res) => {
   const { admin_id, query, search_type = 'all' } = req.body;
 
   try {
-    console.log(`🔍 Универсальный поиск "${query}" админом ${admin_id}, тип: ${search_type}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Универсальный поиск "${query}" админом ${admin_id}, тип: ${search_type}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -122,7 +122,7 @@ router.post('/search', async (req, res) => {
     const results = await Promise.all(searches);
     const combined_results = results.flatMap(r => r.rows);
 
-    console.log(`🔍 Найдено ${combined_results.length} результатов поиска`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Найдено ${combined_results.length} результатов поиска`);
 
     res.json({
       success: true,
@@ -147,7 +147,7 @@ router.get('/player-analysis/:telegram_id', async (req, res) => {
   const { admin_id } = req.query;
 
   try {
-    console.log(`📊 Анализ игрока ${telegram_id} админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Анализ игрока ${telegram_id} админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -329,7 +329,7 @@ router.get('/player-analysis/:telegram_id', async (req, res) => {
       }
     };
 
-    console.log(`📊 Анализ игрока ${telegram_id} завершен, риск: ${player_profile.risk_assessment.overall_risk}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Анализ игрока ${telegram_id} завершен, риск: ${player_profile.risk_assessment.overall_risk}`);
 
     res.json({
       success: true,
@@ -350,7 +350,7 @@ router.post('/connection-analysis', async (req, res) => {
   const { admin_id, player_ids, analysis_depth = 2 } = req.body;
 
   try {
-    console.log(`🔗 Анализ связей между игроками админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 Анализ связей между игроками админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -470,7 +470,7 @@ router.post('/connection-analysis', async (req, res) => {
     const connection_summary = Object.values(connection_map)
       .sort((a, b) => b.total_confidence - a.total_confidence);
 
-    console.log(`🔗 Найдено ${connection_summary.length} связей между игроками`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 Найдено ${connection_summary.length} связей между игроками`);
 
     res.json({
       success: true,
@@ -493,7 +493,7 @@ router.post('/report-suspicious', async (req, res) => {
   const { admin_id, telegram_id, activity_type, description, risk_level = 'medium', details = {} } = req.body;
 
   try {
-    console.log(`🚨 Создание отчета о подозрительной активности админом ${admin_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚨 Создание отчета о подозрительной активности админом ${admin_id}`);
 
     if (!isAdmin(admin_id)) {
       return res.status(403).json({ error: 'Доступ запрещен' });
@@ -510,7 +510,7 @@ router.post('/report-suspicious', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
     `, [telegram_id, activity_type, description, risk_level, admin_id, JSON.stringify(details)]);
 
-    console.log(`🚨 Создан отчет о подозрительной активности для игрока ${telegram_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🚨 Создан отчет о подозрительной активности для игрока ${telegram_id}`);
 
     res.json({
       success: true,
@@ -528,6 +528,6 @@ router.post('/report-suspicious', async (req, res) => {
   }
 });
 
-console.log('✅ Модуль расследований загружен');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль расследований загружен');
 
 module.exports = router;

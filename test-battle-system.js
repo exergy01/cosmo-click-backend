@@ -14,7 +14,7 @@ const pool = new Pool({
 const TEST_PLAYER_ID = '999999999'; // Тестовый игрок
 
 async function setupTestPlayer() {
-  console.log('🎮 Создаю тестового игрока...\n');
+  if (process.env.NODE_ENV === 'development') console.log('🎮 Создаю тестового игрока...\n');
 
   try {
     await pool.query('BEGIN');
@@ -32,7 +32,7 @@ async function setupTestPlayer() {
       ) VALUES ($1, $2, $3, $4, $5)
     `, [TEST_PLAYER_ID, 'amarr', 10000, 0, 0]);
 
-    console.log('✅ Создан игрок:', TEST_PLAYER_ID, '| Раса: Amarr');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Создан игрок:', TEST_PLAYER_ID, '| Раса: Amarr');
 
     // Создаём 5 кораблей
     const ships = [
@@ -67,7 +67,7 @@ async function setupTestPlayer() {
       ]);
 
       shipIds.push(result.rows[0].id);
-      console.log(`✅ Создан корабль: ${ship.type} (HP: ${ship.hp}, ATK: ${ship.attack})`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Создан корабль: ${ship.type} (HP: ${ship.hp}, ATK: ${ship.attack})`);
     }
 
     // Создаём формацию
@@ -77,7 +77,7 @@ async function setupTestPlayer() {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [TEST_PLAYER_ID, 'amarr', shipIds[0], shipIds[1], shipIds[2], shipIds[3], shipIds[4], true, true]);
 
-    console.log('✅ Создана формация из 5 кораблей\n');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Создана формация из 5 кораблей\n');
 
     await pool.query('COMMIT');
 
@@ -90,7 +90,7 @@ async function setupTestPlayer() {
 }
 
 async function testBattle() {
-  console.log('⚔️ Запускаю тестовый бой...\n');
+  if (process.env.NODE_ENV === 'development') console.log('⚔️ Запускаю тестовый бой...\n');
 
   try {
     // Симулируем POST запрос
@@ -103,34 +103,34 @@ async function testBattle() {
 
     const battle = response.data;
 
-    console.log('🎉 Бой завершён!');
-    console.log('━'.repeat(60));
-    console.log(`🏆 Победитель: ${battle.winner === 1 ? 'Игрок' : battle.winner === 2 ? 'Бот' : 'Ничья'}`);
-    console.log(`📊 Раунды: ${battle.rounds}`);
-    console.log(`💰 Награда: ${battle.reward} Luminios`);
-    console.log(`📝 Действий в логе: ${battle.battleLog.length}`);
-    console.log('━'.repeat(60));
+    if (process.env.NODE_ENV === 'development') console.log('🎉 Бой завершён!');
+    if (process.env.NODE_ENV === 'development') console.log('━'.repeat(60));
+    if (process.env.NODE_ENV === 'development') console.log(`🏆 Победитель: ${battle.winner === 1 ? 'Игрок' : battle.winner === 2 ? 'Бот' : 'Ничья'}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 Раунды: ${battle.rounds}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 Награда: ${battle.reward} Luminios`);
+    if (process.env.NODE_ENV === 'development') console.log(`📝 Действий в логе: ${battle.battleLog.length}`);
+    if (process.env.NODE_ENV === 'development') console.log('━'.repeat(60));
 
     // Показываем первые 5 действий
-    console.log('\n📜 Первые 5 действий боя:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📜 Первые 5 действий боя:');
     battle.battleLog.slice(0, 5).forEach((action, i) => {
-      console.log(`  ${i + 1}. Раунд ${action.round}: ${action.attacker.shipType} → ${action.target.shipType}`);
-      console.log(`     Урон: ${action.damage}${action.isCrit ? ' КРИТ!' : ''}, осталось HP: ${action.targetRemainingHP}${action.isKill ? ' 💀' : ''}`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${i + 1}. Раунд ${action.round}: ${action.attacker.shipType} → ${action.target.shipType}`);
+      if (process.env.NODE_ENV === 'development') console.log(`     Урон: ${action.damage}${action.isCrit ? ' КРИТ!' : ''}, осталось HP: ${action.targetRemainingHP}${action.isKill ? ' 💀' : ''}`);
     });
 
     // Показываем состояние флотов после боя
-    console.log('\n🚀 Флот игрока после боя:');
+    if (process.env.NODE_ENV === 'development') console.log('\n🚀 Флот игрока после боя:');
     battle.playerFleet.forEach((ship, i) => {
-      console.log(`  ${i + 1}. ${ship.ship_type}: ${ship.current_hp}/${ship.max_hp} HP`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${i + 1}. ${ship.ship_type}: ${ship.current_hp}/${ship.max_hp} HP`);
     });
 
-    console.log('\n🤖 Флот бота после боя:');
+    if (process.env.NODE_ENV === 'development') console.log('\n🤖 Флот бота после боя:');
     battle.botFleet.forEach((ship, i) => {
-      console.log(`  ${i + 1}. ${ship.ship_type}: ${ship.current_hp}/${ship.max_hp} HP`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${i + 1}. ${ship.ship_type}: ${ship.current_hp}/${ship.max_hp} HP`);
     });
 
-    console.log('\n✅ Тест завершён успешно!');
-    console.log(`🔗 ID боя: ${battle.battleId}`);
+    if (process.env.NODE_ENV === 'development') console.log('\n✅ Тест завершён успешно!');
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 ID боя: ${battle.battleId}`);
 
     return battle;
   } catch (error) {
@@ -141,15 +141,15 @@ async function testBattle() {
 
 async function main() {
   try {
-    console.log('╔════════════════════════════════════════════════════════╗');
-    console.log('║  🧪 ТЕСТ БОЕВОЙ СИСТЕМЫ GALACTIC EMPIRE v2.0          ║');
-    console.log('╚════════════════════════════════════════════════════════╝\n');
+    if (process.env.NODE_ENV === 'development') console.log('╔════════════════════════════════════════════════════════╗');
+    if (process.env.NODE_ENV === 'development') console.log('║  🧪 ТЕСТ БОЕВОЙ СИСТЕМЫ GALACTIC EMPIRE v2.0          ║');
+    if (process.env.NODE_ENV === 'development') console.log('╚════════════════════════════════════════════════════════╝\n');
 
     await setupTestPlayer();
     const battle = await testBattle();
 
-    console.log('\n✨ Система работает! Теперь можно протестировать визуализацию.');
-    console.log(`📱 Зайдите в игру с ID: ${TEST_PLAYER_ID}`);
+    if (process.env.NODE_ENV === 'development') console.log('\n✨ Система работает! Теперь можно протестировать визуализацию.');
+    if (process.env.NODE_ENV === 'development') console.log(`📱 Зайдите в игру с ID: ${TEST_PLAYER_ID}`);
 
   } catch (error) {
     console.error('\n💥 Тест провален:', error.message);

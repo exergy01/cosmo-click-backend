@@ -40,7 +40,7 @@ router.post('/buy', async (req, res) => {
     // 🛡️ ПРОВЕРКА НА ПОДОЗРИТЕЛЬНУЮ АКТИВНОСТЬ
     const suspicious = await detectSuspiciousActivity(telegramId, 'exchange_buy', amount, null);
     if (suspicious) {
-      console.log(`🚨 Подозрительная активность при обмене: ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🚨 Подозрительная активность при обмене: ${telegramId}`);
     }
 
     const exchangeResult = await client.query('SELECT * FROM exchanges WHERE id = $1', [exchangeId]);
@@ -146,32 +146,32 @@ router.post('/buy', async (req, res) => {
 
 // POST /api/exchange/convert - ИСПРАВЛЕННАЯ ВЕРСИЯ
 router.post('/convert', async (req, res) => {
-  console.log('🔄 ПОЛУЧЕН ЗАПРОС НА ОБМЕН:', req.body); // ⬅️ ПЕРВЫЙ ЛОГ
+  if (process.env.NODE_ENV === 'development') console.log('🔄 ПОЛУЧЕН ЗАПРОС НА ОБМЕН:', req.body); // ⬅️ ПЕРВЫЙ ЛОГ
   
   const { telegramId, fromCurrency, toCurrency, amount } = req.body;
   
-  console.log('📋 ИЗВЛЕЧЕННЫЕ ПАРАМЕТРЫ:', { telegramId, fromCurrency, toCurrency, amount });
+  if (process.env.NODE_ENV === 'development') console.log('📋 ИЗВЛЕЧЕННЫЕ ПАРАМЕТРЫ:', { telegramId, fromCurrency, toCurrency, amount });
   
   if (!telegramId || !fromCurrency || !toCurrency || amount === undefined || amount <= 0) {
-    console.log('❌ ВАЛИДАЦИЯ НЕ ПРОШЛА');
+    if (process.env.NODE_ENV === 'development') console.log('❌ ВАЛИДАЦИЯ НЕ ПРОШЛА');
     return res.status(400).json({ error: 'Missing required fields or invalid amount' });
   }
   
-  console.log('✅ ВАЛИДАЦИЯ ПРОШЛА, ПОДКЛЮЧАЕМСЯ К БД...');
+  if (process.env.NODE_ENV === 'development') console.log('✅ ВАЛИДАЦИЯ ПРОШЛА, ПОДКЛЮЧАЕМСЯ К БД...');
   
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    console.log('✅ ТРАНЗАКЦИЯ НАЧАТА');
+    if (process.env.NODE_ENV === 'development') console.log('✅ ТРАНЗАКЦИЯ НАЧАТА');
     
     const player = await getPlayer(telegramId);
     if (!player) {
-      console.log('❌ ИГРОК НЕ НАЙДЕН');
+      if (process.env.NODE_ENV === 'development') console.log('❌ ИГРОК НЕ НАЙДЕН');
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
     
-    console.log('✅ ИГРОК НАЙДЕН:', { 
+    if (process.env.NODE_ENV === 'development') console.log('✅ ИГРОК НАЙДЕН:', {
       ccc: player.ccc, 
       cs: player.cs, 
       ton: player.ton, 
@@ -181,7 +181,7 @@ router.post('/convert', async (req, res) => {
     // 🛡️ ПРОВЕРКА НА ПОДОЗРИТЕЛЬНУЮ АКТИВНОСТЬ
     const suspicious = await detectSuspiciousActivity(telegramId, 'currency_convert', amount, null);
     if (suspicious) {
-      console.log(`🚨 Подозрительная активность при конвертации: ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🚨 Подозрительная активность при конвертации: ${telegramId}`);
     }
 
     // 📊 СОХРАНЯЕМ БАЛАНС ДО ОПЕРАЦИИ
@@ -207,40 +207,40 @@ router.post('/convert', async (req, res) => {
     let conversionPair = `${fromCurrency}_to_${toCurrency}`;
     const isVerified = player.verified || false;
 
-    console.log('💱 НАЧИНАЕМ РАСЧЕТ ОБМЕНА:', { conversionPair, isVerified });
+    if (process.env.NODE_ENV === 'development') console.log('💱 НАЧИНАЕМ РАСЧЕТ ОБМЕНА:', { conversionPair, isVerified });
 
     // 🔄 ЛОГИКА ОБМЕНА С ПРАВИЛЬНЫМИ КУРСАМИ
     if (fromCurrency === 'ccc' && toCurrency === 'cs') {
       // 200 CCC = 1 CS
-      console.log('🔄 CCC → CS');
+      if (process.env.NODE_ENV === 'development') console.log('🔄 CCC → CS');
       if (updatedCcc < amount) { 
-        console.log('❌ НЕДОСТАТОЧНО CCC');
+        if (process.env.NODE_ENV === 'development') console.log('❌ НЕДОСТАТОЧНО CCC');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough CCC' }); 
       }
       convertedAmount = amount * rates.ccc_to_cs; // amount / 200
       updatedCcc -= amount;
       updatedCs += convertedAmount;
-      console.log(`✅ ${amount} CCC → ${convertedAmount} CS`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ ${amount} CCC → ${convertedAmount} CS`);
       
     } else if (fromCurrency === 'cs' && toCurrency === 'ccc') {
       // 1 CS = 200 CCC
-      console.log('🔄 CS → CCC');
+      if (process.env.NODE_ENV === 'development') console.log('🔄 CS → CCC');
       if (updatedCs < amount) { 
-        console.log('❌ НЕДОСТАТОЧНО CS');
+        if (process.env.NODE_ENV === 'development') console.log('❌ НЕДОСТАТОЧНО CS');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough CS' }); 
       }
       convertedAmount = amount * rates.cs_to_ccc; // amount * 200
       updatedCs -= amount;
       updatedCcc += convertedAmount;
-      console.log(`✅ ${amount} CS → ${convertedAmount} CCC`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ ${amount} CS → ${convertedAmount} CCC`);
       
     } else if (fromCurrency === 'cs' && toCurrency === 'ton') {
       // 100 CS = 1 TON + комиссия 2% если не верифицирован
-      console.log('🔄 CS → TON');
+      if (process.env.NODE_ENV === 'development') console.log('🔄 CS → TON');
       if (updatedCs < amount) { 
-        console.log('❌ НЕДОСТАТОЧНО CS');
+        if (process.env.NODE_ENV === 'development') console.log('❌ НЕДОСТАТОЧНО CS');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough CS' }); 
       }
@@ -248,19 +248,19 @@ router.post('/convert', async (req, res) => {
       
       // Применяем комиссию 2% если не верифицирован
       if (!isVerified) {
-        console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
         convertedAmount = convertedAmount * 0.98; // -2%
       }
       
       updatedCs -= amount;
       updatedTon += convertedAmount;
-      console.log(`✅ ${amount} CS → ${convertedAmount} TON (комиссия: ${!isVerified ? '2%' : '0%'})`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ ${amount} CS → ${convertedAmount} TON (комиссия: ${!isVerified ? '2%' : '0%'})`);
       
     } else if (fromCurrency === 'ton' && toCurrency === 'cs') {
       // 1 TON = 100 CS + комиссия 2% если не верифицирован
-      console.log('🔄 TON → CS');
+      if (process.env.NODE_ENV === 'development') console.log('🔄 TON → CS');
       if (updatedTon < amount) { 
-        console.log('❌ НЕДОСТАТОЧНО TON');
+        if (process.env.NODE_ENV === 'development') console.log('❌ НЕДОСТАТОЧНО TON');
         await client.query('ROLLBACK'); 
         return res.status(400).json({ error: 'Not enough TON' }); 
       }
@@ -268,22 +268,22 @@ router.post('/convert', async (req, res) => {
       
       // Применяем комиссию 2% если не верифицирован
       if (!isVerified) {
-        console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ ПРИМЕНЯЕМ КОМИССИЮ 2%');
         convertedAmount = convertedAmount * 0.98; // -2%
       }
       
       updatedTon -= amount;
       updatedCs += convertedAmount;
-      console.log(`✅ ${amount} TON → ${convertedAmount} CS (комиссия: ${!isVerified ? '2%' : '0%'})`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ ${amount} TON → ${convertedAmount} CS (комиссия: ${!isVerified ? '2%' : '0%'})`);
       
     } else {
-      console.log('❌ НЕДОПУСТИМАЯ ВАЛЮТНАЯ ПАРА');
+      if (process.env.NODE_ENV === 'development') console.log('❌ НЕДОПУСТИМАЯ ВАЛЮТНАЯ ПАРА');
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invalid conversion pair' });
     }
 
-    console.log('💾 ОБНОВЛЯЕМ БАЛАНС В БД...');
-    console.log('📊 НОВЫЕ БАЛАНСЫ:', { 
+    if (process.env.NODE_ENV === 'development') console.log('💾 ОБНОВЛЯЕМ БАЛАНС В БД...');
+    if (process.env.NODE_ENV === 'development') console.log('📊 НОВЫЕ БАЛАНСЫ:', {
       ccc: updatedCcc, 
       cs: updatedCs, 
       ton: updatedTon 
@@ -300,7 +300,7 @@ router.post('/convert', async (req, res) => {
           setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
         )
       ]);
-      console.log('✅ БАЛАНС ОБНОВЛЕН В БД');
+      if (process.env.NODE_ENV === 'development') console.log('✅ БАЛАНС ОБНОВЛЕН В БД');
     } catch (queryError) {
       console.error('❌ ОШИБКА ОБНОВЛЕНИЯ БАЛАНСА:', queryError.message);
       await client.query('ROLLBACK');
@@ -308,7 +308,7 @@ router.post('/convert', async (req, res) => {
     }
 
     // 📝 ВРЕМЕННО ОТКЛЮЧАЕМ ЛОГИРОВАНИЕ
-    console.log('📝 ПРОПУСКАЕМ ЛОГИРОВАНИЕ (временно)...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 ПРОПУСКАЕМ ЛОГИРОВАНИЕ (временно)...');
     /*
     const actionId = await logPlayerAction(
       telegramId, 
@@ -344,15 +344,15 @@ router.post('/convert', async (req, res) => {
     await updateLifetimeStats(telegramId, 'currency_convert', 1);
     */
 
-    console.log('✅ КОММИТИМ ТРАНЗАКЦИЮ...');
+    if (process.env.NODE_ENV === 'development') console.log('✅ КОММИТИМ ТРАНЗАКЦИЮ...');
     await client.query('COMMIT');
-    console.log('✅ ТРАНЗАКЦИЯ ЗАВЕРШЕНА');
+    if (process.env.NODE_ENV === 'development') console.log('✅ ТРАНЗАКЦИЯ ЗАВЕРШЕНА');
     
     // Возвращаем обновленные данные игрока
-    console.log('🔄 ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ДАННЫЕ ИГРОКА...');
+    if (process.env.NODE_ENV === 'development') console.log('🔄 ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ДАННЫЕ ИГРОКА...');
     const updatedPlayer = await getPlayer(telegramId);
     
-    console.log(`🎉 ОБМЕН УСПЕШНО ВЫПОЛНЕН: ${amount} ${fromCurrency} → ${convertedAmount.toFixed(8)} ${toCurrency} (игрок: ${telegramId})`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎉 ОБМЕН УСПЕШНО ВЫПОЛНЕН: ${amount} ${fromCurrency} → ${convertedAmount.toFixed(8)} ${toCurrency} (игрок: ${telegramId})`);
     
     const response = {
       success: true,
@@ -366,9 +366,9 @@ router.post('/convert', async (req, res) => {
       }
     };
     
-    console.log('📤 ОТПРАВЛЯЕМ ОТВЕТ КЛИЕНТУ:', { success: true, exchange: response.exchange });
+    if (process.env.NODE_ENV === 'development') console.log('📤 ОТПРАВЛЯЕМ ОТВЕТ КЛИЕНТУ:', { success: true, exchange: response.exchange });
     res.json(response);
-    console.log('✅ ОТВЕТ ОТПРАВЛЕН!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ ОТВЕТ ОТПРАВЛЕН!');
     
   } catch (err) {
     await client.query('ROLLBACK');
@@ -376,7 +376,7 @@ router.post('/convert', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
-    console.log('🔒 СОЕДИНЕНИЕ С БД ЗАКРЫТО');
+    if (process.env.NODE_ENV === 'development') console.log('🔒 СОЕДИНЕНИЕ С БД ЗАКРЫТО');
   }
 });
 

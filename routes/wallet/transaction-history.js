@@ -9,7 +9,7 @@ router.get('/:telegramId', async (req, res) => {
   const { limit = 20, offset = 0 } = req.query;
   
   try {
-    console.log('Getting transaction history:', { telegramId, limit, offset });
+    if (process.env.NODE_ENV === 'development') console.log('Getting transaction history:', { telegramId, limit, offset });
 
     // TON депозиты
     const tonDeposits = await pool.query(`

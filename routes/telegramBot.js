@@ -21,7 +21,7 @@ const sendAdminNotification = async (messageText, options = {}) => {
       return false;
     }
 
-    console.log(`📱 Отправляем уведомление админу ${ADMIN_TELEGRAM_ID}: ${messageText.slice(0, 100)}...`);
+    if (process.env.NODE_ENV === 'development') console.log(`📱 Отправляем уведомление админу ${ADMIN_TELEGRAM_ID}: ${messageText.slice(0, 100)}...`);
 
     await bot.sendMessage(ADMIN_TELEGRAM_ID, messageText, {
       parse_mode: 'HTML',
@@ -29,7 +29,7 @@ const sendAdminNotification = async (messageText, options = {}) => {
       ...options
     });
 
-    console.log('✅ Уведомление админу отправлено успешно');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Уведомление админу отправлено успешно');
     return true;
   } catch (err) {
     console.error(`❌ Ошибка отправки уведомления админу: ${err.message}`);
@@ -140,7 +140,7 @@ const notifyCriticalEvent = async (eventType, details) => {
 // 📊 ЕЖЕДНЕВНАЯ СВОДКА (ФУНКЦИЯ ДЛЯ CRON)
 const sendDailySummary = async () => {
   try {
-    console.log('📊 Генерируем ежедневную сводку...');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Генерируем ежедневную сводку...');
 
     // Получаем данные за последние 24 часа
     const summaryData = await pool.query(`
@@ -235,7 +235,7 @@ const sendDailySummary = async () => {
       }
     });
 
-    console.log('✅ Ежедневная сводка отправлена успешно');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ежедневная сводка отправлена успешно');
   } catch (err) {
     console.error('❌ Ошибка отправки ежедневной сводки:', err);
   }
@@ -252,7 +252,7 @@ const sendNotification = async (telegramId, messageKey, isPremium = false) => {
     const message = messages[language] && messages[language][messageKey] ? messages[language][messageKey] : messages.en[messageKey];
 
     await bot.sendMessage(telegramId, message);
-    console.log(`Notification sent to ${telegramId}: ${message}`);
+    if (process.env.NODE_ENV === 'development') console.log(`Notification sent to ${telegramId}: ${message}`);
   } catch (err) {
     console.error(`Failed to send notification to ${telegramId}: ${err.message}`);
   }
@@ -266,7 +266,7 @@ bot.on('callback_query', async (callbackQuery) => {
   const data = callbackQuery.data;
   const messageId = callbackQuery.message.message_id;
 
-  console.log(`📱 Callback от админа: ${data}`);
+  if (process.env.NODE_ENV === 'development') console.log(`📱 Callback от админа: ${data}`);
 
   try {
     if (data.startsWith('player_')) {
@@ -595,12 +595,12 @@ const sendTelegramMessage = async (telegramId, message) => {
       disable_web_page_preview: true
     };
     
-    console.log(`📤 Отправляем сообщение в Telegram: ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📤 Отправляем сообщение в Telegram: ${telegramId}`);
     
     const response = await axios.post(url, payload);
     
     if (response.data.ok) {
-      console.log(`✅ Сообщение отправлено успешно: ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Сообщение отправлено успешно: ${telegramId}`);
       return response.data;
     } else {
       throw new Error(`Telegram API ошибка: ${response.data.description}`);

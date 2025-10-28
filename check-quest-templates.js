@@ -8,7 +8,7 @@ const pool = new Pool({
 
 async function checkTemplates() {
   try {
-    console.log('📋 Проверка quest_templates:\n');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Проверка quest_templates:\n');
 
     const result = await pool.query(`
       SELECT id, quest_key, quest_type, reward_cs, is_active
@@ -18,24 +18,24 @@ async function checkTemplates() {
     `);
 
     if (result.rows.length === 0) {
-      console.log('❌ Квесты брокеров НЕ НАЙДЕНЫ в quest_templates!\n');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Квесты брокеров НЕ НАЙДЕНЫ в quest_templates!\n');
 
       // Показываем все квесты
       const all = await pool.query('SELECT id, quest_key, quest_type FROM quest_templates LIMIT 10');
-      console.log('Все квесты в quest_templates:');
-      all.rows.forEach(q => console.log(`  ID: ${q.id}, Key: ${q.quest_key}, Type: ${q.quest_type}`));
+      if (process.env.NODE_ENV === 'development') console.log('Все квесты в quest_templates:');
+      if (process.env.NODE_ENV === 'development') all.rows.forEach(q => console.log(`  ID: ${q.id}, Key: ${q.quest_key}, Type: ${q.quest_type}`));
     } else {
-      console.log(`✅ Найдено ${result.rows.length} квестов брокеров:`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} квестов брокеров:`);
       result.rows.forEach(q => {
-        console.log(`\n  ID: ${q.id}`);
-        console.log(`  Key: ${q.quest_key}`);
-        console.log(`  Type: ${q.quest_type}`);
-        console.log(`  Reward: ${q.reward_cs} CS`);
-        console.log(`  Active: ${q.is_active}`);
+        if (process.env.NODE_ENV === 'development') console.log(`\n  ID: ${q.id}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Key: ${q.quest_key}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Type: ${q.quest_type}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Reward: ${q.reward_cs} CS`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Active: ${q.is_active}`);
       });
     }
 
-    console.log('\n📊 Проверка Foreign Key constraint:\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n📊 Проверка Foreign Key constraint:\n');
 
     // Проверяем какие constraints есть на player_quests
     const constraints = await pool.query(`
@@ -53,9 +53,9 @@ async function checkTemplates() {
       WHERE tc.table_name = 'player_quests' AND tc.constraint_type = 'FOREIGN KEY'
     `);
 
-    console.log('Foreign keys на player_quests:');
+    if (process.env.NODE_ENV === 'development') console.log('Foreign keys на player_quests:');
     constraints.rows.forEach(c => {
-      console.log(`  ${c.column_name} → ${c.foreign_table_name}.${c.foreign_column_name}`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${c.column_name} → ${c.foreign_table_name}.${c.foreign_column_name}`);
     });
 
   } catch (err) {

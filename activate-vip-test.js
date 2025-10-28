@@ -13,13 +13,13 @@ async function activateVIP() {
     `);
 
     if (result.rows.length > 0) {
-      console.log('✅ VIP успешно активирован!');
-      console.log('Игрок:', result.rows[0].name);
-      console.log('Telegram ID:', result.rows[0].telegram_id);
-      console.log('VIP до:', result.rows[0].premium_no_ads_until);
-      console.log('VIP навсегда:', result.rows[0].premium_no_ads_forever);
+      if (process.env.NODE_ENV === 'development') console.log('✅ VIP успешно активирован!');
+      if (process.env.NODE_ENV === 'development') console.log('Игрок:', result.rows[0].name);
+      if (process.env.NODE_ENV === 'development') console.log('Telegram ID:', result.rows[0].telegram_id);
+      if (process.env.NODE_ENV === 'development') console.log('VIP до:', result.rows[0].premium_no_ads_until);
+      if (process.env.NODE_ENV === 'development') console.log('VIP навсегда:', result.rows[0].premium_no_ads_forever);
     } else {
-      console.log('❌ Игрок с ID 123456789 не найден');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Игрок с ID 123456789 не найден');
     }
 
     await pool.end();

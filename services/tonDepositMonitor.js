@@ -22,13 +22,13 @@ class TonDepositMonitor {
 
     async start() {
         if (this.isRunning) {
-            console.log('🔄 TON мониторинг уже запущен');
+            if (process.env.NODE_ENV === 'development') console.log('🔄 TON мониторинг уже запущен');
             return;
         }
 
         this.isRunning = true;
-        console.log('🚀 Запуск мониторинга TON депозитов...');
-        console.log(`📍 Мониторим адрес: ${this.monitoringAddress}`);
+        if (process.env.NODE_ENV === 'development') console.log('🚀 Запуск мониторинга TON депозитов...');
+        if (process.env.NODE_ENV === 'development') console.log(`📍 Мониторим адрес: ${this.monitoringAddress}`);
         
         // Получаем последнюю обработанную транзакцию из БД
         await this.loadLastProcessedTransaction();
@@ -39,7 +39,7 @@ class TonDepositMonitor {
 
     async stop() {
         this.isRunning = false;
-        console.log('⏹️ Мониторинг TON депозитов остановлен');
+        if (process.env.NODE_ENV === 'development') console.log('⏹️ Мониторинг TON депозитов остановлен');
     }
 
     async loadLastProcessedTransaction() {
@@ -51,7 +51,7 @@ class TonDepositMonitor {
             if (result.rows.length > 0) {
                 // Получаем lt последней транзакции из hash
                 // Это упрощенная версия - в реальности нужно хранить lt отдельно
-                console.log('📋 Найдена последняя обработанная транзакция');
+                if (process.env.NODE_ENV === 'development') console.log('📋 Найдена последняя обработанная транзакция');
             }
         } catch (err) {
             console.error('❌ Ошибка загрузки последней транзакции:', err);
@@ -73,7 +73,7 @@ class TonDepositMonitor {
     async checkNewTransactions() {
         try {
             if (!this.monitoringAddress) {
-                console.log('⚠️ Адрес для мониторинга не задан');
+                if (process.env.NODE_ENV === 'development') console.log('⚠️ Адрес для мониторинга не задан');
                 return;
             }
 
@@ -131,7 +131,7 @@ class TonDepositMonitor {
             const playerId = await this.extractPlayerIdFromTransaction(tx);
 
             if (!playerId) {
-                console.log('⚠️ Не удалось определить игрока для депозита');
+                if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось определить игрока для депозита');
                 // Логируем неопознанные депозиты для ручной обработки
                 await this.logUnidentifiedDeposit(hash, amount, fromAddress);
                 return;
@@ -171,7 +171,7 @@ class TonDepositMonitor {
                     }
                 } catch (commentErr) {
                     // Если не удалось извлечь комментарий, продолжаем
-                    console.log('⚠️ Не удалось извлечь комментарий из транзакции');
+                    if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось извлечь комментарий из транзакции');
                 }
             }
 
@@ -211,7 +211,7 @@ class TonDepositMonitor {
                 // ⚠️ Не логируем для фантомных ID
                 const phantomIds = ['00000000', '000000005749', '000000005245'];
                 if (!phantomIds.includes(playerId)) {
-                    console.log(`❌ Игрок ${playerId} не найден`);
+                    if (process.env.NODE_ENV === 'development') console.log(`❌ Игрок ${playerId} не найден`);
                 }
                 await client.query('ROLLBACK');
                 return;
@@ -257,7 +257,7 @@ class TonDepositMonitor {
 
             await client.query('COMMIT');
 
-            console.log(`✅ Автоматически обработан депозит: ${playerId} +${amount} TON (баланс: ${currentBalance} → ${newBalance})`);
+            if (process.env.NODE_ENV === 'development') console.log(`✅ Автоматически обработан депозит: ${playerId} +${amount} TON (баланс: ${currentBalance} → ${newBalance})`);
 
             // Отправляем уведомление игроку
             try {
@@ -284,7 +284,7 @@ class TonDepositMonitor {
                 ['unknown', amount, hash]
             );
 
-            console.log(`📝 Зарегистрирован неопознанный депозит: ${amount} TON от ${fromAddress}`);
+            if (process.env.NODE_ENV === 'development') console.log(`📝 Зарегистрирован неопознанный депозит: ${amount} TON от ${fromAddress}`);
         } catch (err) {
             console.error('❌ Ошибка логирования неопознанного депозита:', err);
         }

@@ -20,7 +20,7 @@ router.post('/update-ton-rate/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`📈 Админ обновляет курс TON: ${newRate}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📈 Админ обновляет курс TON: ${newRate}`);
     
     // Получаем предыдущий курс
     let prevResult = { rows: [{ rate: 3.30 }] };
@@ -30,7 +30,7 @@ router.post('/update-ton-rate/:telegramId', async (req, res) => {
         ['TON_USD']
       );
     } catch (rateError) {
-      console.log('⚠️ Таблица exchange_rates недоступна для получения предыдущего курса');
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица exchange_rates недоступна для получения предыдущего курса');
     }
     
     const previousRate = prevResult.rows[0]?.rate || 3.30;
@@ -56,15 +56,15 @@ router.post('/update-ton-rate/:telegramId', async (req, res) => {
       try {
         await client.query('SELECT update_stars_cs_rate()');
       } catch (funcError) {
-        console.log('⚠️ Функция update_stars_cs_rate не существует:', funcError.message);
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Функция update_stars_cs_rate не существует:', funcError.message);
       }
     } catch (exchangeError) {
-      console.log('⚠️ Не удалось обновить exchange_rates:', exchangeError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось обновить exchange_rates:', exchangeError.message);
     }
     
     await client.query('COMMIT');
     
-    console.log(`✅ Курс TON обновлен админом: ${previousRate} → ${newRate}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Курс TON обновлен админом: ${previousRate} → ${newRate}`);
     
     res.json({
       success: true,
@@ -88,7 +88,7 @@ router.post('/unblock-exchange/:telegramId', async (req, res) => {
   const { exchangeType = 'stars_to_cs' } = req.body;
   
   try {
-    console.log(`🔓 Снятие блокировки обмена: ${exchangeType}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔓 Снятие блокировки обмена: ${exchangeType}`);
     
     // Снимаем блокировку (если таблица существует)
     try {
@@ -98,7 +98,7 @@ router.post('/unblock-exchange/:telegramId', async (req, res) => {
         WHERE exchange_type = $1 AND blocked_until > NOW()
       `, [exchangeType]);
     } catch (blockError) {
-      console.log('⚠️ Таблица exchange_blocks недоступна:', blockError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица exchange_blocks недоступна:', blockError.message);
     }
     
     // Логируем действие (если таблица существует)
@@ -115,10 +115,10 @@ router.post('/unblock-exchange/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать снятие блокировки:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать снятие блокировки:', logError.message);
     }
     
-    console.log(`✅ Блокировка обмена ${exchangeType} снята админом`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Блокировка обмена ${exchangeType} снята админом`);
     
     res.json({
       success: true,
@@ -138,7 +138,7 @@ router.post('/cleanup-expired-premium/:telegramId', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log('🧹 Админ запускает очистку истекших премиум подписок');
+    if (process.env.NODE_ENV === 'development') console.log('🧹 Админ запускает очистку истекших премиум подписок');
     
     // Находим игроков с истекшими премиум подписками
     const expiredResult = await client.query(`
@@ -150,7 +150,7 @@ router.post('/cleanup-expired-premium/:telegramId', async (req, res) => {
     `);
     
     const expiredPlayers = expiredResult.rows;
-    console.log(`🔍 Найдено ${expiredPlayers.length} игроков с истекшими подписками`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 Найдено ${expiredPlayers.length} игроков с истекшими подписками`);
     
     if (expiredPlayers.length === 0) {
       await client.query('ROLLBACK');
@@ -180,7 +180,7 @@ router.post('/cleanup-expired-premium/:telegramId', async (req, res) => {
           AND status = 'active'
       `);
     } catch (subscriptionsError) {
-      console.log('⚠️ Не удалось обновить premium_subscriptions:', subscriptionsError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось обновить premium_subscriptions:', subscriptionsError.message);
     }
     
     // Логируем массовую очистку
@@ -203,12 +203,12 @@ router.post('/cleanup-expired-premium/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать массовую очистку:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать массовую очистку:', logError.message);
     }
     
     await client.query('COMMIT');
     
-    console.log(`✅ Очистка завершена. Очищено ${expiredPlayers.length} подписок`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Очистка завершена. Очищено ${expiredPlayers.length} подписок`);
     
     res.json({
       success: true,
@@ -233,7 +233,7 @@ router.post('/cleanup-expired-premium/:telegramId', async (req, res) => {
 // 🔄 POST /restart-system-services/:telegramId - Перезапуск системных сервисов
 router.post('/restart-system-services/:telegramId', async (req, res) => {
   try {
-    console.log('🔄 Админ запускает перезапуск системных сервисов');
+    if (process.env.NODE_ENV === 'development') console.log('🔄 Админ запускает перезапуск системных сервисов');
     
     const services = [];
     const errors = [];
@@ -319,10 +319,10 @@ router.post('/restart-system-services/:telegramId', async (req, res) => {
         })
       ]);
     } catch (logError) {
-      console.log('⚠️ Не удалось логировать перезапуск сервисов:', logError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать перезапуск сервисов:', logError.message);
     }
     
-    console.log(`🔄 Проверка сервисов завершена. Работает: ${services.length}, ошибок: ${errors.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔄 Проверка сервисов завершена. Работает: ${services.length}, ошибок: ${errors.length}`);
     
     res.json({
       success: true,
@@ -347,7 +347,7 @@ router.post('/restart-system-services/:telegramId', async (req, res) => {
 // 📊 GET /system-status/:telegramId - Статус системы
 router.get('/system-status/:telegramId', async (req, res) => {
   try {
-    console.log('📊 Запрос статуса системы');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Запрос статуса системы');
     
     const systemStatus = {
       server: {
@@ -435,7 +435,7 @@ router.post('/clear-logs/:telegramId', async (req, res) => {
   const { days = 30, table_name } = req.body;
   
   try {
-    console.log(`🗑️ Админ запускает очистку логов старше ${days} дней`);
+    if (process.env.NODE_ENV === 'development') console.log(`🗑️ Админ запускает очистку логов старше ${days} дней`);
     
     const client = await pool.connect();
     const results = [];
@@ -465,7 +465,7 @@ router.post('/clear-logs/:telegramId', async (req, res) => {
             deleted_rows: deleteResult.rowCount
           });
           
-          console.log(`✅ ${table}: удалено ${deleteResult.rowCount} записей`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ ${table}: удалено ${deleteResult.rowCount} записей`);
           
         } catch (tableError) {
           results.push({
@@ -474,7 +474,7 @@ router.post('/clear-logs/:telegramId', async (req, res) => {
             error: tableError.message
           });
           
-          console.log(`⚠️ ${table}: ${tableError.message}`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ ${table}: ${tableError.message}`);
         }
       }
       
@@ -497,7 +497,7 @@ router.post('/clear-logs/:telegramId', async (req, res) => {
           })
         ]);
       } catch (logError) {
-        console.log('⚠️ Не удалось логировать очистку логов:', logError.message);
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Не удалось логировать очистку логов:', logError.message);
       }
       
     } catch (err) {
@@ -509,7 +509,7 @@ router.post('/clear-logs/:telegramId', async (req, res) => {
     
     const totalDeleted = results.reduce((sum, result) => sum + (result.deleted_rows || 0), 0);
     
-    console.log(`✅ Очистка логов завершена. Всего удалено: ${totalDeleted} записей`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Очистка логов завершена. Всего удалено: ${totalDeleted} записей`);
     
     res.json({
       success: true,

@@ -3,7 +3,7 @@ const express = require('express');
 
 const router = express.Router();
 
-console.log('🏗️ Инициализация модульной админ-панели...');
+if (process.env.NODE_ENV === 'development') console.log('🏗️ Инициализация модульной админ-панели...');
 
 // Импортируем все модули
 const authModule = require('./auth');
@@ -30,7 +30,7 @@ const manualChecksModule = require('./manual-checks');
 // Миграции БД
 const migrateModule = require('./migrate');
 
-console.log('📦 Все модули админ-панели загружены');
+if (process.env.NODE_ENV === 'development') console.log('📦 Все модули админ-панели загружены');
 
 // ===============================
 // 🔐 АУТЕНТИФИКАЦИЯ И ПРОВЕРКИ
@@ -39,7 +39,7 @@ console.log('📦 Все модули админ-панели загружены
 // Подключаем роуты аутентификации (БЕЗ middleware, так как они сами проверяют права)
 router.use('/', authModule.router);
 
-console.log('✅ Модуль аутентификации подключен: /check, /debug');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль аутентификации подключен: /check, /debug');
 
 // ===============================
 // 📊 СТАТИСТИКА
@@ -48,7 +48,7 @@ console.log('✅ Модуль аутентификации подключен: /
 // Подключаем статистику (проверка прав внутри модуля)
 router.use('/', statsModule);
 
-console.log('✅ Модуль статистики подключен: /stats');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль статистики подключен: /stats');
 
 // ===============================
 // 👥 УПРАВЛЕНИЕ ИГРОКАМИ
@@ -57,7 +57,7 @@ console.log('✅ Модуль статистики подключен: /stats');
 // Подключаем управление игроками (middleware внутри модуля)
 router.use('/', playersModule);
 
-console.log('✅ Модуль игроков подключен: /player, /update-balance, /verify-player, /search');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль игроков подключен: /player, /update-balance, /verify-player, /search');
 
 // ===============================
 // 🏆 ПРЕМИУМ ФУНКЦИИ
@@ -66,7 +66,7 @@ console.log('✅ Модуль игроков подключен: /player, /updat
 // Подключаем премиум функции (middleware внутри модуля)
 router.use('/', premiumModule);
 
-console.log('✅ Модуль премиум подключен: /grant-premium-*, /revoke-premium, /premium-overview');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль премиум подключен: /grant-premium-*, /revoke-premium, /premium-overview');
 
 // ===============================
 // 📱 СООБЩЕНИЯ И РАССЫЛКИ
@@ -75,7 +75,7 @@ console.log('✅ Модуль премиум подключен: /grant-premium-
 // Подключаем модуль сообщений (middleware внутри модуля)
 router.use('/', messagingModule);
 
-console.log('✅ Модуль сообщений подключен: /send-message, /broadcast-message');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль сообщений подключен: /send-message, /broadcast-message');
 
 // ===============================
 // 🔧 СИСТЕМНЫЕ ФУНКЦИИ
@@ -84,7 +84,7 @@ console.log('✅ Модуль сообщений подключен: /send-messa
 // Подключаем системные функции (middleware внутри модуля)
 router.use('/', systemModule);
 
-console.log('✅ Модуль системы подключен: /update-ton-rate, /unblock-exchange');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль системы подключен: /update-ton-rate, /unblock-exchange');
 
 // ===============================
 // 📋 УПРАВЛЕНИЕ ЗАДАНИЯМИ - НОВЫЕ + АЛИАСЫ
@@ -96,7 +96,7 @@ router.use('/', questsManagementModule);
 // АЛИАСЫ для обратной совместимости с фронтендом
 router.use('/quests', questsManagementModule);
 
-console.log('✅ Модуль заданий подключен: /list + /quests/list (алиас для совместимости)');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль заданий подключен: /list + /quests/list (алиас для совместимости)');
 
 // ===============================
 // 📅 ПЛАНИРОВЩИК ЗАДАНИЙ
@@ -105,7 +105,7 @@ console.log('✅ Модуль заданий подключен: /list + /quests
 // Подключаем планировщик заданий с префиксом /scheduler
 router.use('/scheduler', questsSchedulerModule);
 
-console.log('✅ Модуль планировщика подключен: /scheduler/overview, /scheduler/create-schedule');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль планировщика подключен: /scheduler/overview, /scheduler/create-schedule');
 
 // ===============================
 // 💰 ФИНАНСОВОЕ УПРАВЛЕНИЕ
@@ -114,7 +114,7 @@ console.log('✅ Модуль планировщика подключен: /sche
 // Подключаем финансовый модуль
 router.use('/', financeModule);
 
-console.log('✅ Модуль финансов подключен: /ton-deposits, /ton-stats, /process-ton-deposit');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль финансов подключен: /ton-deposits, /ton-stats, /process-ton-deposit');
 
 // ===============================
 // 📊 АНАЛИТИКА
@@ -123,7 +123,7 @@ console.log('✅ Модуль финансов подключен: /ton-deposits
 // Подключаем модуль аналитики
 router.use('/analytics', analyticsModule);
 
-console.log('✅ Модуль аналитики подключен: /analytics/daily-finance, /analytics/top-players');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль аналитики подключен: /analytics/daily-finance, /analytics/top-players');
 
 // ===============================
 // 🕵️ РАССЛЕДОВАНИЯ
@@ -132,7 +132,7 @@ console.log('✅ Модуль аналитики подключен: /analytics/
 // Подключаем модуль расследований
 router.use('/investigation', investigationModule);
 
-console.log('✅ Модуль расследований подключен: /investigation/search, /investigation/player-analysis');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль расследований подключен: /investigation/search, /investigation/player-analysis');
 
 // ===============================
 // 📋 ИНФОРМАЦИЯ О МОДУЛЯХ
@@ -147,7 +147,7 @@ router.get('/modules-info/:telegramId', (req, res) => {
     return res.status(403).json({ error: 'Access denied' });
   }
   
-  console.log(`📋 Админ ${telegramId} запросил информацию о модулях`);
+  if (process.env.NODE_ENV === 'development') console.log(`📋 Админ ${telegramId} запросил информацию о модулях`);
   
   const modulesInfo = {
     success: true,
@@ -248,10 +248,10 @@ router.get('/modules-info/:telegramId', (req, res) => {
 // 🚀 ЭКСПОРТ РОУТЕРА
 // ===============================
 
-console.log('🚀 Модульная админ-панель готова к работе!');
-console.log('📊 Всего модулей: 9');
-console.log('🔗 Всего endpoints: ~35');
-console.log('🔄 Middleware исправлен + алиасы для совместимости + финансы');
+if (process.env.NODE_ENV === 'development') console.log('🚀 Модульная админ-панель готова к работе!');
+if (process.env.NODE_ENV === 'development') console.log('📊 Всего модулей: 9');
+if (process.env.NODE_ENV === 'development') console.log('🔗 Всего endpoints: ~35');
+if (process.env.NODE_ENV === 'development') console.log('🔄 Middleware исправлен + алиасы для совместимости + финансы');
 
 // ===============================
 // ✅ РУЧНАЯ ПРОВЕРКА ЗАДАНИЙ
@@ -259,7 +259,7 @@ console.log('🔄 Middleware исправлен + алиасы для совме
 
 router.use('/manual-checks', manualChecksModule);
 
-console.log('✅ Модуль ручных проверок подключен: /manual-checks/list, /manual-checks/review');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль ручных проверок подключен: /manual-checks/list, /manual-checks/review');
 
 // ===============================
 // 🔧 МИГРАЦИИ БД
@@ -267,6 +267,6 @@ console.log('✅ Модуль ручных проверок подключен: 
 
 router.use('/migrate', migrateModule);
 
-console.log('✅ Модуль миграций подключен: /migrate/run-battle-v2-migration');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль миграций подключен: /migrate/run-battle-v2-migration');
 
 module.exports = router;

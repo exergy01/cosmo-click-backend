@@ -8,7 +8,7 @@ const router = express.Router();
 router.post('/connect', async (req, res) => {
   const { telegram_id, wallet_address, signature } = req.body;
   
-  console.log('Connecting wallet:', { telegram_id, wallet_address });
+  if (process.env.NODE_ENV === 'development') console.log('Connecting wallet:', { telegram_id, wallet_address });
   
   if (!telegram_id || !wallet_address) {
     return res.status(400).json({ error: 'Telegram ID and wallet address are required' });
@@ -31,7 +31,7 @@ router.post('/connect', async (req, res) => {
 
     await client.query('COMMIT');
     
-    console.log('Wallet connected successfully:', { telegram_id, wallet_address });
+    if (process.env.NODE_ENV === 'development') console.log('Wallet connected successfully:', { telegram_id, wallet_address });
     
     res.json({
       success: true,
@@ -52,7 +52,7 @@ router.post('/connect', async (req, res) => {
 router.post('/disconnect', async (req, res) => {
   const { telegram_id } = req.body;
   
-  console.log('Disconnecting wallet:', { telegram_id });
+  if (process.env.NODE_ENV === 'development') console.log('Disconnecting wallet:', { telegram_id });
   
   if (!telegram_id) {
     return res.status(400).json({ error: 'Telegram ID is required' });
@@ -64,7 +64,7 @@ router.post('/disconnect', async (req, res) => {
       [telegram_id]
     );
 
-    console.log('Wallet disconnected successfully:', { telegram_id });
+    if (process.env.NODE_ENV === 'development') console.log('Wallet disconnected successfully:', { telegram_id });
 
     res.json({
       success: true,

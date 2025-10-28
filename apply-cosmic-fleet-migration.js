@@ -5,8 +5,8 @@ const path = require('path');
 async function applyCosmicFleetMigration() {
   const client = await pool.connect();
   try {
-    console.log('🚀 === ПРИМЕНЕНИЕ МИГРАЦИИ COSMIC FLEET ===');
-    console.log('⏰ Время:', new Date().toISOString());
+    if (process.env.NODE_ENV === 'development') console.log('🚀 === ПРИМЕНЕНИЕ МИГРАЦИИ COSMIC FLEET ===');
+    if (process.env.NODE_ENV === 'development') console.log('⏰ Время:', new Date().toISOString());
 
     const migrationPath = path.join(__dirname, 'migrations', '006_cosmic_fleet.sql');
 
@@ -15,14 +15,14 @@ async function applyCosmicFleetMigration() {
     }
 
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
-    console.log('📄 Файл миграции прочитан успешно');
+    if (process.env.NODE_ENV === 'development') console.log('📄 Файл миграции прочитан успешно');
 
-    console.log('🔄 Выполняем миграцию...');
+    if (process.env.NODE_ENV === 'development') console.log('🔄 Выполняем миграцию...');
     await client.query(migrationSQL);
-    console.log('✅ Миграция выполнена успешно!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Миграция выполнена успешно!');
 
     // Проверяем созданные таблицы
-    console.log('🔍 Проверяем созданные таблицы...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Проверяем созданные таблицы...');
 
     const tableChecks = [
       'cosmic_fleet_players',
@@ -39,7 +39,7 @@ async function applyCosmicFleetMigration() {
       `, [tableName]);
 
       if (result.rows.length > 0) {
-        console.log(`✅ Таблица ${tableName} создана`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Таблица ${tableName} создана`);
 
         // Получаем структуру таблицы
         const columns = await client.query(`
@@ -49,16 +49,16 @@ async function applyCosmicFleetMigration() {
           ORDER BY ordinal_position
         `, [tableName]);
 
-        console.log(`   📋 Столбцы (${columns.rows.length}):`,
+        if (process.env.NODE_ENV === 'development') console.log(`   📋 Столбцы (${columns.rows.length}):`,
           columns.rows.map(c => `${c.column_name}(${c.data_type})`).join(', ')
         );
       } else {
-        console.log(`❌ Таблица ${tableName} НЕ найдена`);
+        if (process.env.NODE_ENV === 'development') console.log(`❌ Таблица ${tableName} НЕ найдена`);
       }
     }
 
     // Проверяем индексы
-    console.log('🔍 Проверяем созданные индексы...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Проверяем созданные индексы...');
     const indexResult = await client.query(`
       SELECT indexname, tablename
       FROM pg_indexes
@@ -66,12 +66,12 @@ async function applyCosmicFleetMigration() {
       ORDER BY tablename, indexname
     `);
 
-    console.log(`✅ Создано индексов: ${indexResult.rows.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Создано индексов: ${indexResult.rows.length}`);
     indexResult.rows.forEach(idx => {
-      console.log(`   📊 ${idx.tablename}.${idx.indexname}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   📊 ${idx.tablename}.${idx.indexname}`);
     });
 
-    console.log('🏁 === МИГРАЦИЯ COSMIC FLEET ЗАВЕРШЕНА ===');
+    if (process.env.NODE_ENV === 'development') console.log('🏁 === МИГРАЦИЯ COSMIC FLEET ЗАВЕРШЕНА ===');
     return {
       success: true,
       tablesCreated: tableChecks.length,
@@ -91,7 +91,7 @@ async function applyCosmicFleetMigration() {
 if (require.main === module) {
   applyCosmicFleetMigration()
     .then((result) => {
-      console.log('🎉 Миграция успешна:', result);
+      if (process.env.NODE_ENV === 'development') console.log('🎉 Миграция успешна:', result);
       process.exit(0);
     })
     .catch((error) => {

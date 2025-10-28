@@ -14,7 +14,7 @@ const pool = new Pool({
 
 async function applyMigration() {
   try {
-    console.log('🌌 Применение миграции Galactic Empire v2.0...\n');
+    if (process.env.NODE_ENV === 'development') console.log('🌌 Применение миграции Galactic Empire v2.0...\n');
 
     // Читаем SQL файл
     const migrationPath = path.join(__dirname, 'migrations', 'galactic-empire', '001_initial_setup.sql');
@@ -23,9 +23,9 @@ async function applyMigration() {
     // Выполняем миграцию
     const result = await pool.query(sql);
 
-    console.log('✅ Миграция применена успешно!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Миграция применена успешно!');
     if (result && result.rows && result.rows.length > 0) {
-      console.log(result.rows[result.rows.length - 1]); // Покажет сообщение об успехе
+      if (process.env.NODE_ENV === 'development') console.log(result.rows[result.rows.length - 1]); // Покажет сообщение об успехе
     }
 
     process.exit(0);

@@ -24,7 +24,7 @@ const logPlayerAction = async (
       [telegramId, actionType, amount, systemId, itemId, details, ip, userAgent]
     );
     
-    console.log(`📝 LOG: ${telegramId} - ${actionType} - ${amount} - система ${systemId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📝 LOG: ${telegramId} - ${actionType} - ${amount} - система ${systemId}`);
     return result.rows[0].id;
   } catch (err) {
     console.error('❌ Ошибка логирования (НЕ КРИТИЧНО):', err.message);
@@ -69,7 +69,7 @@ const detectSuspiciousActivity = async (telegramId, actionType, amount, systemId
     const actionsPerMinute = parseInt(recentActions.rows[0].count);
     
     if (actionsPerMinute > 50) {
-      console.log(`🚨 МНОГО ДЕЙСТВИЙ: ${telegramId} - ${actionsPerMinute} действий в минуту`);
+      if (process.env.NODE_ENV === 'development') console.log(`🚨 МНОГО ДЕЙСТВИЙ: ${telegramId} - ${actionsPerMinute} действий в минуту`);
       
       // Пытаемся записать подозрительную активность
       try {

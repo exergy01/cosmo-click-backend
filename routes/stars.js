@@ -8,7 +8,7 @@ const router = express.Router();
 // 🌟 GET /api/stars/rates - получить текущие курсы
 router.get('/rates', async (req, res) => {
   try {
-    console.log('📊 Запрос курсов Stars');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Запрос курсов Stars');
     
     const result = await pool.query(`
       SELECT 
@@ -39,7 +39,7 @@ router.get('/rates', async (req, res) => {
     const isBlocked = blockResult.rows.length > 0;
     const blockInfo = isBlocked ? blockResult.rows[0] : null;
     
-    console.log('📊 Курсы получены:', { rates, isBlocked });
+    if (process.env.NODE_ENV === 'development') console.log('📊 Курсы получены:', { rates, isBlocked });
     
     res.json({
       rates,
@@ -58,7 +58,7 @@ router.get('/rates', async (req, res) => {
 router.post('/exchange', async (req, res) => {
   const { telegramId, starsAmount } = req.body;
   
-  console.log('🌟 ЗАПРОС НА ОБМЕН STARS:', { telegramId, starsAmount });
+  if (process.env.NODE_ENV === 'development') console.log('🌟 ЗАПРОС НА ОБМЕН STARS:', { telegramId, starsAmount });
   
   if (!telegramId || !starsAmount || starsAmount < 10) {
     return res.status(400).json({ 
@@ -78,7 +78,7 @@ router.post('/exchange', async (req, res) => {
       return res.status(404).json({ error: 'Player not found' });
     }
     
-    console.log('✅ Игрок найден:', {
+    if (process.env.NODE_ENV === 'development') console.log('✅ Игрок найден:', {
       telegram_id: player.telegram_id,
       telegram_stars: player.telegram_stars,
       cs: player.cs
@@ -133,7 +133,7 @@ router.post('/exchange', async (req, res) => {
     const rateMetadata = rateResult.rows[0].metadata;
     const csAmount = starsAmount * starsToCs;
     
-    console.log('💱 РАСЧЕТ ОБМЕНА:', {
+    if (process.env.NODE_ENV === 'development') console.log('💱 РАСЧЕТ ОБМЕНА:', {
       starsAmount,
       starsToCs,
       csAmount,
@@ -155,7 +155,7 @@ router.post('/exchange', async (req, res) => {
       [newStars, newCs, telegramId]
     );
     
-    console.log('💾 БАЛАНСЫ ОБНОВЛЕНЫ:', {
+    if (process.env.NODE_ENV === 'development') console.log('💾 БАЛАНСЫ ОБНОВЛЕНЫ:', {
       старые_stars: currentStars,
       новые_stars: newStars,
       старые_cs: parseFloat(player.cs),
@@ -197,7 +197,7 @@ router.post('/exchange', async (req, res) => {
     // Получаем обновленные данные игрока
     const updatedPlayer = await getPlayer(telegramId);
     
-    console.log('🎉 ОБМЕН STARS ВЫПОЛНЕН:', {
+    if (process.env.NODE_ENV === 'development') console.log('🎉 ОБМЕН STARS ВЫПОЛНЕН:', {
       telegramId,
       exchanged: `${starsAmount} Stars → ${csAmount.toFixed(4)} CS`,
       rate: starsToCs,
@@ -318,7 +318,7 @@ router.post('/update-ton-rate', async (req, res) => {
     
     await client.query('COMMIT');
     
-    console.log(`💰 Курс TON обновлен: ${previousRate} → ${newRate} (${source})`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 Курс TON обновлен: ${previousRate} → ${newRate} (${source})`);
     
     res.json({
       success: true,

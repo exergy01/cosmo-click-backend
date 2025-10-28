@@ -33,7 +33,7 @@ function calculateRegeneratedHP(ship, race) {
   // Вычисляем сколько HP восстановилось (от текущего HP до max)
   const hpToRegenerate = Math.floor((ship.max_hp - ship.current_hp) * regenPercent);
 
-  console.log(`🔄 Regen calc for ship ${ship.id} (${race}): timePassed=${Math.floor(timePassedSeconds)}s (${(timePassedSeconds/3600).toFixed(2)}h), fullRegen=${fullRegenSeconds}s, percent=${(regenPercent*100).toFixed(2)}%, regen=${hpToRegenerate} HP, current=${ship.current_hp}/${ship.max_hp}`);
+  if (process.env.NODE_ENV === 'development') console.log(`🔄 Regen calc for ship ${ship.id} (${race}): timePassed=${Math.floor(timePassedSeconds)}s (${(timePassedSeconds/3600).toFixed(2)}h), fullRegen=${fullRegenSeconds}s, percent=${(regenPercent*100).toFixed(2)}%, regen=${hpToRegenerate} HP, current=${ship.current_hp}/${ship.max_hp}`);
 
   if (hpToRegenerate <= 0) {
     return ship.current_hp; // Нет регенерации
@@ -43,7 +43,7 @@ function calculateRegeneratedHP(ship, race) {
   // ВАЖНО: регенерация работает даже с 0 HP (уничтоженные корабли медленно восстанавливаются)
   const newHP = Math.min(ship.max_hp, ship.current_hp + hpToRegenerate);
 
-  console.log(`✅ Regeneration: ${ship.current_hp} → ${newHP} HP (+${hpToRegenerate})`);
+  if (process.env.NODE_ENV === 'development') console.log(`✅ Regeneration: ${ship.current_hp} → ${newHP} HP (+${hpToRegenerate})`);
 
   return newHP;
 }
@@ -80,7 +80,7 @@ function applyLoginPenalty(ship, race, lastLogin) {
   // HP не может упасть ниже 0
   const newHP = Math.max(0, ship.current_hp - hpPenalty);
 
-  console.log(`⚠️ Zerg penalty: ${penaltyDays} days missed, -${hpPenalty} HP (ship ${ship.id})`);
+  if (process.env.NODE_ENV === 'development') console.log(`⚠️ Zerg penalty: ${penaltyDays} days missed, -${hpPenalty} HP (ship ${ship.id})`);
 
   return newHP;
 }
@@ -122,7 +122,7 @@ async function updateShipsHP(pool, telegramId, race, lastLogin) {
           WHERE id = $2
         `, [newHP, ship.id]);
 
-        console.log(`🔄 Regenerated ship ${ship.id}: ${ship.current_hp} → ${newHP} HP`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔄 Regenerated ship ${ship.id}: ${ship.current_hp} → ${newHP} HP`);
       }
     }
   } catch (error) {

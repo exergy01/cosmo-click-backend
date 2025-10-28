@@ -28,7 +28,7 @@ router.post('/api/collect', async (req, res) => {
   const { telegramId, systemId } = req.body;
   if (!telegramId || !systemId) return res.status(400).json({ error: 'Telegram ID and System ID are required' });
   
-  console.log(`💰 СБОР РЕСУРСОВ: игрок ${telegramId}, система ${systemId}`);
+  if (process.env.NODE_ENV === 'development') console.log(`💰 СБОР РЕСУРСОВ: игрок ${telegramId}, система ${systemId}`);
   
   const client = await pool.connect();
   try {
@@ -49,7 +49,7 @@ router.post('/api/collect', async (req, res) => {
     // 🛡️ ПРОВЕРКА НА ПОДОЗРИТЕЛЬНУЮ АКТИВНОСТЬ
     const suspicious = await detectSuspiciousActivity(telegramId, 'collect', 0, systemId);
     if (suspicious) {
-      console.log(`🚨 Подозрительная активность при сборе: ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🚨 Подозрительная активность при сборе: ${telegramId}`);
       // Можно заблокировать или просто логировать
     }
 
@@ -61,7 +61,7 @@ router.post('/api/collect', async (req, res) => {
     const maxCargoCapacity = player.max_cargo_capacity_data?.[systemId] || 0;
     const totalAsteroidResources = player.asteroid_total_data?.[systemId] || 0;
 
-    console.log(`💰 ДАННЫЕ СБОРА СИСТЕМА ${systemId}:`, {
+    if (process.env.NODE_ENV === 'development') console.log(`💰 ДАННЫЕ СБОРА СИСТЕМА ${systemId}:`, {
       уже_собрано: collectedAmount,
       скорость_в_секунду: miningSpeed,
       макс_карго: maxCargoCapacity,
@@ -103,7 +103,7 @@ router.post('/api/collect', async (req, res) => {
       const updatedCs = parseFloat(player.cs) + newResources;
       balanceAfter.cs = updatedCs;
       
-      console.log(`✅ СБОР CS: собрано ${newResources} CS, новый баланс ${updatedCs}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ СБОР CS: собрано ${newResources} CS, новый баланс ${updatedCs}`);
       
       await client.query(
         'UPDATE players SET cs = $1, collected_by_system = $2, last_collection_time = $3, asteroid_total_data = $4 WHERE telegram_id = $5',
@@ -124,7 +124,7 @@ router.post('/api/collect', async (req, res) => {
       const updatedCcc = parseFloat(player.ccc) + newResources;
       balanceAfter.ccc = updatedCcc;
       
-      console.log(`✅ СБОР CCC: собрано ${newResources} CCC, новый баланс ${updatedCcc}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ СБОР CCC: собрано ${newResources} CCC, новый баланс ${updatedCcc}`);
       
       await client.query(
         'UPDATE players SET ccc = $1, collected_by_system = $2, last_collection_time = $3, asteroid_total_data = $4 WHERE telegram_id = $5',
@@ -161,24 +161,24 @@ router.post('/api/collect', async (req, res) => {
 
 // ИСПРАВЛЕННЫЙ роут для безопасного сбора ресурсов БЕЗ ЛОГИРОВАНИЯ
 router.post('/api/safe/collect', async (req, res) => {
-  console.log('🔍 ПОЛУЧЕН ЗАПРОС /api/safe/collect:', req.body);
+  if (process.env.NODE_ENV === 'development') console.log('🔍 ПОЛУЧЕН ЗАПРОС /api/safe/collect:', req.body);
   
   const { telegramId, last_collection_time, system, collected_ccc, collected_cs } = req.body;
   
-  console.log('🔍 ИЗВЛЕЧЕННЫЕ ПАРАМЕТРЫ:', { telegramId, system, collected_ccc, collected_cs });
+  if (process.env.NODE_ENV === 'development') console.log('🔍 ИЗВЛЕЧЕННЫЕ ПАРАМЕТРЫ:', { telegramId, system, collected_ccc, collected_cs });
   
   const collectedAmount = system === 4 ? (collected_cs || 0) : (collected_ccc || 0);
   const currencyField = system === 4 ? 'cs' : 'ccc';
   const currencyName = system === 4 ? 'CS' : 'CCC';
   
-  console.log('🔍 ЛОГИКА ОПРЕДЕЛЕНИЯ:', { system, collectedAmount, currencyField, currencyName });
+  if (process.env.NODE_ENV === 'development') console.log('🔍 ЛОГИКА ОПРЕДЕЛЕНИЯ:', { system, collectedAmount, currencyField, currencyName });
   
   if (!telegramId || !system || collectedAmount === undefined || collectedAmount === 0) {
-    console.log('❌ ВАЛИДАЦИЯ НЕ ПРОШЛА');
+    if (process.env.NODE_ENV === 'development') console.log('❌ ВАЛИДАЦИЯ НЕ ПРОШЛА');
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  console.log('✅ ВАЛИДАЦИЯ ПРОШЛА, ПРОДОЛЖАЕМ...');
+  if (process.env.NODE_ENV === 'development') console.log('✅ ВАЛИДАЦИЯ ПРОШЛА, ПРОДОЛЖАЕМ...');
 
   const client = await pool.connect();
   try {
@@ -199,24 +199,24 @@ router.post('/api/safe/collect', async (req, res) => {
     const currentBalance = parseFloat(player[currencyField] || '0');
     const updatedBalance = (currentBalance + parseFloat(collectedAmount)).toFixed(5);
     
-    console.log(`💰 ОБНОВЛЕНИЕ БАЛАНСА: ${currencyName} ${currentBalance} + ${collectedAmount} = ${updatedBalance}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 ОБНОВЛЕНИЕ БАЛАНСА: ${currencyName} ${currentBalance} + ${collectedAmount} = ${updatedBalance}`);
     
     const updatedCollectedBySystem = { ...player.collected_by_system, [systemStr]: 0 };
     const updatedLastCollectionTime = { ...last_collection_time, [systemStr]: new Date().toISOString() };
 
     const sqlQuery = `UPDATE players SET ${currencyField} = $1, collected_by_system = $2, asteroid_total_data = $3, last_collection_time = $4 WHERE telegram_id = $5`;
-    console.log('🔍 SQL ЗАПРОС:', sqlQuery);
-    console.log('🔍 SQL ПАРАМЕТРЫ:', [updatedBalance, updatedCollectedBySystem, updatedAsteroidTotal, updatedLastCollectionTime, telegramId]);
+    if (process.env.NODE_ENV === 'development') console.log('🔍 SQL ЗАПРОС:', sqlQuery);
+    if (process.env.NODE_ENV === 'development') console.log('🔍 SQL ПАРАМЕТРЫ:', [updatedBalance, updatedCollectedBySystem, updatedAsteroidTotal, updatedLastCollectionTime, telegramId]);
     
     await client.query(sqlQuery, [updatedBalance, updatedCollectedBySystem, updatedAsteroidTotal, updatedLastCollectionTime, telegramId]);
 
     await client.query('COMMIT');
-    console.log(`✅ БЕЗОПАСНЫЙ СБОР: собрано ${collectedAmount} ${currencyName}, транзакция завершена`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ БЕЗОПАСНЫЙ СБОР: собрано ${collectedAmount} ${currencyName}, транзакция завершена`);
     
     // 🔥 ВАЖНО: Получаем обновленные данные игрока
     const updatedPlayer = await getPlayer(telegramId);
     
-    console.log('🎯 ОТПРАВЛЯЕМ ОТВЕТ');
+    if (process.env.NODE_ENV === 'development') console.log('🎯 ОТПРАВЛЯЕМ ОТВЕТ');
     res.json(updatedPlayer);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -294,7 +294,7 @@ router.post('/api/test/update-balance', async (req, res) => {
     const query = `UPDATE players SET ${updates.join(', ')} WHERE telegram_id = $1`;
     await pool.query(query, values);
 
-    console.log(`🧪 ТЕСТ: обновлены балансы для игрока ${telegramId}:`, { cs, ccc, ton });
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 ТЕСТ: обновлены балансы для игрока ${telegramId}:`, { cs, ccc, ton });
     
     const updatedPlayer = await getPlayer(telegramId);
     res.json(updatedPlayer);
@@ -324,7 +324,7 @@ router.get('/api/recalculate/:telegramId', async (req, res) => {
 
 router.get('/api/games/stats/:telegramId', async (req, res) => {
   try {
-      console.log('🎮 Getting game stats for:', req.params.telegramId);
+      if (process.env.NODE_ENV === 'development') console.log('🎮 Getting game stats for:', req.params.telegramId);
       const { telegramId } = req.params;
 
       // Получаем статистику всех миниигр
@@ -354,7 +354,7 @@ router.get('/api/games/stats/:telegramId', async (req, res) => {
 
       const jackpotAmount = jackpotResult.rows[0]?.current_amount || 0;
 
-      console.log('🎮 Game stats response:', {
+      if (process.env.NODE_ENV === 'development') console.log('🎮 Game stats response:', {
           totalGames: parseInt(stats.total_games),
           totalWins: parseInt(stats.total_wins),
           totalLosses: parseInt(stats.total_losses),

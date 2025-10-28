@@ -27,17 +27,17 @@ class TonRateService {
 
   // 🌟 Получение курса TON из внешних API
   async fetchTonRateFromAPI() {
-    console.log('🔍 Получаем курс TON из внешних источников...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Получаем курс TON из внешних источников...');
     
     for (const source of this.rateSources) {
       try {
         // Если нет API ключа для CoinAPI - пропускаем
         if (source.name === 'coinapi' && !process.env.COINAPI_KEY) {
-          console.log('⚠️ CoinAPI: ключ не найден, пропускаем');
+          if (process.env.NODE_ENV === 'development') console.log('⚠️ CoinAPI: ключ не найден, пропускаем');
           continue;
         }
         
-        console.log(`📡 Запрос к ${source.name}: ${source.url}`);
+        if (process.env.NODE_ENV === 'development') console.log(`📡 Запрос к ${source.name}: ${source.url}`);
         
         const response = await axios.get(source.url, {
           headers: source.headers,
@@ -47,23 +47,23 @@ class TonRateService {
         const rate = source.transform(response.data);
         
         if (rate && rate > 0) {
-          console.log(`✅ Курс TON от ${source.name}: $${rate}`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Курс TON от ${source.name}: $${rate}`);
           return {
             rate: parseFloat(rate),
             source: source.name,
             timestamp: new Date()
           };
         } else {
-          console.log(`⚠️ ${source.name}: некорректный курс`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ ${source.name}: некорректный курс`);
         }
         
       } catch (error) {
-        console.log(`❌ Ошибка ${source.name}:`, error.message);
+        if (process.env.NODE_ENV === 'development') console.log(`❌ Ошибка ${source.name}:`, error.message);
         continue;
       }
     }
     
-    console.log('❌ Не удалось получить курс TON ни из одного источника');
+    if (process.env.NODE_ENV === 'development') console.log('❌ Не удалось получить курс TON ни из одного источника');
     return null;
   }
 
@@ -87,15 +87,15 @@ class TonRateService {
       const lastRate = parseFloat(lastRateResult.rows[0].rate);
       const changePercent = Math.abs((newRate - lastRate) / lastRate * 100);
       
-      console.log(`📊 Анализ изменения курса: ${lastRate} → ${newRate} (${changePercent.toFixed(2)}%)`);
+      if (process.env.NODE_ENV === 'development') console.log(`📊 Анализ изменения курса: ${lastRate} → ${newRate} (${changePercent.toFixed(2)}%)`);
       
       // Если изменение больше 10% - блокируем обмен при падении
       if (changePercent > 10) {
-        console.log('⚠️ Резкое изменение курса TON > 10%');
+        if (process.env.NODE_ENV === 'development') console.log('⚠️ Резкое изменение курса TON > 10%');
         
         // Если TON падает - блокируем обмен (невыгодно для игроков)
         if (newRate < lastRate) {
-          console.log('📉 TON падает - блокируем обмен Stars');
+          if (process.env.NODE_ENV === 'development') console.log('📉 TON падает - блокируем обмен Stars');
           
           // Блокируем обмен на 24 часа
           await client.query(`
@@ -114,7 +114,7 @@ class TonRateService {
             blocked: true
           };
         } else {
-          console.log('📈 TON растет - обмен остается доступным');
+          if (process.env.NODE_ENV === 'development') console.log('📈 TON растет - обмен остается доступным');
           return { 
             allowed: true, 
             reason: `Rate increase: ${changePercent.toFixed(2)}%`,
@@ -133,7 +133,7 @@ class TonRateService {
   // 🔄 Обновление курса TON в базе
   async updateTonRate(rateData) {
     if (!rateData || !rateData.rate) {
-      console.log('❌ Некорректные данные курса');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Некорректные данные курса');
       return false;
     }
     
@@ -173,15 +173,15 @@ class TonRateService {
       // Обновляем курс Stars → CS только если разрешено
       if (protection.allowed) {
         await client.query('SELECT update_stars_cs_rate()');
-        console.log('✅ Курс Stars → CS обновлен');
+        if (process.env.NODE_ENV === 'development') console.log('✅ Курс Stars → CS обновлен');
       } else {
-        console.log('🚫 Курс Stars → CS не обновлен (заблокирован)');
+        if (process.env.NODE_ENV === 'development') console.log('🚫 Курс Stars → CS не обновлен (заблокирован)');
       }
       
       await client.query('COMMIT');
       
-      console.log(`💰 Курс TON обновлен: ${previousRate} → ${rateData.rate} (${rateData.source})`);
-      console.log(`🛡️ Защита: ${protection.reason}`);
+      if (process.env.NODE_ENV === 'development') console.log(`💰 Курс TON обновлен: ${previousRate} → ${rateData.rate} (${rateData.source})`);
+      if (process.env.NODE_ENV === 'development') console.log(`🛡️ Защита: ${protection.reason}`);
       
       this.lastUpdate = new Date();
       
@@ -198,7 +198,7 @@ class TonRateService {
 
   // 🚀 Запуск автоматического обновления курсов
   async startAutoUpdate() {
-    console.log('🚀 Запуск автоматического обновления курсов TON...');
+    if (process.env.NODE_ENV === 'development') console.log('🚀 Запуск автоматического обновления курсов TON...');
     
     // Первое обновление сразу
     await this.updateRatesCycle();
@@ -208,20 +208,20 @@ class TonRateService {
       await this.updateRatesCycle();
     }, this.updateInterval);
     
-    console.log(`⏰ Автообновление настроено каждые ${this.updateInterval / 1000 / 60} минут`);
+    if (process.env.NODE_ENV === 'development') console.log(`⏰ Автообновление настроено каждые ${this.updateInterval / 1000 / 60} минут`);
   }
 
   // 🔄 Цикл обновления курсов
   async updateRatesCycle() {
     if (this.isUpdating) {
-      console.log('⏳ Обновление курсов уже выполняется...');
+      if (process.env.NODE_ENV === 'development') console.log('⏳ Обновление курсов уже выполняется...');
       return;
     }
     
     this.isUpdating = true;
     
     try {
-      console.log(`\n🔄 [${new Date().toISOString()}] Начало цикла обновления курсов`);
+      if (process.env.NODE_ENV === 'development') console.log(`\n🔄 [${new Date().toISOString()}] Начало цикла обновления курсов`);
       
       // Получаем курс TON из API
       const rateData = await this.fetchTonRateFromAPI();
@@ -229,12 +229,12 @@ class TonRateService {
       if (rateData) {
         const success = await this.updateTonRate(rateData);
         if (success) {
-          console.log('✅ Цикл обновления курсов завершен успешно');
+          if (process.env.NODE_ENV === 'development') console.log('✅ Цикл обновления курсов завершен успешно');
         } else {
-          console.log('❌ Ошибка при обновлении курсов в базе');
+          if (process.env.NODE_ENV === 'development') console.log('❌ Ошибка при обновлении курсов в базе');
         }
       } else {
-        console.log('❌ Не удалось получить курс TON из API');
+        if (process.env.NODE_ENV === 'development') console.log('❌ Не удалось получить курс TON из API');
         await this.useBackupRate();
       }
       
@@ -242,13 +242,13 @@ class TonRateService {
       console.error('❌ Критическая ошибка в цикле обновления:', error);
     } finally {
       this.isUpdating = false;
-      console.log('🏁 Цикл обновления курсов завершен\n');
+      if (process.env.NODE_ENV === 'development') console.log('🏁 Цикл обновления курсов завершен\n');
     }
   }
 
   // 🆘 Использование резервного курса при ошибках API
   async useBackupRate() {
-    console.log('🆘 Используем резервный механизм курсов...');
+    if (process.env.NODE_ENV === 'development') console.log('🆘 Используем резервный механизм курсов...');
     
     const client = await pool.connect();
     try {
@@ -265,7 +265,7 @@ class TonRateService {
         const timeSinceUpdate = Date.now() - new Date(lastUpdate.rows[0].last_updated).getTime();
         const hoursOld = timeSinceUpdate / (1000 * 60 * 60);
         
-        console.log(`📊 Последний курс: ${lastUpdate.rows[0].rate} (${hoursOld.toFixed(1)} часов назад)`);
+        if (process.env.NODE_ENV === 'development') console.log(`📊 Последний курс: ${lastUpdate.rows[0].rate} (${hoursOld.toFixed(1)} часов назад)`);
         
         // Если курс старше 6 часов - используем резервный
         if (hoursOld > 6) {
@@ -290,7 +290,7 @@ class TonRateService {
           // Обновляем курс Stars → CS с резервным курсом
           await client.query('SELECT update_stars_cs_rate()');
           
-          console.log(`🆘 Установлен резервный курс TON: $${backupRate}`);
+          if (process.env.NODE_ENV === 'development') console.log(`🆘 Установлен резервный курс TON: $${backupRate}`);
         }
       }
       

@@ -13,7 +13,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
   try {
     const player = await getPlayer(telegramId);
     if (!player?.referrer_id) {
-      console.log(`💸 Реферальная награда: игрок ${telegramId} не имеет реферера`);
+      if (process.env.NODE_ENV === 'development') console.log(`💸 Реферальная награда: игрок ${telegramId} не имеет реферера`);
       return;
     }
 
@@ -22,11 +22,11 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
     const rewardAmount = parseFloat((spentAmount * rewardPercentage).toFixed(8));
 
     if (rewardAmount <= 0) {
-      console.log(`💸 Реферальная награда: слишком маленькая сумма (${rewardAmount})`);
+      if (process.env.NODE_ENV === 'development') console.log(`💸 Реферальная награда: слишком маленькая сумма (${rewardAmount})`);
       return;
     }
 
-    console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON (НЕ зачисляется сразу!)`);
+    if (process.env.NODE_ENV === 'development') console.log(`💸 Реферальная награда TON: игрок ${telegramId} поставил ${spentAmount} TON, рефереру ${player.referrer_id} накапливается ${rewardAmount} TON (НЕ зачисляется сразу!)`);
 
     // ✅ ТОЛЬКО ЗАПИСЫВАЕМ В ТАБЛИЦУ REFERRALS - НИКАКОГО ЗАЧИСЛЕНИЯ НА БАЛАНС!
     await client.query(`
@@ -37,7 +37,7 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
         ton_earned = referrals.ton_earned + $4
     `, [player.referrer_id, telegramId, 0, rewardAmount]);
 
-    console.log(`✅ Реферальная награда TON ТОЛЬКО накоплена в таблице: ${rewardAmount} TON для реферера ${player.referrer_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Реферальная награда TON ТОЛЬКО накоплена в таблице: ${rewardAmount} TON для реферера ${player.referrer_id}`);
     
   } catch (err) {
     console.error('❌ Ошибка начисления реферальной награды TON:', err);
@@ -47,12 +47,12 @@ const processReferralReward = async (client, telegramId, spentAmount, currency) 
 
 // 🧮 РАСЧЕТ ПЛАНОВ СТЕЙКИНГА
 router.get('/calculate/:amount', (req, res) => {
-  console.log('🧮 ЗАПРОС РАСЧЕТА ПЛАНОВ:', req.params.amount);
+  if (process.env.NODE_ENV === 'development') console.log('🧮 ЗАПРОС РАСЧЕТА ПЛАНОВ:', req.params.amount);
   
   const amount = parseFloat(req.params.amount);
   
   if (isNaN(amount) || amount < 15 || amount > 1000) {
-    console.log('❌ Неверная сумма:', amount);
+    if (process.env.NODE_ENV === 'development') console.log('❌ Неверная сумма:', amount);
     return res.status(400).json({ 
       success: false,
       error: 'Amount must be between 15 and 1000 TON' 
@@ -79,7 +79,7 @@ router.get('/calculate/:amount', (req, res) => {
     time_unit: TEST_MODE ? 'минут' : 'дней'
   };
   
-  console.log('✅ ПЛАНЫ РАССЧИТАНЫ:', { fastPlan, standardPlan });
+  if (process.env.NODE_ENV === 'development') console.log('✅ ПЛАНЫ РАССЧИТАНЫ:', { fastPlan, standardPlan });
   
   res.json({
     success: true,
@@ -93,10 +93,10 @@ router.get('/calculate/:amount', (req, res) => {
 router.post('/stake', async (req, res) => {
   const { telegramId, systemId, stakeAmount, planType } = req.body;
   
-  console.log('🔥 СОЗДАНИЕ СТЕЙКА - ЗАПРОС:', { telegramId, systemId, stakeAmount, planType });
+  if (process.env.NODE_ENV === 'development') console.log('🔥 СОЗДАНИЕ СТЕЙКА - ЗАПРОС:', { telegramId, systemId, stakeAmount, planType });
   
   if (!telegramId || !systemId || !stakeAmount || !planType) {
-    console.log('❌ Отсутствуют обязательные поля');
+    if (process.env.NODE_ENV === 'development') console.log('❌ Отсутствуют обязательные поля');
     return res.status(400).json({ 
       success: false,
       error: 'Missing required fields' 
@@ -104,7 +104,7 @@ router.post('/stake', async (req, res) => {
   }
   
   if (!['fast', 'standard'].includes(planType)) {
-    console.log('❌ Неверный тип плана:', planType);
+    if (process.env.NODE_ENV === 'development') console.log('❌ Неверный тип плана:', planType);
     return res.status(400).json({ 
       success: false,
       error: 'Invalid plan type' 
@@ -112,7 +112,7 @@ router.post('/stake', async (req, res) => {
   }
   
   if (parseInt(systemId) !== 5) {
-    console.log('❌ Неподдерживаемая система:', systemId);
+    if (process.env.NODE_ENV === 'development') console.log('❌ Неподдерживаемая система:', systemId);
     return res.status(400).json({ 
       success: false,
       error: 'Only system 5 is supported' 
@@ -123,13 +123,13 @@ router.post('/stake', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    console.log(`🔥 СОЗДАНИЕ СТЕЙКА: игрок ${telegramId}, система ${systemId}, сумма ${stakeAmount}, план ${planType}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔥 СОЗДАНИЕ СТЕЙКА: игрок ${telegramId}, система ${systemId}, сумма ${stakeAmount}, план ${planType}`);
     
     // Получаем данные игрока
     const player = await getPlayer(telegramId);
     if (!player) {
       await client.query('ROLLBACK');
-      console.log('❌ Игрок не найден');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Игрок не найден');
       return res.status(404).json({ 
         success: false,
         error: 'Player not found' 
@@ -142,7 +142,7 @@ router.post('/stake', async (req, res) => {
     
     if (tonBalance < stakeAmountNum) {
       await client.query('ROLLBACK');
-      console.log('❌ Недостаточно TON:', { tonBalance, stakeAmountNum });
+      if (process.env.NODE_ENV === 'development') console.log('❌ Недостаточно TON:', { tonBalance, stakeAmountNum });
       return res.status(400).json({ 
         success: false,
         error: 'Insufficient TON balance' 
@@ -157,11 +157,11 @@ router.post('/stake', async (req, res) => {
     if (TEST_MODE) {
       planDaysForDB = planType === 'fast' ? 2 : 4; // минуты
       timeUnit = 'минут';
-      console.log(`🧪 ТЕСТОВЫЙ РЕЖИМ: ${planDaysForDB} минут`);
+      if (process.env.NODE_ENV === 'development') console.log(`🧪 ТЕСТОВЫЙ РЕЖИМ: ${planDaysForDB} минут`);
     } else {
       planDaysForDB = planType === 'fast' ? 20 : 40; // дни
       timeUnit = 'дней';
-      console.log(`🏭 ПРОДАКШН РЕЖИМ: ${planDaysForDB} дней`);
+      if (process.env.NODE_ENV === 'development') console.log(`🏭 ПРОДАКШН РЕЖИМ: ${planDaysForDB} дней`);
     }
     
     const returnAmount = (stakeAmountNum * (1 + planPercent / 100)).toFixed(8);
@@ -176,10 +176,10 @@ router.post('/stake', async (req, res) => {
       endDateUTC = new Date(startDateUTC.getTime() + (planDaysForDB * 24 * 60 * 60 * 1000));
     }
     
-    console.log(`📅 СЕРВЕРНОЕ ВРЕМЯ:`);
-    console.log(`   Время старта UTC: ${startDateUTC.toISOString()}`);
-    console.log(`   Время окончания UTC: ${endDateUTC.toISOString()}`);
-    console.log(`   Продолжительность: ${planDaysForDB} ${timeUnit}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📅 СЕРВЕРНОЕ ВРЕМЯ:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Время старта UTC: ${startDateUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Время окончания UTC: ${endDateUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Продолжительность: ${planDaysForDB} ${timeUnit}`);
     
     // Списываем TON с баланса
     const newTonBalance = (tonBalance - stakeAmountNum).toFixed(8);
@@ -191,18 +191,18 @@ router.post('/stake', async (req, res) => {
     // Разблокируем систему 5 навсегда
     if (!player.unlocked_systems.includes(systemId)) {
       const updatedUnlockedSystems = [...player.unlocked_systems, systemId];
-      console.log(`🔓 РАЗБЛОКИРУЕМ СИСТЕМУ 5 НАВСЕГДА`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔓 РАЗБЛОКИРУЕМ СИСТЕМУ 5 НАВСЕГДА`);
       
       await client.query(
         'UPDATE players SET unlocked_systems = $1 WHERE telegram_id = $2',
         [JSON.stringify(updatedUnlockedSystems), telegramId]
       );
     } else {
-      console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔓 СИСТЕМА 5 УЖЕ РАЗБЛОКИРОВАНА НАВСЕГДА`);
     }
     
     // 🔥 СОЗДАНИЕ СТЕЙКА
-    console.log('🔥 СОЗДАНИЕ СТЕЙКА В БД...');
+    if (process.env.NODE_ENV === 'development') console.log('🔥 СОЗДАНИЕ СТЕЙКА В БД...');
     
     const stakeResult = await client.query(
       `INSERT INTO ton_staking (
@@ -213,7 +213,7 @@ router.post('/stake', async (req, res) => {
     );
     
     const createdStake = stakeResult.rows[0];
-    console.log(`✅ СТЕЙК СОЗДАН В БД: ID ${createdStake.id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ СТЕЙК СОЗДАН В БД: ID ${createdStake.id}`);
     
     // 🎯 НАЧИСЛЯЕМ РЕФЕРАЛЬНУЮ НАГРАДУ ПРИ СОЗДАНИИ СТЕЙКА - ДО КОММИТА! (КОПИТСЯ В БАЗЕ!)
     await processReferralReward(client, telegramId, stakeAmountNum, 'ton');
@@ -259,7 +259,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   
   try {
-    console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📋 ПОЛУЧЕНИЕ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
     const result = await pool.query(
       `SELECT 
@@ -271,11 +271,11 @@ router.get('/stakes/:telegramId', async (req, res) => {
       [telegramId]
     );
     
-    console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📋 НАЙДЕНО АКТИВНЫХ СТЕЙКОВ: ${result.rows.length}`);
     
     // 🔥 СЕРВЕРНОЕ ВРЕМЯ И РАСЧЕТЫ
     const currentTimeUTC = new Date();
-    console.log(`⏰ СЕРВЕРНОЕ время UTC: ${currentTimeUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`⏰ СЕРВЕРНОЕ время UTC: ${currentTimeUTC.toISOString()}`);
     
     const stakes = result.rows.map(stake => {
       const startTimeUTC = new Date(stake.start_date);
@@ -319,7 +319,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
         }
       }
       
-      console.log(`📊 СТЕЙК ${stake.id}: осталось ${timeLeftMs}мс, прогресс ${progress.toFixed(1)}%, готов: ${isReady}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📊 СТЕЙК ${stake.id}: осталось ${timeLeftMs}мс, прогресс ${progress.toFixed(1)}%, готов: ${isReady}`);
       
       return {
         ...stake,
@@ -338,7 +338,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
       };
     });
     
-    console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков с готовыми расчетами`);
+    if (process.env.NODE_ENV === 'development') console.log(`📋 ОТПРАВЛЯЕМ КЛИЕНТУ: ${stakes.length} стейков с готовыми расчетами`);
     res.json(stakes);
     
   } catch (err) {
@@ -351,7 +351,7 @@ router.get('/stakes/:telegramId', async (req, res) => {
 router.post('/withdraw', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
-  console.log(`💸 ЗАПРОС ВЫВОДА: игрок ${telegramId}, стейк ${stakeId}`);
+  if (process.env.NODE_ENV === 'development') console.log(`💸 ЗАПРОС ВЫВОДА: игрок ${telegramId}, стейк ${stakeId}`);
   
   if (!telegramId || !stakeId) {
     return res.status(400).json({ 
@@ -373,7 +373,7 @@ router.post('/withdraw', async (req, res) => {
     
     if (stakeResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      console.log('❌ Стейк не найден или уже выведен');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Стейк не найден или уже выведен');
       return res.status(404).json({ 
         success: false,
         error: 'Stake not found or already withdrawn' 
@@ -394,10 +394,10 @@ router.post('/withdraw', async (req, res) => {
     
     const timeLeftMs = endTimeUTC.getTime() - currentTimeUTC.getTime();
     
-    console.log(`💸 СЕРВЕРНАЯ ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
-    console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
-    console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
-    console.log(`   Разница: ${timeLeftMs} мс`);
+    if (process.env.NODE_ENV === 'development') console.log(`💸 СЕРВЕРНАЯ ПРОВЕРКА ВРЕМЕНИ СТЕЙКА ${stakeId}:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Разница: ${timeLeftMs} мс`);
     
     // Проверяем что срок истек
     if (timeLeftMs > 0) {
@@ -412,7 +412,7 @@ router.post('/withdraw', async (req, res) => {
         timeLeftText = `${daysLeft} дней`;
       }
       
-      console.log(`❌ Стейк еще не готов: осталось ${timeLeftText}`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ Стейк еще не готов: осталось ${timeLeftText}`);
       return res.status(400).json({ 
         success: false,
         error: 'Stake period not completed',
@@ -435,10 +435,10 @@ router.post('/withdraw', async (req, res) => {
     const returnAmount = parseFloat(stake.return_amount);
     const newTonBalance = (currentTon + returnAmount).toFixed(8);
     
-    console.log(`💰 ВЫВОД СТЕЙКА:`);
-    console.log(`   Было TON: ${currentTon}`);
-    console.log(`   Возврат: ${returnAmount}`);
-    console.log(`   Станет TON: ${newTonBalance}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 ВЫВОД СТЕЙКА:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Было TON: ${currentTon}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Возврат: ${returnAmount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Станет TON: ${newTonBalance}`);
     
     await client.query(
       'UPDATE players SET ton = $1 WHERE telegram_id = $2',
@@ -451,7 +451,7 @@ router.post('/withdraw', async (req, res) => {
       ['withdrawn', stakeId]
     );
     
-    console.log(`✅ СТЕЙК ${stakeId} УСПЕШНО ВЫВЕДЕН`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ СТЕЙК ${stakeId} УСПЕШНО ВЫВЕДЕН`);
     
     await client.query('COMMIT');
     
@@ -482,7 +482,7 @@ router.post('/withdraw', async (req, res) => {
 router.post('/cancel', async (req, res) => {
   const { telegramId, stakeId } = req.body;
   
-  console.log('🔍 ЗАПРОС ОТМЕНЫ СТЕЙКА:', { telegramId, stakeId });
+  if (process.env.NODE_ENV === 'development') console.log('🔍 ЗАПРОС ОТМЕНЫ СТЕЙКА:', { telegramId, stakeId });
   
   if (!telegramId || !stakeId) {
     return res.status(400).json({ 
@@ -523,15 +523,15 @@ router.post('/cancel', async (req, res) => {
     
     const timeLeftMs = endTimeUTC.getTime() - currentTimeUTC.getTime();
     
-    console.log(`🔍 СЕРВЕРНАЯ ПРОВЕРКА ВОЗМОЖНОСТИ ОТМЕНЫ СТЕЙКА ${stakeId}:`);
-    console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
-    console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
-    console.log(`   Разница: ${timeLeftMs} мс`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔍 СЕРВЕРНАЯ ПРОВЕРКА ВОЗМОЖНОСТИ ОТМЕНЫ СТЕЙКА ${stakeId}:`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Текущее время UTC: ${currentTimeUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Время окончания UTC: ${endTimeUTC.toISOString()}`);
+    if (process.env.NODE_ENV === 'development') console.log(`   Разница: ${timeLeftMs} мс`);
     
     // 🔥 ЗАЩИТА: НЕЛЬЗЯ ОТМЕНИТЬ ЗАВЕРШЕННЫЙ СТЕЙК
     if (timeLeftMs <= 0) {
       await client.query('ROLLBACK');
-      console.log(`❌ СТЕЙК ЗАВЕРШЕН - ОТМЕНА НЕВОЗМОЖНА`);
+      if (process.env.NODE_ENV === 'development') console.log(`❌ СТЕЙК ЗАВЕРШЕН - ОТМЕНА НЕВОЗМОЖНА`);
       return res.status(400).json({ 
         success: false,
         error: 'Cannot cancel completed stake. Please withdraw instead.',
@@ -554,7 +554,7 @@ router.post('/cancel', async (req, res) => {
     const penalty = stakeAmount * 0.1;
     const returnAmount = stakeAmount - penalty;
     
-    console.log(`💰 РАСЧЕТ ОТМЕНЫ: вложено ${stakeAmount}, штраф ${penalty}, возврат ${returnAmount}`);
+    if (process.env.NODE_ENV === 'development') console.log(`💰 РАСЧЕТ ОТМЕНЫ: вложено ${stakeAmount}, штраф ${penalty}, возврат ${returnAmount}`);
     
     // Добавляем TON к балансу (с учетом штрафа)
     const currentTon = parseFloat(player.ton || 0);
@@ -576,7 +576,7 @@ router.post('/cancel', async (req, res) => {
       ['withdrawn', returnAmount, penalty, stakeId]
     );
     
-    console.log(`✅ СТЕЙК ${stakeId} ОТМЕНЕН С ШТРАФОМ`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ СТЕЙК ${stakeId} ОТМЕНЕН С ШТРАФОМ`);
     
     await client.query('COMMIT');
     
@@ -609,7 +609,7 @@ router.get('/stakes/history/:telegramId', async (req, res) => {
   const { telegramId } = req.params;
   
   try {
-    console.log(`📚 ПОЛУЧЕНИЕ ИСТОРИИ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📚 ПОЛУЧЕНИЕ ИСТОРИИ СТЕЙКОВ ДЛЯ ИГРОКА: ${telegramId}`);
     
     // Получаем завершенные стейки
     const result = await pool.query(
@@ -623,7 +623,7 @@ router.get('/stakes/history/:telegramId', async (req, res) => {
       [telegramId]
     );
     
-    console.log(`📚 НАЙДЕНО ЗАВЕРШЕННЫХ СТЕЙКОВ: ${result.rows.length}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📚 НАЙДЕНО ЗАВЕРШЕННЫХ СТЕЙКОВ: ${result.rows.length}`);
     
     // Добавляем тестовый режим к каждому стейку
     const stakesWithTestMode = result.rows.map(stake => ({

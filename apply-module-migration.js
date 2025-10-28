@@ -8,14 +8,14 @@ const path = require('path');
 
 async function applyMigration() {
   try {
-    console.log('📂 Reading migration file...');
+    if (process.env.NODE_ENV === 'development') console.log('📂 Reading migration file...');
     const migrationPath = path.join(__dirname, '..', 'temp', 'migrations', 'galactic-empire-module-system.sql');
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    console.log('🔧 Applying module system migration...');
+    if (process.env.NODE_ENV === 'development') console.log('🔧 Applying module system migration...');
     await pool.query(sql);
 
-    console.log('✅ Migration applied successfully!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Migration applied successfully!');
 
     // Проверяем результат
     const moduleResult = await pool.query(`
@@ -25,9 +25,9 @@ async function applyMigration() {
       LIMIT 20
     `);
 
-    console.log('\n📊 Sample modules in inventory:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📊 Sample modules in inventory:');
     moduleResult.rows.forEach(row => {
-      console.log(`  ${row.player_id}: ${row.module_type} T${row.module_tier} x${row.quantity}`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${row.player_id}: ${row.module_type} T${row.module_tier} x${row.quantity}`);
     });
 
     const totalModules = await pool.query(`
@@ -37,9 +37,9 @@ async function applyMigration() {
       ORDER BY module_type, module_tier
     `);
 
-    console.log('\n📦 Total modules by type:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📦 Total modules by type:');
     totalModules.rows.forEach(row => {
-      console.log(`  ${row.module_type} T${row.module_tier}: ${row.count} stacks`);
+      if (process.env.NODE_ENV === 'development') console.log(`  ${row.module_type} T${row.module_tier}: ${row.count} stacks`);
     });
 
     await pool.end();

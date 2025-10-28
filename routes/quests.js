@@ -35,12 +35,12 @@ router.get('/:telegramId', async (req, res) => {
     if (!player.quest_ad_last_reset) {
       // Если никогда не было сброса
       needsReset = true;
-      console.log(`🔄 Первый сброс рекламы заданий для игрока ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔄 Первый сброс рекламы заданий для игрока ${telegramId}`);
     } else {
       const lastResetDate = new Date(player.quest_ad_last_reset).toDateString();
       if (lastResetDate !== today) {
         needsReset = true;
-        console.log(`🔄 Сброс рекламы заданий для игрока ${telegramId} (${lastResetDate} → ${today})`);
+        if (process.env.NODE_ENV === 'development') console.log(`🔄 Сброс рекламы заданий для игрока ${telegramId} (${lastResetDate} → ${today})`);
       }
     }
     
@@ -53,7 +53,7 @@ router.get('/:telegramId', async (req, res) => {
         [currentTime, telegramId]
       );
       
-      console.log(`✅ Сброс рекламы заданий выполнен для игрока ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Сброс рекламы заданий выполнен для игрока ${telegramId}`);
     }
     
     // Получаем все активные задания
@@ -102,7 +102,7 @@ router.get('/:telegramId', async (req, res) => {
       completed: completedQuestIds.includes(quest.quest_id)
     }));
     
-    console.log(`🎯 Загружаем задания для игрока ${telegramId} (${quests.length} найдено, язык: ${registrationLanguage}), реклама заданий: ${questAdViews}/5`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 Загружаем задания для игрока ${telegramId} (${quests.length} найдено, язык: ${registrationLanguage}), реклама заданий: ${questAdViews}/5`);
     
     // ✅ ВАЖНО: Возвращаем актуальный quest_ad_views
     res.json({ 
@@ -132,7 +132,7 @@ router.post('/test-daily-reset', async (req, res) => {
       return res.status(403).json({ error: 'Access denied - admin only' });
     }
     
-    console.log('🧪 ТЕСТОВЫЙ сброс рекламы заданий запущен админом:', adminId);
+    if (process.env.NODE_ENV === 'development') console.log('🧪 ТЕСТОВЫЙ сброс рекламы заданий запущен админом:', adminId);
     
     if (telegramId) {
       // Сброс для конкретного игрока
@@ -324,7 +324,7 @@ router.post('/click_link', async (req, res) => {
       [JSON.stringify(questLinkStates), telegramId]
     );
 
-    console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questIdentifier} (ID: ${dbQuestId})`);
+    if (process.env.NODE_ENV === 'development') console.log(`🔗 Игрок ${telegramId} кликнул по ссылке задания ${questIdentifier} (ID: ${dbQuestId})`);
 
     res.json({
       success: true,
@@ -375,7 +375,7 @@ router.post('/watch_ad', async (req, res) => {
     let questAdViews = player.quest_ad_views || 0;
     if (lastResetDate !== today) {
       questAdViews = 0;
-      console.log(`🔄 Сброс счетчика рекламы заданий для игрока ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔄 Сброс счетчика рекламы заданий для игрока ${telegramId}`);
     }
     
     // Проверяем дневной лимит (5 раз в день)
@@ -404,7 +404,7 @@ router.post('/watch_ad', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`✅ Игрок ${telegramId} посмотрел рекламу заданий ${newQuestAdViews}/5, получил ${reward} CCC`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} посмотрел рекламу заданий ${newQuestAdViews}/5, получил ${reward} CCC`);
       
       res.json({
         success: true,
@@ -542,14 +542,14 @@ router.post('/complete', async (req, res) => {
           'UPDATE player_quests SET completed = true WHERE telegram_id = $1 AND quest_id = $2',
           [telegramId, dbQuestId]
         );
-        console.log(`✅ Обновлена запись player_quests для ${telegramId}, quest ${dbQuestId}: completed = true`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Обновлена запись player_quests для ${telegramId}, quest ${dbQuestId}: completed = true`);
       } else {
         // Создаём новую запись для обычных квестов
         await pool.query(
           'INSERT INTO player_quests (telegram_id, quest_id, completed, reward_cs) VALUES ($1, $2, true, $3)',
           [telegramId, dbQuestId, rewardCs]
         );
-        console.log(`✅ Создана новая запись player_quests для ${telegramId}, quest ${dbQuestId}`);
+        if (process.env.NODE_ENV === 'development') console.log(`✅ Создана новая запись player_quests для ${telegramId}, quest ${dbQuestId}`);
       }
 
       // Добавляем CS игроку
@@ -580,13 +580,13 @@ router.post('/complete', async (req, res) => {
             [JSON.stringify(questLinkStates), telegramId]
           );
 
-          console.log(`✅ Задание ${questIdentifier} (ID: ${dbQuestId}) помечено как завершенное`);
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Задание ${questIdentifier} (ID: ${dbQuestId}) помечено как завершенное`);
         }
       }
 
       await pool.query('COMMIT');
 
-      console.log(`✅ Игрок ${telegramId} выполнил задание ${questIdentifier} (ID: ${dbQuestId}), получил ${rewardCs} CS`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Игрок ${telegramId} выполнил задание ${questIdentifier} (ID: ${dbQuestId}), получил ${rewardCs} CS`);
       res.json({ success: true, reward_cs: rewardCs });
       
     } catch (error) {
@@ -608,18 +608,18 @@ router.get('/v2/:telegramId', async (req, res) => {
     const { telegramId } = req.params;
     const { force_language } = req.query; // для тестирования принудительный язык
     
-    console.log(`🆕 V2 API: Загрузка заданий для игрока ${telegramId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🆕 V2 API: Загрузка заданий для игрока ${telegramId}`);
     
-    // Получаем игрока с его данными
+    // Получаем игрока с его данными (+ referrals_count для автопроверки)
     const playerResult = await pool.query(
-      'SELECT registration_language, language, quest_link_states, quest_ad_views, quest_ad_last_reset FROM players WHERE telegram_id = $1',
+      'SELECT registration_language, language, quest_link_states, quest_ad_views, quest_ad_last_reset, referrals_count FROM players WHERE telegram_id = $1',
       [telegramId]
     );
-    
+
     if (playerResult.rows.length === 0) {
       return res.status(404).json({ error: 'Player not found' });
     }
-    
+
     const player = playerResult.rows[0];
 
     // Определяем ПЕРВОНАЧАЛЬНЫЙ язык игрока для фильтрации квестов (ВАЖНО!)
@@ -628,8 +628,8 @@ router.get('/v2/:telegramId', async (req, res) => {
     // Определяем язык для ПЕРЕВОДОВ (может быть переключен игроком)
     const translationLanguage = force_language || player.language || registrationLanguage;
 
-    console.log(`🌍 Язык регистрации (фильтр квестов): ${registrationLanguage}`);
-    console.log(`🌍 Язык переводов: ${translationLanguage} ${force_language ? '(принудительно)' : ''}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🌍 Язык регистрации (фильтр квестов): ${registrationLanguage}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🌍 Язык переводов: ${translationLanguage} ${force_language ? '(принудительно)' : ''}`);
 
     // Проверяем сброс рекламы (как в старом API)
     const currentTime = new Date();
@@ -652,9 +652,38 @@ router.get('/v2/:telegramId', async (req, res) => {
         'UPDATE players SET quest_ad_views = 0, quest_ad_last_reset = $1 WHERE telegram_id = $2',
         [currentTime, telegramId]
       );
-      console.log(`🔄 V2: Сброс рекламы для игрока ${telegramId}`);
+      if (process.env.NODE_ENV === 'development') console.log(`🔄 V2: Сброс рекламы для игрока ${telegramId}`);
     }
-    
+
+    // 🔥 АВТОПРОВЕРКА: Если у игрока есть рефералы, автоматически делаем квест доступным
+    if (player.referrals_count > 0) {
+      const inviteFriendQuestResult = await pool.query(
+        `SELECT id, reward_cs FROM quest_templates WHERE quest_key = 'invite_friend' AND is_active = true`
+      );
+
+      if (inviteFriendQuestResult.rows.length > 0) {
+        const inviteQuestId = inviteFriendQuestResult.rows[0].id;
+        const rewardCs = inviteFriendQuestResult.rows[0].reward_cs;
+
+        // Проверяем, есть ли уже запись о квесте
+        const existingQuestResult = await pool.query(
+          `SELECT completed FROM player_quests WHERE telegram_id = $1 AND quest_id = $2`,
+          [telegramId, inviteQuestId]
+        );
+
+        // Если записи нет и у игрока есть рефералы - создаем запись с completed=false
+        if (existingQuestResult.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO player_quests (telegram_id, quest_id, quest_key, completed, reward_cs)
+             VALUES ($1, $2, 'invite_friend', false, $3)
+             ON CONFLICT (telegram_id, quest_id) DO NOTHING`,
+            [telegramId, inviteQuestId, rewardCs]
+          );
+          if (process.env.NODE_ENV === 'development') console.log(`✅ Автоисправление: Квест "Пригласи друга" сделан доступным для ${telegramId} (${player.referrals_count} рефералов)`);
+        }
+      }
+    }
+
     // 🆕 НОВАЯ ЛОГИКА: Загружаем задания из новых таблиц
     const questsResult = await pool.query(`
       SELECT
@@ -803,8 +832,8 @@ router.get('/v2/:telegramId', async (req, res) => {
       }, {})
     };
     
-    console.log(`🎯 V2: Загружено ${quests.length} заданий для игрока ${telegramId} (язык: ${translationLanguage})`);
-    console.log(`📊 V2: Статистика:`, stats);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 V2: Загружено ${quests.length} заданий для игрока ${telegramId} (язык: ${translationLanguage})`);
+    if (process.env.NODE_ENV === 'development') console.log(`📊 V2: Статистика:`, stats);
 
     res.json({
       success: true,
@@ -1018,7 +1047,7 @@ router.post('/submit_manual_check', async (req, res) => {
         text: adminMessage,
         parse_mode: 'Markdown'
       });
-      console.log('✅ Уведомление отправлено админу');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Уведомление отправлено админу');
     } catch (telegramError) {
       console.error('❌ Ошибка отправки в Telegram:', telegramError);
     }

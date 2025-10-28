@@ -62,7 +62,7 @@ router.get('/reward', async (req, res) => {
   try {
     const { userid } = req.query;
     
-    console.log('🎯 Adsgram reward received for user:', userid);
+    if (process.env.NODE_ENV === 'development') console.log('🎯 Adsgram reward received for user:', userid);
 
     if (!userid) {
       console.error('🎯❌ No userid provided');
@@ -74,10 +74,10 @@ router.get('/reward', async (req, res) => {
 
     // 👑 ПРОВЕРЯЕМ ПРЕМИУМ СТАТУС ПЕРЕД ОБРАБОТКОЙ РЕКЛАМЫ
     const premiumStatus = await checkPremiumStatus(userid);
-    console.log(`👑 Premium status for ${userid}:`, premiumStatus);
+    if (process.env.NODE_ENV === 'development') console.log(`👑 Premium status for ${userid}:`, premiumStatus);
 
     if (premiumStatus.hasPremium) {
-      console.log(`👑 User ${userid} has premium - skipping ad reward processing`);
+      if (process.env.NODE_ENV === 'development') console.log(`👑 User ${userid} has premium - skipping ad reward processing`);
       return res.json({
         success: true,
         message: 'Premium user - ad skipped',
@@ -101,7 +101,7 @@ router.get('/reward', async (req, res) => {
       });
     }
 
-    console.log('🎯 User found, processing ad reward (non-premium user)...');
+    if (process.env.NODE_ENV === 'development') console.log('🎯 User found, processing ad reward (non-premium user)...');
 
     // Увеличиваем счетчик рекламы в лимитах
     await pool.query(`
@@ -128,7 +128,7 @@ router.get('/reward', async (req, res) => {
       WHERE telegram_id = $1
     `, [userid]);
 
-    console.log('🎯✅ Adsgram reward processed successfully for non-premium user:', userid);
+    if (process.env.NODE_ENV === 'development') console.log('🎯✅ Adsgram reward processed successfully for non-premium user:', userid);
 
     // Успешный ответ для Adsgram
     res.json({
@@ -155,7 +155,7 @@ router.get('/check-ad-block/:telegramId', async (req, res) => {
     
     const premiumStatus = await checkPremiumStatus(telegramId);
     
-    console.log(`🎯 Ad block check for ${telegramId}:`, premiumStatus);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 Ad block check for ${telegramId}:`, premiumStatus);
     
     res.json({
       success: true,

@@ -5,13 +5,13 @@ const path = require('path');
 async function applyMigration() {
   const client = await pool.connect();
   try {
-    console.log('Applying migration: 010_manual_quest_submissions.sql');
+    if (process.env.NODE_ENV === 'development') console.log('Applying migration: 010_manual_quest_submissions.sql');
 
     const migrationPath = path.join(__dirname, 'migrations', '010_manual_quest_submissions.sql');
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
     await client.query(migrationSQL);
-    console.log('✅ Migration applied successfully!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Migration applied successfully!');
 
     // Проверяем, что таблица создана
     const result = await client.query(`
@@ -22,12 +22,12 @@ async function applyMigration() {
     `);
 
     if (result.rows.length > 0) {
-      console.log('✅ Table manual_quest_submissions created with columns:');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Table manual_quest_submissions created with columns:');
       result.rows.forEach(row => {
-        console.log(`  - ${row.column_name}: ${row.data_type}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  - ${row.column_name}: ${row.data_type}`);
       });
     } else {
-      console.log('❌ Table manual_quest_submissions not found');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Table manual_quest_submissions not found');
     }
 
   } catch (err) {

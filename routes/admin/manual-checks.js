@@ -18,7 +18,7 @@ router.get('/list/:telegramId', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    console.log(`📋 Админ ${telegramId} запросил список заявок`);
+    if (process.env.NODE_ENV === 'development') console.log(`📋 Админ ${telegramId} запросил список заявок`);
 
     let whereClause = '1=1';
     const params = [];
@@ -104,7 +104,7 @@ router.post('/review/:telegramId', async (req, res) => {
       return res.status(400).json({ error: 'Missing submission_id or action' });
     }
 
-    console.log(`✅ Админ ${telegramId} ${action === 'approve' ? 'одобряет' : 'отклоняет'} заявку ${submission_id}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Админ ${telegramId} ${action === 'approve' ? 'одобряет' : 'отклоняет'} заявку ${submission_id}`);
 
     await pool.query('BEGIN');
 
@@ -165,12 +165,12 @@ router.post('/review/:telegramId', async (req, res) => {
               SET completed = false, quest_key = $3, reward_cs = $4
             `, [submission.telegram_id, questTemplateId, submission.quest_key, rewardCs]);
 
-            console.log(`✅ Задание ${submission.quest_key} (Template ID: ${questTemplateId}) готово к сбору для игрока ${submission.telegram_id}`);
+            if (process.env.NODE_ENV === 'development') console.log(`✅ Задание ${submission.quest_key} (Template ID: ${questTemplateId}) готово к сбору для игрока ${submission.telegram_id}`);
           } else {
             console.error(`❌ Квест "${submission.quest_key}" не найден в quest_templates!`);
           }
         } else {
-          console.log(`⚠️ Игрок ${submission.telegram_id} уже выполнил задание ${submission.quest_key}`);
+          if (process.env.NODE_ENV === 'development') console.log(`⚠️ Игрок ${submission.telegram_id} уже выполнил задание ${submission.quest_key}`);
         }
       }
 

@@ -14,7 +14,7 @@ router.post('/run-battle-v2-migration/:telegramId?', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Доступ запрещён' });
     }
 
-    console.log('🚀 Запуск миграции Battle System V2...');
+    if (process.env.NODE_ENV === 'development') console.log('🚀 Запуск миграции Battle System V2...');
 
     const client = await pool.connect();
 
@@ -71,7 +71,7 @@ router.post('/run-battle-v2-migration/:telegramId?', async (req, res) => {
 
       await client.query('COMMIT');
 
-      console.log('✅ Миграция Battle System V2 успешно применена!');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Миграция Battle System V2 успешно применена!');
 
       res.json({
         success: true,

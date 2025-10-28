@@ -6,15 +6,15 @@
 const pool = require('./db');
 
 async function addDatabaseConstraints() {
-  console.log('🔧 === ADDING DATABASE CONSTRAINTS ===');
-  console.log('⏰ Time:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🔧 === ADDING DATABASE CONSTRAINTS ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Time:', new Date().toISOString());
 
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    console.log('📝 Adding constraints to players table...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Adding constraints to players table...');
 
     // Add CHECK constraints for balance columns
     const constraints = [
@@ -64,15 +64,15 @@ async function addDatabaseConstraints() {
         const exists = await client.query(existsQuery, [constraint.table, constraint.constraint]);
 
         if (exists.rows.length === 0) {
-          console.log(`  Adding constraint: ${constraint.constraint}`);
+          if (process.env.NODE_ENV === 'development') console.log(`  Adding constraint: ${constraint.constraint}`);
           await client.query(`
             ALTER TABLE ${constraint.table}
             ADD CONSTRAINT ${constraint.constraint}
             CHECK (${constraint.check})
           `);
-          console.log(`  ✅ ${constraint.description}`);
+          if (process.env.NODE_ENV === 'development') console.log(`  ✅ ${constraint.description}`);
         } else {
-          console.log(`  ℹ️  Constraint ${constraint.constraint} already exists`);
+          if (process.env.NODE_ENV === 'development') console.log(`  ℹ️  Constraint ${constraint.constraint} already exists`);
         }
       } catch (error) {
         console.error(`  ⚠️  Error adding constraint ${constraint.constraint}:`, error.message);
@@ -81,7 +81,7 @@ async function addDatabaseConstraints() {
     }
 
     // Add UNIQUE constraint for telegram_id if not exists
-    console.log('\n📝 Checking UNIQUE constraint on telegram_id...');
+    if (process.env.NODE_ENV === 'development') console.log('\n📝 Checking UNIQUE constraint on telegram_id...');
     try {
       const uniqueExists = await client.query(`
         SELECT constraint_name
@@ -92,22 +92,22 @@ async function addDatabaseConstraints() {
       `);
 
       if (uniqueExists.rows.length === 0) {
-        console.log('  Adding UNIQUE constraint on telegram_id...');
+        if (process.env.NODE_ENV === 'development') console.log('  Adding UNIQUE constraint on telegram_id...');
         await client.query(`
           ALTER TABLE players
           ADD CONSTRAINT players_telegram_id_unique
           UNIQUE (telegram_id)
         `);
-        console.log('  ✅ telegram_id is now UNIQUE');
+        if (process.env.NODE_ENV === 'development') console.log('  ✅ telegram_id is now UNIQUE');
       } else {
-        console.log('  ℹ️  UNIQUE constraint on telegram_id already exists');
+        if (process.env.NODE_ENV === 'development') console.log('  ℹ️  UNIQUE constraint on telegram_id already exists');
       }
     } catch (error) {
       console.error('  ⚠️  Error adding UNIQUE constraint:', error.message);
     }
 
     // Add constraints to withdrawals table
-    console.log('\n📝 Adding constraints to withdrawals table...');
+    if (process.env.NODE_ENV === 'development') console.log('\n📝 Adding constraints to withdrawals table...');
 
     const withdrawalConstraints = [
       {
@@ -137,15 +137,15 @@ async function addDatabaseConstraints() {
         const exists = await client.query(existsQuery, [constraint.table, constraint.constraint]);
 
         if (exists.rows.length === 0) {
-          console.log(`  Adding constraint: ${constraint.constraint}`);
+          if (process.env.NODE_ENV === 'development') console.log(`  Adding constraint: ${constraint.constraint}`);
           await client.query(`
             ALTER TABLE ${constraint.table}
             ADD CONSTRAINT ${constraint.constraint}
             CHECK (${constraint.check})
           `);
-          console.log(`  ✅ ${constraint.description}`);
+          if (process.env.NODE_ENV === 'development') console.log(`  ✅ ${constraint.description}`);
         } else {
-          console.log(`  ℹ️  Constraint ${constraint.constraint} already exists`);
+          if (process.env.NODE_ENV === 'development') console.log(`  ℹ️  Constraint ${constraint.constraint} already exists`);
         }
       } catch (error) {
         console.error(`  ⚠️  Error adding constraint ${constraint.constraint}:`, error.message);
@@ -154,7 +154,7 @@ async function addDatabaseConstraints() {
 
     await client.query('COMMIT');
 
-    console.log('\n🏁 Database constraints migration completed successfully');
+    if (process.env.NODE_ENV === 'development') console.log('\n🏁 Database constraints migration completed successfully');
 
     // Show current constraints
     const allConstraints = await client.query(`
@@ -171,7 +171,7 @@ async function addDatabaseConstraints() {
       ORDER BY tc.table_name, tc.constraint_type, tc.constraint_name
     `);
 
-    console.log('\n📊 Current constraints:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📊 Current constraints:');
     console.table(allConstraints.rows);
 
     return { success: true };
@@ -189,7 +189,7 @@ async function addDatabaseConstraints() {
 // Run migration
 addDatabaseConstraints()
   .then(() => {
-    console.log('\n✅ Migration script completed');
+    if (process.env.NODE_ENV === 'development') console.log('\n✅ Migration script completed');
     process.exit(0);
   })
   .catch((error) => {

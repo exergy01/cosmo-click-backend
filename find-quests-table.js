@@ -8,7 +8,7 @@ const pool = new Pool({
 
 async function findQuestsTable() {
   try {
-    console.log('🔍 Ищем таблицы связанные с квестами...\n');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Ищем таблицы связанные с квестами...\n');
 
     // Все таблицы со словом quest
     const tables = await pool.query(`
@@ -18,13 +18,13 @@ async function findQuestsTable() {
       ORDER BY table_name
     `);
 
-    console.log('📋 Таблицы с "quest":');
-    tables.rows.forEach(t => console.log(`  - ${t.table_name}`));
+    if (process.env.NODE_ENV === 'development') console.log('📋 Таблицы с "quest":');
+    if (process.env.NODE_ENV === 'development') tables.rows.forEach(t => console.log(`  - ${t.table_name}`));
 
-    console.log('\n🔍 Проверяем структуру каждой таблицы:\n');
+    if (process.env.NODE_ENV === 'development') console.log('\n🔍 Проверяем структуру каждой таблицы:\n');
 
     for (const table of tables.rows) {
-      console.log(`\n📊 Таблица: ${table.table_name}`);
+      if (process.env.NODE_ENV === 'development') console.log(`\n📊 Таблица: ${table.table_name}`);
 
       const columns = await pool.query(`
         SELECT column_name, data_type
@@ -35,13 +35,13 @@ async function findQuestsTable() {
       `, [table.table_name]);
 
       columns.rows.forEach(c => {
-        console.log(`    ${c.column_name}: ${c.data_type}`);
+        if (process.env.NODE_ENV === 'development') console.log(`    ${c.column_name}: ${c.data_type}`);
       });
 
       // Показываем пример данных
       const sample = await pool.query(`SELECT * FROM ${table.table_name} LIMIT 2`);
       if (sample.rows.length > 0) {
-        console.log(`  Записей: ${sample.rowCount}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Записей: ${sample.rowCount}`);
       }
     }
 

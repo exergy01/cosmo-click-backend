@@ -9,7 +9,7 @@ const router = express.Router();
 router.post('/transaction', async (req, res) => {
   const { hash, account, amount, lt, utime, source } = req.body;
   
-  console.log('WEBHOOK: Получена транзакция', {
+  if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Получена транзакция', {
     hash: hash?.substring(0, 16) + '...',
     account,
     amount,
@@ -24,7 +24,7 @@ router.post('/transaction', async (req, res) => {
   
   // Проверяем, что это транзакция на игровой кошелек
   if (account !== gameWalletAddress) {
-    console.log('WEBHOOK: Транзакция не для игрового кошелька');
+    if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Транзакция не для игрового кошелька');
     return res.json({ success: true, message: 'Not game wallet' });
   }
 
@@ -32,7 +32,7 @@ router.post('/transaction', async (req, res) => {
   
   // Пропускаем слишком маленькие транзакции
   if (tonAmount < 0.01) {
-    console.log('WEBHOOK: Транзакция слишком маленькая');
+    if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Транзакция слишком маленькая');
     return res.json({ success: true, message: 'Amount too small' });
   }
 
@@ -48,7 +48,7 @@ router.post('/transaction', async (req, res) => {
 
     if (existingTx.rows.length > 0) {
       await client.query('ROLLBACK');
-      console.log('WEBHOOK: Транзакция уже обработана');
+      if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Транзакция уже обработана');
       return res.json({ success: true, message: 'Already processed' });
     }
 
@@ -85,7 +85,7 @@ router.post('/transaction', async (req, res) => {
       );
       
       await client.query('COMMIT');
-      console.log('WEBHOOK: Неопознанный депозит сохранен');
+      if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Неопознанный депозит сохранен');
       
       // Отправляем уведомление админу
       // TODO: Добавить уведомление админу о неопознанном депозите
@@ -105,7 +105,7 @@ router.post('/transaction', async (req, res) => {
 
     if (playerResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      console.log('WEBHOOK: Игрок не найден в базе');
+      if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Игрок не найден в базе');
       return res.status(404).json({ error: 'Player not found' });
     }
 
@@ -151,7 +151,7 @@ router.post('/transaction', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log('WEBHOOK: Депозит успешно обработан', {
+    if (process.env.NODE_ENV === 'development') console.log('WEBHOOK: Депозит успешно обработан', {
       player: playerId,
       amount: tonAmount,
       new_balance: newBalance

@@ -8,7 +8,7 @@ const pool = new Pool({
 
 async function checkStructure() {
   try {
-    console.log('📊 Проверка структуры таблицы player_quests...\n');
+    if (process.env.NODE_ENV === 'development') console.log('📊 Проверка структуры таблицы player_quests...\n');
 
     const result = await pool.query(`
       SELECT column_name, data_type
@@ -17,9 +17,9 @@ async function checkStructure() {
       ORDER BY ordinal_position
     `);
 
-    console.log('Колонки таблицы player_quests:');
+    if (process.env.NODE_ENV === 'development') console.log('Колонки таблицы player_quests:');
     result.rows.forEach(row => {
-      console.log(`  - ${row.column_name}: ${row.data_type}`);
+      if (process.env.NODE_ENV === 'development') console.log(`  - ${row.column_name}: ${row.data_type}`);
     });
 
   } catch (err) {

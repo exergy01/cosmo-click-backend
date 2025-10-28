@@ -3,7 +3,7 @@ const pool = require('./db');
 
 async function grantVIP() {
   try {
-    console.log('🎯 Активируем VIP для аккаунта 123456789...');
+    if (process.env.NODE_ENV === 'development') console.log('🎯 Активируем VIP для аккаунта 123456789...');
 
     const result = await pool.query(`
       UPDATE players
@@ -15,14 +15,14 @@ async function grantVIP() {
 
     if (result.rows.length > 0) {
       const player = result.rows[0];
-      console.log('✅ VIP УСПЕШНО АКТИВИРОВАН!');
-      console.log('📋 Детали:');
-      console.log(`   Имя: ${player.first_name}`);
-      console.log(`   Telegram ID: ${player.telegram_id}`);
-      console.log(`   VIP до: ${player.premium_no_ads_until}`);
-      console.log(`   VIP навсегда: ${player.premium_no_ads_forever}`);
+      if (process.env.NODE_ENV === 'development') console.log('✅ VIP УСПЕШНО АКТИВИРОВАН!');
+      if (process.env.NODE_ENV === 'development') console.log('📋 Детали:');
+      if (process.env.NODE_ENV === 'development') console.log(`   Имя: ${player.first_name}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   Telegram ID: ${player.telegram_id}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   VIP до: ${player.premium_no_ads_until}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   VIP навсегда: ${player.premium_no_ads_forever}`);
     } else {
-      console.log('❌ Игрок с ID 123456789 не найден в БД');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Игрок с ID 123456789 не найден в БД');
     }
 
     await pool.end();

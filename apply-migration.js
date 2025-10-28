@@ -5,13 +5,13 @@ const path = require('path');
 async function applyMigration() {
   const client = await pool.connect();
   try {
-    console.log('Applying migration: add_ton_reserved_field.sql');
+    if (process.env.NODE_ENV === 'development') console.log('Applying migration: add_ton_reserved_field.sql');
 
     const migrationPath = path.join(__dirname, 'migrations', 'add_ton_reserved_field.sql');
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
     await client.query(migrationSQL);
-    console.log('Migration applied successfully!');
+    if (process.env.NODE_ENV === 'development') console.log('Migration applied successfully!');
 
     // Проверяем, что поле добавлено
     const result = await client.query(`
@@ -21,9 +21,9 @@ async function applyMigration() {
     `);
 
     if (result.rows.length > 0) {
-      console.log('✅ Field ton_reserved added:', result.rows[0]);
+      if (process.env.NODE_ENV === 'development') console.log('✅ Field ton_reserved added:', result.rows[0]);
     } else {
-      console.log('❌ Field ton_reserved not found');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Field ton_reserved not found');
     }
 
   } catch (err) {

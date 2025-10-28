@@ -70,7 +70,7 @@ router.get('/overview/:telegramId', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    console.log('📅 Админ запросил обзор планировщика заданий');
+    if (process.env.NODE_ENV === 'development') console.log('📅 Админ запросил обзор планировщика заданий');
     
     // Получаем статистику запланированных заданий
     const scheduledQuests = await pool.query(`
@@ -167,7 +167,7 @@ router.post('/create-schedule/:telegramId', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: quest_key, schedule_type, schedule_pattern' });
     }
     
-    console.log(`📅 Создание расписания для задания: ${quest_key}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📅 Создание расписания для задания: ${quest_key}`);
     
     await pool.query('BEGIN');
     
@@ -240,7 +240,7 @@ router.post('/create-schedule/:telegramId', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`✅ Расписание создано для ${quest_key}, следующая активация: ${nextActivation}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Расписание создано для ${quest_key}, следующая активация: ${nextActivation}`);
       
       res.json({
         success: true,
@@ -275,7 +275,7 @@ router.post('/toggle-schedule/:telegramId', async (req, res) => {
       return res.status(400).json({ error: 'Missing quest_key or action' });
     }
     
-    console.log(`📅 ${action.toUpperCase()} расписания для ${quest_key}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📅 ${action.toUpperCase()} расписания для ${quest_key}`);
     
     let newStatus;
     let nextActivation = null;
@@ -346,7 +346,7 @@ router.get('/list/:telegramId', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    console.log('📅 Запрос списка всех расписаний');
+    if (process.env.NODE_ENV === 'development') console.log('📅 Запрос списка всех расписаний');
     
     const schedules = await pool.query(`
       SELECT 
@@ -413,7 +413,7 @@ router.post('/test-activation/:telegramId', async (req, res) => {
       return res.status(400).json({ error: 'Missing quest_key' });
     }
     
-    console.log(`🧪 Тестовая активация задания: ${quest_key}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🧪 Тестовая активация задания: ${quest_key}`);
     
     await pool.query('BEGIN');
     
@@ -460,7 +460,7 @@ router.post('/test-activation/:telegramId', async (req, res) => {
       
       await pool.query('COMMIT');
       
-      console.log(`✅ Тестовая активация выполнена для ${quest_key}`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Тестовая активация выполнена для ${quest_key}`);
       
       res.json({
         success: true,
@@ -492,7 +492,7 @@ router.get('/history/:telegramId', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    console.log('📅 Запрос истории планировщика');
+    if (process.env.NODE_ENV === 'development') console.log('📅 Запрос истории планировщика');
     
     let whereConditions = ['qsh.actual_time > NOW() - INTERVAL $1 days'];
     let queryParams = [days];

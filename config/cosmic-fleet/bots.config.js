@@ -152,12 +152,12 @@ module.exports = {
 
     // Рассчитать силу флота игрока
     const playerPower = this.calculateFleetPower(playerFleet);
-    console.log(`⚖️ Сила флота игрока: ${playerPower}`);
+    if (process.env.NODE_ENV === 'development') console.log(`⚖️ Сила флота игрока: ${playerPower}`);
 
     // Целевая сила бота: ±variance от силы игрока
     const randomMod = 1 + (Math.random() * variance * 2 - variance);
     const targetPower = playerPower * randomMod;
-    console.log(`🎯 Целевая сила бота: ${Math.floor(targetPower)} (${(randomMod * 100 - 100).toFixed(1)}%)`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎯 Целевая сила бота: ${Math.floor(targetPower)} (${(randomMod * 100 - 100).toFixed(1)}%)`);
 
     // Генерируем флот бота
     const botFleet = [];
@@ -191,7 +191,7 @@ module.exports = {
       currentPower = this.calculateFleetPower(botFleet);
     }
 
-    console.log(`🤖 Сгенерирован флот бота: ${botFleet.length} кораблей, сила ${currentPower}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🤖 Сгенерирован флот бота: ${botFleet.length} кораблей, сила ${currentPower}`);
 
     return {
       fleet: botFleet,

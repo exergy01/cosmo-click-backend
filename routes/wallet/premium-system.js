@@ -68,7 +68,7 @@ router.get('/status/:telegramId', async (req, res) => {
 router.post('/purchase', async (req, res) => {
   const { telegram_id, package_type, payment_method, payment_amount } = req.body;
   
-  console.log('Premium purchase request:', { telegram_id, package_type, payment_method, payment_amount });
+  if (process.env.NODE_ENV === 'development') console.log('Premium purchase request:', { telegram_id, package_type, payment_method, payment_amount });
   
   if (!telegram_id || !package_type || !payment_method || !payment_amount) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -188,7 +188,7 @@ router.post('/purchase', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log('Premium purchased successfully:', { telegram_id, package_type, payment_method });
+    if (process.env.NODE_ENV === 'development') console.log('Premium purchased successfully:', { telegram_id, package_type, payment_method });
 
     const successMessage = package_type === 'no_ads_forever' 
       ? 'Congratulations! Ads disabled FOREVER!' 

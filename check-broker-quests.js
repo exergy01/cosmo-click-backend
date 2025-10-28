@@ -8,7 +8,7 @@ const pool = new Pool({
 
 async function checkQuests() {
   try {
-    console.log('📋 Проверка квестов брокеров в таблице quests...\n');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Проверка квестов брокеров в таблице quests...\n');
 
     const result = await pool.query(`
       SELECT quest_id, quest_name, quest_type, reward_cs, is_active
@@ -18,16 +18,16 @@ async function checkQuests() {
     `);
 
     if (result.rows.length === 0) {
-      console.log('❌ Квесты брокеров НЕ НАЙДЕНЫ в таблице quests!');
-      console.log('\n📝 Это означает что квесты нужно создать.');
+      if (process.env.NODE_ENV === 'development') console.log('❌ Квесты брокеров НЕ НАЙДЕНЫ в таблице quests!');
+      if (process.env.NODE_ENV === 'development') console.log('\n📝 Это означает что квесты нужно создать.');
     } else {
-      console.log(`✅ Найдено ${result.rows.length} квестов:`);
+      if (process.env.NODE_ENV === 'development') console.log(`✅ Найдено ${result.rows.length} квестов:`);
       result.rows.forEach(q => {
-        console.log(`\n  ID: ${q.quest_id}`);
-        console.log(`  Name: ${q.quest_name}`);
-        console.log(`  Type: ${q.quest_type}`);
-        console.log(`  Reward: ${q.reward_cs} CS`);
-        console.log(`  Active: ${q.is_active}`);
+        if (process.env.NODE_ENV === 'development') console.log(`\n  ID: ${q.quest_id}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Name: ${q.quest_name}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Type: ${q.quest_type}`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Reward: ${q.reward_cs} CS`);
+        if (process.env.NODE_ENV === 'development') console.log(`  Active: ${q.is_active}`);
       });
     }
 

@@ -13,7 +13,7 @@ router.post('/run', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Доступ запрещён' });
     }
 
-    console.log('🚀 Запуск миграции Battle System V2...');
+    if (process.env.NODE_ENV === 'development') console.log('🚀 Запуск миграции Battle System V2...');
 
     const client = await pool.connect();
 
@@ -21,7 +21,7 @@ router.post('/run', async (req, res) => {
       await client.query('BEGIN');
 
       // 1. Добавляем поля к таблице кораблей
-      console.log('1️⃣ Добавляем поля к galactic_empire_ships...');
+      if (process.env.NODE_ENV === 'development') console.log('1️⃣ Добавляем поля к galactic_empire_ships...');
       await client.query(`
         ALTER TABLE galactic_empire_ships
         ADD COLUMN IF NOT EXISTS weapon_type VARCHAR(50) DEFAULT 'laser',
@@ -31,7 +31,7 @@ router.post('/run', async (req, res) => {
       `);
 
       // 2. Добавляем поля к таблице игроков
-      console.log('2️⃣ Добавляем поля к galactic_empire_players...');
+      if (process.env.NODE_ENV === 'development') console.log('2️⃣ Добавляем поля к galactic_empire_players...');
       await client.query(`
         ALTER TABLE galactic_empire_players
         ADD COLUMN IF NOT EXISTS ai_purchased BOOLEAN DEFAULT FALSE,
@@ -39,14 +39,14 @@ router.post('/run', async (req, res) => {
       `);
 
       // 3. Добавляем поля к таблице боёв
-      console.log('3️⃣ Добавляем поля к galactic_empire_battles...');
+      if (process.env.NODE_ENV === 'development') console.log('3️⃣ Добавляем поля к galactic_empire_battles...');
       await client.query(`
         ALTER TABLE galactic_empire_battles
         ADD COLUMN IF NOT EXISTS battle_mode VARCHAR(20) DEFAULT 'auto'
       `);
 
       // 4. Создаём индексы
-      console.log('4️⃣ Создаём индексы...');
+      if (process.env.NODE_ENV === 'development') console.log('4️⃣ Создаём индексы...');
       await client.query(`
         CREATE INDEX IF NOT EXISTS idx_ships_weapon_type ON galactic_empire_ships(weapon_type)
       `);
@@ -60,7 +60,7 @@ router.post('/run', async (req, res) => {
       `);
 
       // 5. Устанавливаем тип оружия для существующих кораблей
-      console.log('5️⃣ Устанавливаем типы оружия по расам...');
+      if (process.env.NODE_ENV === 'development') console.log('5️⃣ Устанавливаем типы оружия по расам...');
       const updateResult = await client.query(`
         UPDATE galactic_empire_ships
         SET weapon_type = CASE
@@ -74,11 +74,11 @@ router.post('/run', async (req, res) => {
         RETURNING id, race, weapon_type
       `);
 
-      console.log(`   Обновлено кораблей: ${updateResult.rowCount}`);
+      if (process.env.NODE_ENV === 'development') console.log(`   Обновлено кораблей: ${updateResult.rowCount}`);
 
       await client.query('COMMIT');
 
-      console.log('✅ Миграция Battle System V2 успешно применена!');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Миграция Battle System V2 успешно применена!');
 
       res.json({
         success: true,

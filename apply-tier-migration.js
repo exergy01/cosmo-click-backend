@@ -8,14 +8,14 @@ const path = require('path');
 
 async function applyMigration() {
   try {
-    console.log('📂 Reading migration file...');
+    if (process.env.NODE_ENV === 'development') console.log('📂 Reading migration file...');
     const migrationPath = path.join(__dirname, '..', 'temp', 'migrations', 'galactic-empire-tier-system.sql');
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    console.log('🚀 Applying migration...');
+    if (process.env.NODE_ENV === 'development') console.log('🚀 Applying migration...');
     await pool.query(sql);
 
-    console.log('✅ Migration applied successfully!');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Migration applied successfully!');
 
     // Проверяем результат
     const result = await pool.query(`
@@ -25,9 +25,9 @@ async function applyMigration() {
       ORDER BY tier
     `);
 
-    console.log('\n📊 Ships by tier:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📊 Ships by tier:');
     result.rows.forEach(row => {
-      console.log(`  Tier ${row.tier}: ${row.count} ships`);
+      if (process.env.NODE_ENV === 'development') console.log(`  Tier ${row.tier}: ${row.count} ships`);
     });
 
     await pool.end();

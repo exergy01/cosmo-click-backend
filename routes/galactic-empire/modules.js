@@ -207,7 +207,7 @@ router.post('/install', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log(`✅ Module ${moduleId} (${tier}) installed on ship ${shipId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Module ${moduleId} (${tier}) installed on ship ${shipId}`);
 
     res.json({
       success: true,
@@ -288,7 +288,7 @@ router.post('/uninstall', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log(`✅ Module ${module.module_id} uninstalled from ship ${shipId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Module ${module.module_id} uninstalled from ship ${shipId}`);
 
     res.json({
       success: true,
@@ -422,7 +422,7 @@ router.post('/upgrade', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log(`✅ Module ${moduleId} upgraded: ${fromTier} → ${toTier}`);
+    if (process.env.NODE_ENV === 'development') console.log(`✅ Module ${moduleId} upgraded: ${fromTier} → ${toTier}`);
 
     res.json({
       success: true,
@@ -495,7 +495,7 @@ router.post('/reward-drop', async (req, res) => {
       [playerId, droppedModule.id, tier]
     );
 
-    console.log(`🎁 Module dropped: ${droppedModule.name} (${tier}) for player ${playerId}`);
+    if (process.env.NODE_ENV === 'development') console.log(`🎁 Module dropped: ${droppedModule.name} (${tier}) for player ${playerId}`);
 
     res.json({
       success: true,

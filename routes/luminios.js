@@ -55,14 +55,14 @@ router.post('/exchange', checkLuminiosAccess, async (req, res) => {
   try {
     const { telegramId, csAmount } = req.body;
 
-    console.log('💱 Exchange request:', { telegramId, csAmount, type: typeof telegramId });
+    if (process.env.NODE_ENV === 'development') console.log('💱 Exchange request:', { telegramId, csAmount, type: typeof telegramId });
 
     // Преобразуем telegramId в число если нужно
     const telegramIdNum = parseInt(telegramId);
     const csAmountNum = parseFloat(csAmount);
 
     if (!telegramIdNum || isNaN(telegramIdNum) || !csAmountNum || isNaN(csAmountNum) || csAmountNum <= 0) {
-      console.log('❌ Invalid data:', { telegramIdNum, csAmountNum });
+      if (process.env.NODE_ENV === 'development') console.log('❌ Invalid data:', { telegramIdNum, csAmountNum });
       return res.status(400).json({
         success: false,
         error: 'Invalid request data'

@@ -10,18 +10,18 @@ router.get('/stats/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
     
-    console.log('📊 Запрос общей статистики системы от ID:', telegramId);
+    if (process.env.NODE_ENV === 'development') console.log('📊 Запрос общей статистики системы от ID:', telegramId);
     
     // ПРОВЕРЯЕМ АДМИНА
     if (!isAdmin(telegramId)) {
-      console.log('🚫 Статистика: доступ запрещен - не админ');
+      if (process.env.NODE_ENV === 'development') console.log('🚫 Статистика: доступ запрещен - не админ');
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    console.log('✅ Статистика: админ права подтверждены, загружаем данные...');
+    if (process.env.NODE_ENV === 'development') console.log('✅ Статистика: админ права подтверждены, загружаем данные...');
     
     // 1. Статистика игроков
-    console.log('🔍 Загружаем статистику игроков...');
+    if (process.env.NODE_ENV === 'development') console.log('🔍 Загружаем статистику игроков...');
     const playersStats = await pool.query(`
       SELECT 
         COUNT(*) as total_players,
@@ -34,7 +34,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     `);
         
     // 2. Статистика валют
-    console.log('💰 Загружаем статистику валют...');
+    if (process.env.NODE_ENV === 'development') console.log('💰 Загружаем статистику валют...');
     const currencyStats = await pool.query(`
       SELECT 
         COALESCE(SUM(ccc), 0) as total_ccc,
@@ -48,7 +48,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     `);
     
     // 3. Статистика Stars обменов
-    console.log('⭐ Загружаем статистику Stars обменов...');
+    if (process.env.NODE_ENV === 'development') console.log('⭐ Загружаем статистику Stars обменов...');
     const starsExchangeStats = await pool.query(`
       SELECT 
         COUNT(*) as total_exchanges,
@@ -60,7 +60,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     `);
 
     // 4. Статистика CCC ↔ CS обменов
-    console.log('💱 Загружаем статистику CCC/CS обменов...');
+    if (process.env.NODE_ENV === 'development') console.log('💱 Загружаем статистику CCC/CS обменов...');
     let cccCsExchangeStats = { rows: [{ 
       ccc_to_cs_exchanges: 0, 
       cs_to_ccc_exchanges: 0, 
@@ -84,11 +84,11 @@ router.get('/stats/:telegramId', async (req, res) => {
         WHERE created_at IS NOT NULL
       `);
     } catch (balanceHistoryError) {
-      console.log('⚠️ Таблица balance_history недоступна:', balanceHistoryError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица balance_history недоступна:', balanceHistoryError.message);
     }
 
     // 5. Статистика CS ↔ TON обменов
-    console.log('💎 Загружаем статистику CS/TON обменов...');
+    if (process.env.NODE_ENV === 'development') console.log('💎 Загружаем статистику CS/TON обменов...');
     let csTonExchangeStats = { rows: [{ 
       cs_to_ton_exchanges: 0, 
       ton_to_cs_exchanges: 0, 
@@ -112,11 +112,11 @@ router.get('/stats/:telegramId', async (req, res) => {
         WHERE created_at IS NOT NULL
       `);
     } catch (balanceHistoryError) {
-      console.log('⚠️ Таблица balance_history недоступна для TON обменов');
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица balance_history недоступна для TON обменов');
     }
 
     // 6. Статистика мини-игр
-    console.log('🎮 Загружаем статистику мини-игр...');
+    if (process.env.NODE_ENV === 'development') console.log('🎮 Загружаем статистику мини-игр...');
     let minigamesStats = { rows: [{ 
       total_games: 0, 
       active_players: 0, 
@@ -138,11 +138,11 @@ router.get('/stats/:telegramId', async (req, res) => {
         FROM minigames_history
       `);
     } catch (minigamesError) {
-      console.log('⚠️ Таблица minigames_history не существует:', minigamesError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица minigames_history не существует:', minigamesError.message);
     }
 
     // 7. ТОП 10 игроков по CS
-    console.log('🏆 Загружаем топ игроков...');
+    if (process.env.NODE_ENV === 'development') console.log('🏆 Загружаем топ игроков...');
     const topPlayers = await pool.query(`
       SELECT 
         telegram_id, 
@@ -159,7 +159,7 @@ router.get('/stats/:telegramId', async (req, res) => {
     `);
     
     // 8. Статистика курсов
-    console.log('📈 Загружаем курсы валют...');
+    if (process.env.NODE_ENV === 'development') console.log('📈 Загружаем курсы валют...');
     let currentRates = {};
     
     try {
@@ -176,7 +176,7 @@ router.get('/stats/:telegramId', async (req, res) => {
         }
       }
     } catch (ratesError) {
-      console.log('⚠️ Таблица exchange_rates недоступна:', ratesError.message);
+      if (process.env.NODE_ENV === 'development') console.log('⚠️ Таблица exchange_rates недоступна:', ratesError.message);
       currentRates = {
         'TON_USD': { currency_pair: 'TON_USD', rate: 3.30, source: 'default' },
         'STARS_CS': { currency_pair: 'STARS_CS', rate: 0.10, source: 'default' }
@@ -242,7 +242,7 @@ router.get('/stats/:telegramId', async (req, res) => {
       }
     };
     
-    console.log('✅ Статистика успешно собрана:', {
+    if (process.env.NODE_ENV === 'development') console.log('✅ Статистика успешно собрана:', {
       totalPlayers: result.players.total_players,
       active24h: result.players.active_24h,
       totalCS: result.currencies.total_cs,

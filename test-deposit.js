@@ -8,7 +8,7 @@ const TEST_PLAYER_ID = '850758749'; // ID тестового игрока
 
 // 1. Тест проверки депозитов по адресу
 async function testCheckDepositByAddress() {
-  console.log('🧪 Тест: Проверка депозитов по адресу');
+  if (process.env.NODE_ENV === 'development') console.log('🧪 Тест: Проверка депозитов по адресу');
   
   try {
     const response = await axios.post(`${BASE_URL}/api/wallet/check-deposit-by-address`, {
@@ -18,7 +18,7 @@ async function testCheckDepositByAddress() {
       game_wallet: 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60'
     });
     
-    console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
     
   } catch (error) {
     console.error('❌ Ошибка:', error.response?.data || error.message);
@@ -27,7 +27,7 @@ async function testCheckDepositByAddress() {
 
 // 2. Тест универсального поиска депозитов
 async function testCheckAllDeposits() {
-  console.log('🧪 Тест: Универсальный поиск депозитов');
+  if (process.env.NODE_ENV === 'development') console.log('🧪 Тест: Универсальный поиск депозитов');
   
   try {
     const response = await axios.post(`${BASE_URL}/api/wallet/check-all-deposits`, {
@@ -35,7 +35,7 @@ async function testCheckAllDeposits() {
       sender_address: null // Не указываем отправителя
     });
     
-    console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
     
   } catch (error) {
     console.error('❌ Ошибка:', error.response?.data || error.message);
@@ -44,14 +44,14 @@ async function testCheckAllDeposits() {
 
 // 3. Тест диагностики депозитов
 async function testDebugDeposits() {
-  console.log('🧪 Тест: Диагностика депозитов');
+  if (process.env.NODE_ENV === 'development') console.log('🧪 Тест: Диагностика депозитов');
   
   try {
     const response = await axios.post(`${BASE_URL}/api/wallet/debug-deposits`, {
       player_id: TEST_PLAYER_ID
     });
     
-    console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
     
   } catch (error) {
     console.error('❌ Ошибка:', error.response?.data || error.message);
@@ -60,8 +60,8 @@ async function testDebugDeposits() {
 
 // 4. Мануальное добавление депозита (ТОЛЬКО ДЛЯ ЭКСТРЕННЫХ СЛУЧАЕВ!)
 async function testManualAddDeposit() {
-  console.log('🚨 Тест: Мануальное добавление депозита');
-  console.log('⚠️  ВНИМАНИЕ: Используйте только в экстренных случаях!');
+  if (process.env.NODE_ENV === 'development') console.log('🚨 Тест: Мануальное добавление депозита');
+  if (process.env.NODE_ENV === 'development') console.log('⚠️  ВНИМАНИЕ: Используйте только в экстренных случаях!');
   
   const fakeTransactionHash = `manual_${Date.now()}_${TEST_PLAYER_ID}`;
   
@@ -73,7 +73,7 @@ async function testManualAddDeposit() {
       admin_key: 'cosmo_admin_2025' // Админ ключ из .env
     });
     
-    console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
+    if (process.env.NODE_ENV === 'development') console.log('✅ Ответ:', JSON.stringify(response.data, null, 2));
     
   } catch (error) {
     console.error('❌ Ошибка:', error.response?.data || error.message);
@@ -82,13 +82,13 @@ async function testManualAddDeposit() {
 
 // 5. Проверка баланса игрока
 async function checkPlayerBalance() {
-  console.log('🧪 Проверка баланса игрока');
+  if (process.env.NODE_ENV === 'development') console.log('🧪 Проверка баланса игрока');
   
   try {
     // Этот эндпоинт нужно добавить в основное API, если его нет
     const response = await axios.get(`${BASE_URL}/api/players/${TEST_PLAYER_ID}`);
     
-    console.log('✅ Баланс игрока:', {
+    if (process.env.NODE_ENV === 'development') console.log('✅ Баланс игрока:', {
       telegram_id: response.data.telegram_id,
       ton: parseFloat(response.data.ton || '0'),
       stars: parseInt(response.data.telegram_stars || '0')
@@ -101,30 +101,30 @@ async function checkPlayerBalance() {
 
 // 🚀 ОСНОВНАЯ ФУНКЦИЯ ЗАПУСКА ТЕСТОВ
 async function runAllTests() {
-  console.log('🚀 Запуск всех тестов депозитов...\n');
+  if (process.env.NODE_ENV === 'development') console.log('🚀 Запуск всех тестов депозитов...\n');
   
   // 1. Проверяем текущий баланс
   await checkPlayerBalance();
-  console.log('\n' + '='.repeat(50) + '\n');
+  if (process.env.NODE_ENV === 'development') console.log('\n' + '='.repeat(50) + '\n');
   
   // 2. Диагностика (самый информативный тест)
   await testDebugDeposits();
-  console.log('\n' + '='.repeat(50) + '\n');
+  if (process.env.NODE_ENV === 'development') console.log('\n' + '='.repeat(50) + '\n');
   
   // 3. Универсальный поиск
   await testCheckAllDeposits();
-  console.log('\n' + '='.repeat(50) + '\n');
+  if (process.env.NODE_ENV === 'development') console.log('\n' + '='.repeat(50) + '\n');
   
   // 4. Проверка по адресу
   await testCheckDepositByAddress();
-  console.log('\n' + '='.repeat(50) + '\n');
+  if (process.env.NODE_ENV === 'development') console.log('\n' + '='.repeat(50) + '\n');
   
-  console.log('🏁 Все тесты завершены!');
+  if (process.env.NODE_ENV === 'development') console.log('🏁 Все тесты завершены!');
 }
 
 // 🎯 ФУНКЦИЯ ДЛЯ ПРОВЕРКИ TON API
 async function testTonApis() {
-  console.log('🧪 Тест доступности TON API...\n');
+  if (process.env.NODE_ENV === 'development') console.log('🧪 Тест доступности TON API...\n');
   
   const gameWallet = 'UQCOZZx-3RSxIVS2QFcuMBwDUZPWgh8FhRT7I6Qo_pqT-h60';
   
@@ -213,27 +213,27 @@ const apis = [
   for (const api of apis) {
     try {
       const result = await api.test();
-      console.log(`${api.name}: ${result}`);
+      if (process.env.NODE_ENV === 'development') console.log(`${api.name}: ${result}`);
     } catch (error) {
-      console.log(`${api.name}: ❌ Недоступен (${error.message})`);
+      if (process.env.NODE_ENV === 'development') console.log(`${api.name}: ❌ Недоступен (${error.message})`);
     }
   }
 }
 
 // 📋 МЕНЮ ДЛЯ ЗАПУСКА ОТДЕЛЬНЫХ ТЕСТОВ
 function showMenu() {
-  console.log('\n🔧 МЕНЮ ТЕСТИРОВАНИЯ ДЕПОЗИТОВ:');
-  console.log('1. runAllTests() - Запустить все тесты');
-  console.log('2. testDebugDeposits() - Диагностика депозитов');
-  console.log('3. testCheckAllDeposits() - Универсальный поиск');
-  console.log('4. testCheckDepositByAddress() - Поиск по адресу');
-  console.log('5. testTonApis() - Проверить TON API');
-  console.log('6. checkPlayerBalance() - Проверить баланс');
-  console.log('7. testManualAddDeposit() - 🚨 Мануальное добавление\n');
+  if (process.env.NODE_ENV === 'development') console.log('\n🔧 МЕНЮ ТЕСТИРОВАНИЯ ДЕПОЗИТОВ:');
+  if (process.env.NODE_ENV === 'development') console.log('1. runAllTests() - Запустить все тесты');
+  if (process.env.NODE_ENV === 'development') console.log('2. testDebugDeposits() - Диагностика депозитов');
+  if (process.env.NODE_ENV === 'development') console.log('3. testCheckAllDeposits() - Универсальный поиск');
+  if (process.env.NODE_ENV === 'development') console.log('4. testCheckDepositByAddress() - Поиск по адресу');
+  if (process.env.NODE_ENV === 'development') console.log('5. testTonApis() - Проверить TON API');
+  if (process.env.NODE_ENV === 'development') console.log('6. checkPlayerBalance() - Проверить баланс');
+  if (process.env.NODE_ENV === 'development') console.log('7. testManualAddDeposit() - 🚨 Мануальное добавление\n');
   
-  console.log('💡 Для запуска в консоли Node.js:');
-  console.log('   node test-deposit.js');
-  console.log('   или вызывайте функции по отдельности\n');
+  if (process.env.NODE_ENV === 'development') console.log('💡 Для запуска в консоли Node.js:');
+  if (process.env.NODE_ENV === 'development') console.log('   node test-deposit.js');
+  if (process.env.NODE_ENV === 'development') console.log('   или вызывайте функции по отдельности\n');
 }
 
 // Экспорт функций для использования

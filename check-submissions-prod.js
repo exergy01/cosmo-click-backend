@@ -8,7 +8,7 @@ const pool = new Pool({
 
 async function checkSubmissions() {
   try {
-    console.log('📋 Последние заявки на production:\n');
+    if (process.env.NODE_ENV === 'development') console.log('📋 Последние заявки на production:\n');
 
     const result = await pool.query(`
       SELECT id, telegram_id, quest_key, status, created_at
@@ -18,10 +18,10 @@ async function checkSubmissions() {
     `);
 
     result.rows.forEach(q => {
-      console.log(`ID: ${q.id} | User: ${q.telegram_id} | Quest: ${q.quest_key} | Status: ${q.status}`);
+      if (process.env.NODE_ENV === 'development') console.log(`ID: ${q.id} | User: ${q.telegram_id} | Quest: ${q.quest_key} | Status: ${q.status}`);
     });
 
-    console.log(`\n📊 Всего: ${result.rows.length} заявок`);
+    if (process.env.NODE_ENV === 'development') console.log(`\n📊 Всего: ${result.rows.length} заявок`);
 
   } catch (err) {
     console.error('❌ Ошибка:', err.message);

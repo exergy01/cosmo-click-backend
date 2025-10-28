@@ -9,7 +9,7 @@ const router = express.Router();
 router.post('/prepare', async (req, res) => {
   const { telegram_id, amount, wallet_address } = req.body;
 
-  console.log('Preparing withdrawal:', { telegram_id, amount, wallet_address });
+  if (process.env.NODE_ENV === 'development') console.log('Preparing withdrawal:', { telegram_id, amount, wallet_address });
 
   if (!telegram_id || !amount) {
     return res.status(400).json({ error: 'Telegram ID and amount are required' });
@@ -98,7 +98,7 @@ router.post('/prepare', async (req, res) => {
       console.error('Withdrawal notification error:', notifyErr);
     }
 
-    console.log('Withdrawal request created and funds reserved:', { telegram_id, amount: withdrawAmount, withdrawalId });
+    if (process.env.NODE_ENV === 'development') console.log('Withdrawal request created and funds reserved:', { telegram_id, amount: withdrawAmount, withdrawalId });
 
     res.json({
       success: true,
@@ -128,7 +128,7 @@ router.post('/confirm', async (req, res) => {
     return res.status(403).json({ error: 'Unauthorized' });
   }
 
-  console.log('Confirming withdrawal:', { telegram_id, amount, transaction_hash });
+  if (process.env.NODE_ENV === 'development') console.log('Confirming withdrawal:', { telegram_id, amount, transaction_hash });
 
   if (!telegram_id || !amount || !transaction_hash) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -203,7 +203,7 @@ router.post('/confirm', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log('Withdrawal confirmed with reserved balance:', {
+    if (process.env.NODE_ENV === 'development') console.log('Withdrawal confirmed with reserved balance:', {
       telegram_id,
       amount: withdrawAmount,
       newBalance,
@@ -231,7 +231,7 @@ router.post('/confirm', async (req, res) => {
 router.post('/cancel', async (req, res) => {
   const { telegram_id, withdrawal_id } = req.body;
 
-  console.log('Canceling withdrawal:', { telegram_id, withdrawal_id });
+  if (process.env.NODE_ENV === 'development') console.log('Canceling withdrawal:', { telegram_id, withdrawal_id });
 
   if (!telegram_id || !withdrawal_id) {
     return res.status(400).json({ error: 'Telegram ID and withdrawal ID are required' });
@@ -288,7 +288,7 @@ router.post('/cancel', async (req, res) => {
 
     await client.query('COMMIT');
 
-    console.log('Withdrawal cancelled:', { telegram_id, withdrawal_id, amount: withdrawAmount });
+    if (process.env.NODE_ENV === 'development') console.log('Withdrawal cancelled:', { telegram_id, withdrawal_id, amount: withdrawAmount });
 
     res.json({
       success: true,
@@ -312,7 +312,7 @@ async function cleanupExpiredWithdrawals() {
   try {
     await client.query('BEGIN');
 
-    console.log('Starting cleanup of expired withdrawals...');
+    if (process.env.NODE_ENV === 'development') console.log('Starting cleanup of expired withdrawals...');
 
     // Находим истекшие заявки
     const expiredResult = await client.query(
@@ -325,11 +325,11 @@ async function cleanupExpiredWithdrawals() {
 
     if (expiredResult.rows.length === 0) {
       await client.query('COMMIT');
-      console.log('No expired withdrawals found');
+      if (process.env.NODE_ENV === 'development') console.log('No expired withdrawals found');
       return { cleaned: 0 };
     }
 
-    console.log(`Found ${expiredResult.rows.length} expired withdrawals`);
+    if (process.env.NODE_ENV === 'development') console.log(`Found ${expiredResult.rows.length} expired withdrawals`);
 
     // Возвращаем зарезервированные средства для каждой заявки
     for (const withdrawal of expiredResult.rows) {
@@ -356,7 +356,7 @@ async function cleanupExpiredWithdrawals() {
     await client.query('COMMIT');
 
     const cleanedCount = cleanupResult.rows.length;
-    console.log(`Cleaned up ${cleanedCount} expired withdrawals`);
+    if (process.env.NODE_ENV === 'development') console.log(`Cleaned up ${cleanedCount} expired withdrawals`);
 
     return { cleaned: cleanedCount };
 

@@ -6,8 +6,8 @@
 const pool = require('./db');
 
 async function createWithdrawalsTable() {
-  console.log('🔧 === CREATING WITHDRAWALS TABLE ===');
-  console.log('⏰ Time:', new Date().toISOString());
+  if (process.env.NODE_ENV === 'development') console.log('🔧 === CREATING WITHDRAWALS TABLE ===');
+  if (process.env.NODE_ENV === 'development') console.log('⏰ Time:', new Date().toISOString());
 
   const client = await pool.connect();
 
@@ -26,7 +26,7 @@ async function createWithdrawalsTable() {
     const tableExists = tableCheck.rows[0].exists;
 
     if (tableExists) {
-      console.log('✅ withdrawals table already exists');
+      if (process.env.NODE_ENV === 'development') console.log('✅ withdrawals table already exists');
 
       // Check if wallet_address column exists
       const columnCheck = await client.query(`
@@ -37,18 +37,18 @@ async function createWithdrawalsTable() {
       `);
 
       if (columnCheck.rows.length === 0) {
-        console.log('📝 Adding wallet_address column...');
+        if (process.env.NODE_ENV === 'development') console.log('📝 Adding wallet_address column...');
         await client.query(`
           ALTER TABLE withdrawals
           ADD COLUMN IF NOT EXISTS wallet_address TEXT;
         `);
-        console.log('✅ wallet_address column added');
+        if (process.env.NODE_ENV === 'development') console.log('✅ wallet_address column added');
       } else {
-        console.log('✅ wallet_address column already exists');
+        if (process.env.NODE_ENV === 'development') console.log('✅ wallet_address column already exists');
       }
 
     } else {
-      console.log('📝 Creating withdrawals table...');
+      if (process.env.NODE_ENV === 'development') console.log('📝 Creating withdrawals table...');
 
       await client.query(`
         CREATE TABLE withdrawals (
@@ -67,7 +67,7 @@ async function createWithdrawalsTable() {
         );
       `);
 
-      console.log('✅ withdrawals table created');
+      if (process.env.NODE_ENV === 'development') console.log('✅ withdrawals table created');
 
       // Create indexes
       await client.query(`
@@ -76,11 +76,11 @@ async function createWithdrawalsTable() {
         CREATE INDEX IF NOT EXISTS idx_withdrawals_created_at ON withdrawals(created_at);
       `);
 
-      console.log('✅ Indexes created');
+      if (process.env.NODE_ENV === 'development') console.log('✅ Indexes created');
     }
 
     // Check if ton_reserved column exists in players table
-    console.log('📝 Checking ton_reserved column in players table...');
+    if (process.env.NODE_ENV === 'development') console.log('📝 Checking ton_reserved column in players table...');
     const reservedCheck = await client.query(`
       SELECT column_name
       FROM information_schema.columns
@@ -89,19 +89,19 @@ async function createWithdrawalsTable() {
     `);
 
     if (reservedCheck.rows.length === 0) {
-      console.log('📝 Adding ton_reserved column to players table...');
+      if (process.env.NODE_ENV === 'development') console.log('📝 Adding ton_reserved column to players table...');
       await client.query(`
         ALTER TABLE players
         ADD COLUMN IF NOT EXISTS ton_reserved NUMERIC(20, 9) DEFAULT 0 CHECK (ton_reserved >= 0);
       `);
-      console.log('✅ ton_reserved column added');
+      if (process.env.NODE_ENV === 'development') console.log('✅ ton_reserved column added');
     } else {
-      console.log('✅ ton_reserved column already exists');
+      if (process.env.NODE_ENV === 'development') console.log('✅ ton_reserved column already exists');
     }
 
     await client.query('COMMIT');
 
-    console.log('🏁 Migration completed successfully');
+    if (process.env.NODE_ENV === 'development') console.log('🏁 Migration completed successfully');
 
     // Show table structure
     const structure = await client.query(`
@@ -111,7 +111,7 @@ async function createWithdrawalsTable() {
       ORDER BY ordinal_position;
     `);
 
-    console.log('\n📊 withdrawals table structure:');
+    if (process.env.NODE_ENV === 'development') console.log('\n📊 withdrawals table structure:');
     console.table(structure.rows);
 
     return { success: true };
@@ -129,7 +129,7 @@ async function createWithdrawalsTable() {
 // Run migration
 createWithdrawalsTable()
   .then(() => {
-    console.log('\n✅ Migration script completed');
+    if (process.env.NODE_ENV === 'development') console.log('\n✅ Migration script completed');
     process.exit(0);
   })
   .catch((error) => {
