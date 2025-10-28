@@ -294,14 +294,13 @@ router.post('/buy', async (req, res) => {
 
     const player = playerResult.rows[0];
 
-    // 🔄 Автосбор перед покупкой
-    const updatedBalance = await autoCollectBeforePurchase(client, player, systemId);
-    
-    // Получаем обновленные данные игрока после автосбора
-    let currentPlayer = player;
-    if (updatedBalance !== (systemId === 4 ? parseFloat(player.cs) : parseFloat(player.ccc))) {
-      currentPlayer = await getPlayer(telegramId);
-    }
+    // 🔄 АВТОСБОР перед покупкой из ТЕКУЩЕЙ системы (лайфхак без рекламы)
+    console.log(`🔄 Запуск автосбора для системы ${systemId} перед покупкой`);
+    await autoCollectBeforePurchase(client, player, systemId);
+
+    // 🔥 КРИТИЧНО: ВСЕГДА получаем свежие данные игрока после автосбора!
+    const currentPlayer = await getPlayer(telegramId);
+    console.log(`✅ Данные игрока обновлены после автосбора: CS=${currentPlayer.cs}, CCC=${currentPlayer.ccc}`);
 
     // Поиск товара
     const itemData = (itemType === 'asteroid' ? shopData.asteroidData :
@@ -338,17 +337,15 @@ router.post('/buy', async (req, res) => {
     
     const price = itemData.price;
 
-    // Проверка баланса
+    // 🔥 ИСПРАВЛЕНО: Проверка баланса после автосбора
     let playerBalance;
     if (currencyToUse === 'ton') {
       playerBalance = parseFloat(currentPlayer.ton || 0);
     } else if (currencyToUse === 'cs') {
-      if (systemId === 4) {
-        playerBalance = updatedBalance;
-      } else {
-        playerBalance = parseFloat(currentPlayer.cs);
-      }
+      // Всегда используем обновленный баланс CS из currentPlayer
+      playerBalance = parseFloat(currentPlayer.cs || 0);
     } else {
+      // Всегда используем обновленный баланс CCC из currentPlayer
       playerBalance = parseFloat(currentPlayer.ccc || 0);
     }
     
