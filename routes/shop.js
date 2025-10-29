@@ -298,8 +298,16 @@ router.post('/buy', async (req, res) => {
     if (process.env.NODE_ENV === 'development') console.log(`🔄 Запуск автосбора для системы ${systemId} перед покупкой`);
     await autoCollectBeforePurchase(client, player, systemId);
 
-    // 🔥 КРИТИЧНО: ВСЕГДА получаем свежие данные игрока после автосбора!
-    const currentPlayer = await getPlayer(telegramId);
+    // 🔥 КРИТИЧНО: Читаем данные через ТОТ ЖЕ client (внутри транзакции)!
+    const updatedPlayerResult = await client.query('SELECT * FROM players WHERE telegram_id = $1', [telegramId]);
+    const currentPlayer = updatedPlayerResult.rows[0];
+
+    // PostgreSQL возвращает JSONB поля как объекты, но на всякий случай парсим
+    currentPlayer.asteroids = currentPlayer.asteroids || [];
+    currentPlayer.drones = currentPlayer.drones || [];
+    currentPlayer.cargo_levels = currentPlayer.cargo_levels || [];
+    currentPlayer.last_collection_time = currentPlayer.last_collection_time || {};
+
     if (process.env.NODE_ENV === 'development') console.log(`✅ Данные игрока обновлены после автосбора: CS=${currentPlayer.cs}, CCC=${currentPlayer.ccc}`);
 
     // Поиск товара

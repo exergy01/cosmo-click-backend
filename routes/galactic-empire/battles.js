@@ -112,7 +112,11 @@ function updateCooldowns(ships) {
  * Проверить, может ли корабль стрелять
  */
 function canShoot(ship) {
-  return ship.current_hp > 0 && ship.current_cooldown <= 0;
+  const result = ship.current_hp > 0 && ship.current_cooldown <= 0;
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  canShoot(${ship.id}): HP=${ship.current_hp}/${ship.max_hp}, CD=${ship.current_cooldown}, weapon=${ship.weapon_type}, result=${result}`);
+  }
+  return result;
 }
 
 /**
@@ -439,7 +443,9 @@ router.post('/start-pve', async (req, res) => {
         current_hp: shipConfig.hp,
         attack: shipConfig.attack,
         defense: shipConfig.defense,
-        speed: shipConfig.speed
+        speed: shipConfig.speed,
+        weapon_type: 'laser', // 🔥 КРИТИЧНО: добавляем тип оружия для бота
+        current_cooldown: 0    // 🔥 КРИТИЧНО: инициализируем кулдаун (бот может сразу стрелять)
       });
     }
 
