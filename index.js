@@ -50,6 +50,33 @@ const financialLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 🎮 TAPPER (КЛИКИ) - 180 запросов/минуту (3 тапа/секунду)
+const tapperLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 180, // 180 taps per minute (3 taps/second)
+  message: { error: 'Too many taps, slow down!' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 📋 QUESTS - 60 запросов/минуту (1 запрос/секунду)
+const questsLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  message: { error: 'Too many quest requests, please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 🛒 SHOP - 30 запросов/минуту (0.5 запроса/секунду)
+const shopLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 purchases per minute
+  message: { error: 'Too many shop requests, please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware
 app.use(express.static('public'));
 app.use(cors({
@@ -65,6 +92,11 @@ app.use('/api/', apiLimiter);
 // app.use('/api/shop', financialLimiter); // ❌ ОТКЛЮЧЕНО - блокирует покупки в магазине
 app.use('/api/exchange', financialLimiter);
 app.use('/api/wallet', financialLimiter);
+
+// 🎯 СПЕЦИФИЧНЫЕ LIMITERS ДЛЯ ЗАЩИТЫ ОТ СПАМА
+app.use('/api/games/tapper/tap', tapperLimiter);
+app.use('/api/quests', questsLimiter);
+app.use('/api/shop/buy', shopLimiter);
 
 // CORS заголовки и логирование
 app.use((req, res, next) => {
