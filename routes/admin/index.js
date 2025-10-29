@@ -37,9 +37,9 @@ if (process.env.NODE_ENV === 'development') console.log('📦 Все модул�
 // ===============================
 
 // Подключаем роуты аутентификации (БЕЗ middleware, так как они сами проверяют права)
-router.use('/', authModule.router);
+router.use('/auth', authModule.router);
 
-if (process.env.NODE_ENV === 'development') console.log('✅ Модуль аутентификации подключен: /check, /debug');
+if (process.env.NODE_ENV === 'development') console.log('✅ Модуль аутентификации подключен: /auth/check, /auth/debug, /auth/test-access');
 
 // ===============================
 // 📊 СТАТИСТИКА

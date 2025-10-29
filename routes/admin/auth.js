@@ -2,6 +2,10 @@
 const express = require('express');
 const router = express.Router();
 
+console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+console.log('🚀 AUTH.JS FILE LOADED - NEW VERSION WITH DEBUGGING! 🚀');
+console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
+
 // 🔐 АДМИНСКИЙ ID ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID;
 
@@ -10,11 +14,17 @@ const TEST_USERS_IDS = process.env.TEST_USERS_IDS
   ? process.env.TEST_USERS_IDS.split(',').map(id => id.trim())
   : [];
 
-if (process.env.NODE_ENV === 'development') console.log('🔧 Модуль аутентификации загружен. ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, 'тип:', typeof ADMIN_TELEGRAM_ID);
-if (process.env.NODE_ENV === 'development') console.log('🧪 Тестовые пользователи:', TEST_USERS_IDS);
+console.log('🔧 Модуль аутентификации загружен. ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, 'тип:', typeof ADMIN_TELEGRAM_ID);
+console.log('🧪 Тестовые пользователи:', TEST_USERS_IDS);
 
 // 🛡️ Middleware для проверки админских прав - ИСПРАВЛЕНО
 const adminAuth = (req, res, next) => {
+  // КРИТИЧЕСКОЕ ИСКЛЮЧЕНИЕ: пропускаем запросы к /test-access без проверки прав
+  if (req.url.includes('/test-access') || req.originalUrl.includes('/test-access')) {
+    console.log('⚠️ Запрос к /test-access - пропускаем adminAuth middleware');
+    return next();
+  }
+
   // ИСПРАВЛЕНО: Ищем telegramId в разных местах URL
   let telegramId = req.params.telegramId;
   
@@ -110,23 +120,57 @@ const isTestUser = (telegramId) => {
   return TEST_USERS_IDS.some(id => String(id).trim() === telegramIdStr);
 };
 
+// 🧪 GET /test-access/:telegramId - проверка тестового доступа
+console.log('📝📝📝 REGISTERING ROUTE: GET /test-access/:telegramId 📝📝📝');
+router.get('/test-access/:telegramId', (req, res) => {
+  console.log('✅✅✅ ROUTE /test-access/:telegramId WAS CALLED! ✅✅✅');
+  const { telegramId } = req.params;
+
+  const hasTestAccess = isTestUser(telegramId);
+
+  console.log('🧪 Проверка тестового доступа:', {
+    telegramId,
+    hasAccess: hasTestAccess,
+    testUsers: TEST_USERS_IDS
+  });
+
+  res.json({
+    hasTestAccess,
+    timestamp: new Date().toISOString()
+  });
+});
+console.log('✅✅✅ ROUTE /test-access/:telegramId REGISTERED! ✅✅✅');
+
 // 🔍 GET /check/:telegramId - проверка админского статуса
 router.get('/check/:telegramId', (req, res) => {
+  console.log('❌❌❌ ROUTE /check/:telegramId WAS CALLED! ❌❌❌');
+  console.log('Request URL:', req.url);
+  console.log('Request originalUrl:', req.originalUrl);
+  console.log('Request path:', req.path);
+  console.log('Request params:', req.params);
+  console.log('telegramId value:', req.params.telegramId);
+
+  // КРИТИЧЕСКАЯ ПРОВЕРКА: если это запрос к check-test-access, не обрабатывать!
+  if (req.params.telegramId && req.params.telegramId.includes('test-access')) {
+    console.log('⚠️⚠️⚠️ This is actually a check-test-access request! Skipping...');
+    return res.status(404).json({ error: 'Route mismatch detected' });
+  }
+
   const { telegramId } = req.params;
-  
+
   const telegramIdStr = String(telegramId).trim();
   const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
   const isAdminUser = telegramIdStr === adminIdStr;
-  
-  if (process.env.NODE_ENV === 'development') console.log('🔍 Проверка админского статуса:', {
-    telegramId: telegramIdStr, 
+
+  console.log('🔍 Проверка админского статуса:', {
+    telegramId: telegramIdStr,
     adminId: adminIdStr,
     isAdmin: isAdminUser,
     receivedType: typeof telegramId,
     adminType: typeof ADMIN_TELEGRAM_ID
   });
-  
-  res.json({ 
+
+  res.json({
     isAdmin: isAdminUser,
     timestamp: new Date().toISOString(),
     debug: {
@@ -141,7 +185,7 @@ router.get('/check/:telegramId', (req, res) => {
 // 🔧 GET /debug/:telegramId - отладочная информация
 router.get('/debug/:telegramId', (req, res) => {
   const { telegramId } = req.params;
-  
+
   const debugInfo = {
     received_telegram_id: telegramId,
     received_type: typeof telegramId,
@@ -161,9 +205,9 @@ router.get('/debug/:telegramId', (req, res) => {
     },
     timestamp: new Date().toISOString()
   };
-  
+
   if (process.env.NODE_ENV === 'development') console.log('🔧 Debug запрос:', debugInfo);
-  
+
   res.json(debugInfo);
 });
 
@@ -174,24 +218,6 @@ router.get('/test-middleware/:telegramId', adminAuth, (req, res) => {
     success: true,
     message: 'Middleware test passed',
     telegramId: req.params.telegramId,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 🧪 GET /check-test-access/:telegramId - проверка тестового доступа
-router.get('/check-test-access/:telegramId', (req, res) => {
-  const { telegramId } = req.params;
-
-  const hasTestAccess = isTestUser(telegramId);
-
-  if (process.env.NODE_ENV === 'development') console.log('🧪 Проверка тестового доступа:', {
-    telegramId,
-    hasAccess: hasTestAccess,
-    testUsers: TEST_USERS_IDS
-  });
-
-  res.json({
-    hasTestAccess,
     timestamp: new Date().toISOString()
   });
 });
