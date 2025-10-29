@@ -484,12 +484,6 @@ router.post('/start-pve', async (req, res) => {
 
     reward = Math.floor(reward);
 
-    // Получаем расу игрока
-    const playerRaceResult = await client.query(`
-      SELECT race FROM galactic_empire_players WHERE telegram_id = $1
-    `, [telegramId]);
-    const playerRace = playerRaceResult.rows[0]?.race || 'human';
-
     // Сохраняем бой в БД
     const battleInsertResult = await client.query(`
       INSERT INTO galactic_empire_battles (
