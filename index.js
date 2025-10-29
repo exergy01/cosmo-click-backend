@@ -33,6 +33,9 @@ cron.schedule('0 12 * * *', async () => {
 
 if (process.env.NODE_ENV === 'development') console.log('⏰ Cron задача для ежедневной сводки настроена на 12:00 МСК');
 
+// 🔧 TRUST PROXY - Необходимо для работы за Render/nginx reverse proxy
+app.set('trust proxy', 1);
+
 // 🛡️ RATE LIMITING CONFIGURATION
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
