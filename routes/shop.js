@@ -69,26 +69,27 @@ const recalculatePlayerData = async (client, telegramId) => {
     const miningSpeed = {};
 
     for (let system = 1; system <= 7; system++) {
+      const systemStr = String(system);
       // Карго - берем МАКСИМАЛЬНУЮ вместимость
       const systemCargo = player.cargo_levels.filter(c => c.system === system);
       const maxCapacity = systemCargo.reduce((max, c) => Math.max(max, c.capacity || 0), 0);
-      maxCargoCapacity[system] = maxCapacity;
+      maxCargoCapacity[systemStr] = maxCapacity;
 
       // Скорость добычи
       const systemDrones = player.drones.filter(d => d.system === system);
       let totalSpeed = 0;
-      
+
       if (system === 4) {
         totalSpeed = systemDrones.reduce((sum, d) => sum + (d.csPerDay || 0), 0);
       } else {
         totalSpeed = systemDrones.reduce((sum, d) => sum + (d.cccPerDay || 0), 0);
       }
-      
+
       // Бонус +1% за полную коллекцию дронов (15 штук) для систем 1-4
       const droneCount = systemDrones.length;
       const bonusMultiplier = (system >= 1 && system <= 4 && droneCount === 15) ? 1.01 : 1;
-      
-      miningSpeed[system] = (totalSpeed * bonusMultiplier) / 86400;
+
+      miningSpeed[systemStr] = (totalSpeed * bonusMultiplier) / 86400;
     }
 
     await client.query(
@@ -107,9 +108,9 @@ const autoCollectBeforePurchase = async (client, player, systemId) => {
     const systemStr = String(systemId);
     const lastCollectionTime = new Date(player.last_collection_time[systemStr]).getTime();
     const collectedAmount = player.collected_by_system[systemStr] || 0;
-    const miningSpeed = player.mining_speed_data?.[systemId] || 0;
-    const maxCargoCapacity = player.max_cargo_capacity_data?.[systemId] || 0;
-    const totalAsteroidResources = player.asteroid_total_data?.[systemId] || 0;
+    const miningSpeed = player.mining_speed_data?.[systemStr] || 0;
+    const maxCargoCapacity = player.max_cargo_capacity_data?.[systemStr] || 0;
+    const totalAsteroidResources = player.asteroid_total_data?.[systemStr] || 0;
 
     if (process.env.NODE_ENV === 'development') console.log(`🔄 АВТОСБОР система ${systemId}: собрано=${collectedAmount}, скорость=${miningSpeed}/сек, карго=${maxCargoCapacity}, астероиды=${totalAsteroidResources}`);
 
@@ -194,16 +195,17 @@ const restoreAsteroidLimits = async (client, telegramId, systemId) => {
     if (process.env.NODE_ENV === 'development') console.log(`💣 Найдено астероидов в shopData для системы ${systemId}:`, systemAsteroids.length);
 
     // 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: УСТАНАВЛИВАЕМ asteroid_total_data до ПОЛНОГО изначального значения
+    const systemStr = String(systemId);
     const updatedAsteroidTotal = { ...player.asteroid_total_data };
-    updatedAsteroidTotal[systemId] = totalSystemLimit; // ЗАМЕНЯЕМ, а не добавляем!
+    updatedAsteroidTotal[systemStr] = totalSystemLimit; // ЗАМЕНЯЕМ, а не добавляем!
 
     // ✅ СБРАСЫВАЕМ collected_by_system в 0
     const updatedCollected = { ...player.collected_by_system };
-    updatedCollected[String(systemId)] = 0;
+    updatedCollected[systemStr] = 0;
 
     // ✅ ОБНОВЛЯЕМ время последнего сбора
     const newLastCollectionTime = { ...player.last_collection_time };
-    newLastCollectionTime[String(systemId)] = new Date().toISOString();
+    newLastCollectionTime[systemStr] = new Date().toISOString();
 
     await client.query(
       'UPDATE players SET asteroid_total_data = $1, collected_by_system = $2, last_collection_time = $3 WHERE telegram_id = $4',
@@ -407,10 +409,11 @@ router.post('/buy', async (req, res) => {
         
         const freshPlayerQuery = await client.query('SELECT asteroid_total_data FROM players WHERE telegram_id = $1', [telegramId]);
         const freshAsteroidData = freshPlayerQuery.rows[0]?.asteroid_total_data || {};
-        
-        const updatedAsteroidTotal = { 
-          ...freshAsteroidData, 
-          [systemId]: (freshAsteroidData[systemId] || 0) + totalValue 
+
+        const systemStr = String(systemId);
+        const updatedAsteroidTotal = {
+          ...freshAsteroidData,
+          [systemStr]: (freshAsteroidData[systemStr] || 0) + totalValue
         };
         
         await client.query(

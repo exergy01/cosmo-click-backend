@@ -245,9 +245,9 @@ router.get('/api/debug/player/:telegramId', async (req, res) => {
         дроны: player.drones.filter(d => d.system === 4),
         астероиды: player.asteroids.filter(a => a.system === 4),
         карго: player.cargo_levels.filter(c => c.system === 4),
-        скорость_добычи: player.mining_speed_data[4],
-        макс_карго: player.max_cargo_capacity_data[4],
-        всего_ресурсов: player.asteroid_total_data[4],
+        скорость_добычи: player.mining_speed_data['4'],
+        макс_карго: player.max_cargo_capacity_data['4'],
+        всего_ресурсов: player.asteroid_total_data['4'],
         время_сбора: player.last_collection_time['4'],
         собрано: player.collected_by_system['4']
       },
