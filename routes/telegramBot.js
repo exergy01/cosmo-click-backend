@@ -21,7 +21,8 @@ const sendAdminNotification = async (messageText, options = {}) => {
       return false;
     }
 
-    if (process.env.NODE_ENV === 'development') console.log(`📱 Отправляем уведомление админу ${ADMIN_TELEGRAM_ID}: ${messageText.slice(0, 100)}...`);
+    console.log(`📱 [NOTIFICATION] Отправляем уведомление админу ${ADMIN_TELEGRAM_ID}`);
+    console.log(`📱 [NOTIFICATION] Текст: ${messageText.slice(0, 150)}...`);
 
     await bot.sendMessage(ADMIN_TELEGRAM_ID, messageText, {
       parse_mode: 'HTML',
@@ -29,10 +30,11 @@ const sendAdminNotification = async (messageText, options = {}) => {
       ...options
     });
 
-    if (process.env.NODE_ENV === 'development') console.log('✅ Уведомление админу отправлено успешно');
+    console.log('✅ [NOTIFICATION] Уведомление админу отправлено успешно');
     return true;
   } catch (err) {
-    console.error(`❌ Ошибка отправки уведомления админу: ${err.message}`);
+    console.error(`❌ [NOTIFICATION] Ошибка отправки уведомления админу: ${err.message}`);
+    console.error(`❌ [NOTIFICATION] Stack:`, err.stack);
     return false;
   }
 };
