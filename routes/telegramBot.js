@@ -67,7 +67,22 @@ const notifyStarsDeposit = async (playerData, amount) => {
 // 💎 УВЕДОМЛЕНИЕ О ПОПОЛНЕНИИ TON
 const notifyTonDeposit = async (playerData, amount, transactionHash) => {
   try {
-    const message = `💎 <b>Пополнение TON</b>
+    // Уведомление игроку
+    const playerMessage = `💎 <b>Пополнение TON</b>
+
+✅ Ваш депозит подтверждён!
+💎 Сумма: <b>${amount} TON</b>
+💵 ~$${(amount * 3.30).toFixed(2)}
+
+🔗 Hash: <code>${transactionHash?.slice(0, 20)}...</code>
+🕐 Время: ${new Date().toLocaleString('ru-RU')}`;
+
+    await bot.sendMessage(playerData.telegram_id, playerMessage, {
+      parse_mode: 'HTML'
+    });
+
+    // 🔔 НОВОЕ: Уведомление админу
+    const adminMessage = `💎 <b>Депозит TON зачислен</b>
 
 👤 Игрок: <b>${playerData.first_name || playerData.username || 'Аноним'}</b>
 🆔 ID: <code>${playerData.telegram_id}</code>
@@ -77,7 +92,7 @@ const notifyTonDeposit = async (playerData, amount, transactionHash) => {
 🔗 Hash: <code>${transactionHash?.slice(0, 20)}...</code>
 🕐 Время: ${new Date().toLocaleString('ru-RU')}`;
 
-    await sendAdminNotification(message, {
+    await sendAdminNotification(adminMessage, {
       reply_markup: {
         inline_keyboard: [[
           { text: '👤 Профиль игрока', callback_data: `player_${playerData.telegram_id}` },
