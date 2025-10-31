@@ -20,14 +20,17 @@ router.post('/prepare', async (req, res) => {
   try {
     console.log('🔵 [WITHDRAWAL] Starting transaction...');
     await client.query('BEGIN');
+    console.log('✅ [WITHDRAWAL] Transaction started');
 
     // Проверяем дубликат заявки за последние 10 минут
+    console.log('🔵 [WITHDRAWAL] Checking for duplicate requests...');
     const duplicateCheck = await client.query(
       `SELECT id FROM withdrawals
        WHERE player_id = $1 AND amount = $2 AND status = 'pending'
        AND created_at > NOW() - INTERVAL '10 minutes'`,
       [telegram_id, parseFloat(amount)]
     );
+    console.log('✅ [WITHDRAWAL] Duplicate check completed:', duplicateCheck.rows.length, 'found');
 
     if (duplicateCheck.rows.length > 0) {
       await client.query('ROLLBACK');
@@ -121,11 +124,18 @@ router.post('/prepare', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Withdrawal preparation error:', err);
-    await client.query('ROLLBACK');
+    console.error('❌ [WITHDRAWAL] Preparation error:', err);
+    console.error('❌ [WITHDRAWAL] Error stack:', err.stack);
+    try {
+      await client.query('ROLLBACK');
+      console.log('🔵 [WITHDRAWAL] Transaction rolled back');
+    } catch (rollbackErr) {
+      console.error('❌ [WITHDRAWAL] Rollback error:', rollbackErr);
+    }
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+    console.log('🔵 [WITHDRAWAL] DB connection released');
   }
 });
 
