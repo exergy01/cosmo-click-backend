@@ -221,7 +221,7 @@ router.get('/withdrawals/pending', async (req, res) => {
 
     const query = `
       SELECT
-        w.id, w.player_id as telegram_id, w.amount, w.recipient_address,
+        w.id, w.player_id as telegram_id, w.amount, w.wallet_address as recipient_address,
         w.status, w.created_at, w.transaction_hash,
         p.username, p.first_name, p.ton as current_balance,
         -- Риск-анализ
