@@ -58,19 +58,30 @@ router.post('/prepare', async (req, res) => {
     const reservedBalance = parseFloat(player.ton_reserved || '0');
     const withdrawAmount = parseFloat(amount);
 
+    console.log('🔵 [WITHDRAWAL] Checking active staking for telegram_id:', telegram_id);
     // 🔒 SECURITY: Check active staking
     const stakingResult = await client.query(`
       SELECT COALESCE(SUM(stake_amount), 0) as total_staked
       FROM ton_staking
       WHERE telegram_id = $1 AND status = 'active'
     `, [telegram_id]);
+    console.log('✅ [WITHDRAWAL] Staking check completed:', stakingResult.rows[0]);
 
     const totalStaked = parseFloat(stakingResult.rows[0]?.total_staked) || 0;
 
     // Available balance = ton - ton_reserved - staked
     const availableBalance = playerBalance - reservedBalance - totalStaked;
 
+    console.log('🔵 [WITHDRAWAL] Balance calculation:', {
+      playerBalance,
+      reservedBalance,
+      totalStaked,
+      availableBalance,
+      withdrawAmount
+    });
+
     if (withdrawAmount <= 0 || withdrawAmount > availableBalance || withdrawAmount < 0.1) {
+      console.log('❌ [WITHDRAWAL] Invalid amount, rolling back');
       await client.query('ROLLBACK');
       return res.status(400).json({
         error: 'Invalid amount',
@@ -81,6 +92,7 @@ router.post('/prepare', async (req, res) => {
         reserved: reservedBalance.toFixed(4)
       });
     }
+    console.log('✅ [WITHDRAWAL] Amount validation passed');
 
     // Резервируем средства
     console.log('🔵 [WITHDRAWAL] Reserving funds:', { withdrawAmount, telegram_id });
