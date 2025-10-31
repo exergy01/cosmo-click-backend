@@ -95,7 +95,10 @@ class TonDepositMonitor {
             }
 
         } catch (err) {
-            console.error('❌ Ошибка проверки транзакций:', err);
+            // Только логируем критические ошибки, не проблемы с TON API
+            if (err.code !== 'ERR_BAD_RESPONSE') {
+                console.error('❌ Ошибка проверки транзакций:', err.message);
+            }
         }
     }
 

@@ -33,18 +33,22 @@ router.post('/prepare', async (req, res) => {
     console.log('✅ [WITHDRAWAL] Duplicate check completed:', duplicateCheck.rows.length, 'found');
 
     if (duplicateCheck.rows.length > 0) {
+      console.log('⚠️ [WITHDRAWAL] Duplicate request detected, rolling back');
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Duplicate withdrawal request detected' });
     }
 
     // Блокируем игрока для обновления баланса (FOR UPDATE)
+    console.log('🔵 [WITHDRAWAL] Fetching player data...');
     const playerResult = await client.query(
       `SELECT telegram_id, first_name, username, ton, ton_reserved
        FROM players WHERE telegram_id = $1 FOR UPDATE`,
       [telegram_id]
     );
+    console.log('✅ [WITHDRAWAL] Player data fetched:', playerResult.rows.length, 'rows');
 
     if (playerResult.rows.length === 0) {
+      console.log('❌ [WITHDRAWAL] Player not found, rolling back');
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Player not found' });
     }
