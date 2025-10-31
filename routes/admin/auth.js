@@ -6,8 +6,13 @@ console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀�
 console.log('🚀 AUTH.JS FILE LOADED - NEW VERSION WITH DEBUGGING! 🚀');
 console.log('🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀');
 
-// 🔐 АДМИНСКИЙ ID ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+// 🔐 АДМИНСКИЕ ID ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID;
+
+// 👑 СПИСОК ВСЕХ АДМИНОВ (основной + дополнительные)
+const ADMIN_IDS = process.env.ADMIN_IDS
+  ? process.env.ADMIN_IDS.split(',').map(id => id.trim())
+  : [ADMIN_TELEGRAM_ID].filter(Boolean); // fallback на основной ID
 
 // 🧪 ТЕСТОВЫЕ ПОЛЬЗОВАТЕЛИ (для доступа к фичам в разработке)
 const TEST_USERS_IDS = process.env.TEST_USERS_IDS
@@ -15,6 +20,7 @@ const TEST_USERS_IDS = process.env.TEST_USERS_IDS
   : [];
 
 console.log('🔧 Модуль аутентификации загружен. ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, 'тип:', typeof ADMIN_TELEGRAM_ID);
+console.log('👑 Список админов:', ADMIN_IDS);
 console.log('🧪 Тестовые пользователи:', TEST_USERS_IDS);
 
 // 🛡️ Middleware для проверки админских прав - ИСПРАВЛЕНО
@@ -108,8 +114,7 @@ const isAdmin = (telegramId) => {
   if (!telegramId) return false;
 
   const telegramIdStr = String(telegramId).trim();
-  const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
-  return telegramIdStr === adminIdStr;
+  return ADMIN_IDS.some(adminId => String(adminId).trim() === telegramIdStr);
 };
 
 // 🧪 Функция проверки тестового пользователя
@@ -159,15 +164,13 @@ router.get('/check/:telegramId', (req, res) => {
   const { telegramId } = req.params;
 
   const telegramIdStr = String(telegramId).trim();
-  const adminIdStr = String(ADMIN_TELEGRAM_ID).trim();
-  const isAdminUser = telegramIdStr === adminIdStr;
+  const isAdminUser = isAdmin(telegramId);
 
   console.log('🔍 Проверка админского статуса:', {
     telegramId: telegramIdStr,
-    adminId: adminIdStr,
+    adminIds: ADMIN_IDS,
     isAdmin: isAdminUser,
-    receivedType: typeof telegramId,
-    adminType: typeof ADMIN_TELEGRAM_ID
+    receivedType: typeof telegramId
   });
 
   res.json({
@@ -175,9 +178,8 @@ router.get('/check/:telegramId', (req, res) => {
     timestamp: new Date().toISOString(),
     debug: {
       receivedId: telegramIdStr,
-      expectedId: adminIdStr,
-      typesMatch: typeof telegramId === typeof ADMIN_TELEGRAM_ID,
-      stringMatch: telegramIdStr === adminIdStr
+      adminIds: ADMIN_IDS,
+      isInAdminList: isAdminUser
     }
   });
 });
@@ -228,5 +230,6 @@ module.exports = {
   isAdmin,
   isTestUser,
   ADMIN_TELEGRAM_ID,
+  ADMIN_IDS,
   TEST_USERS_IDS
 };
