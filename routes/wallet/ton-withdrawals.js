@@ -9,14 +9,16 @@ const router = express.Router();
 router.post('/prepare', async (req, res) => {
   const { telegram_id, amount, wallet_address } = req.body;
 
-  if (process.env.NODE_ENV === 'development') console.log('Preparing withdrawal:', { telegram_id, amount, wallet_address });
+  console.log('🔵 [WITHDRAWAL] Preparing withdrawal:', { telegram_id, amount, wallet_address });
 
   if (!telegram_id || !amount) {
+    console.log('❌ [WITHDRAWAL] Missing telegram_id or amount');
     return res.status(400).json({ error: 'Telegram ID and amount are required' });
   }
 
   const client = await pool.connect();
   try {
+    console.log('🔵 [WITHDRAWAL] Starting transaction...');
     await client.query('BEGIN');
 
     // Проверяем дубликат заявки за последние 10 минут
@@ -74,12 +76,15 @@ router.post('/prepare', async (req, res) => {
     }
 
     // Резервируем средства
+    console.log('🔵 [WITHDRAWAL] Reserving funds:', { withdrawAmount, telegram_id });
     await client.query(
       'UPDATE players SET ton_reserved = ton_reserved + $1 WHERE telegram_id = $2',
       [withdrawAmount, telegram_id]
     );
+    console.log('✅ [WITHDRAWAL] Funds reserved successfully');
 
     // Создаем заявку на вывод
+    console.log('🔵 [WITHDRAWAL] Creating withdrawal record...');
     const withdrawalResult = await client.query(
       `INSERT INTO withdrawals (
         player_id, amount, status, created_at
@@ -89,16 +94,22 @@ router.post('/prepare', async (req, res) => {
     );
 
     const withdrawalId = withdrawalResult.rows[0].id;
+    console.log('✅ [WITHDRAWAL] Withdrawal record created:', withdrawalId);
+
+    console.log('🔵 [WITHDRAWAL] Committing transaction...');
     await client.query('COMMIT');
+    console.log('✅ [WITHDRAWAL] Transaction committed');
 
     // Уведомляем администратора
+    console.log('🔵 [WITHDRAWAL] Sending notification to admin...');
     try {
       await notifyWithdrawalRequest(player, withdrawAmount, withdrawalId);
+      console.log('✅ [WITHDRAWAL] Admin notification sent');
     } catch (notifyErr) {
-      console.error('Withdrawal notification error:', notifyErr);
+      console.error('❌ [WITHDRAWAL] Notification error:', notifyErr);
     }
 
-    if (process.env.NODE_ENV === 'development') console.log('Withdrawal request created and funds reserved:', { telegram_id, amount: withdrawAmount, withdrawalId });
+    console.log('✅ [WITHDRAWAL] Request created and funds reserved:', { telegram_id, amount: withdrawAmount, withdrawalId });
 
     res.json({
       success: true,
