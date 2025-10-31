@@ -53,7 +53,7 @@ router.post('/prepare', async (req, res) => {
     const stakingResult = await client.query(`
       SELECT COALESCE(SUM(stake_amount), 0) as total_staked
       FROM ton_staking
-      WHERE player_id = $1 AND status = 'active'
+      WHERE telegram_id = $1 AND status = 'active'
     `, [telegram_id]);
 
     const totalStaked = parseFloat(stakingResult.rows[0]?.total_staked) || 0;
