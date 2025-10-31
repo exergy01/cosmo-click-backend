@@ -242,8 +242,8 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       // ШАГ 4: Записываем депозит в историю со статусом 'completed'
       const depositResult = await client.query(
         `INSERT INTO ton_deposits (
-          player_id, amount, transaction_hash, status, created_at
-        ) VALUES ($1, $2, $3, 'completed', NOW()) 
+          telegram_id, amount, transaction_hash, status, created_at
+        ) VALUES ($1, $2, $3, 'completed', NOW())
         RETURNING id`,
         [playerId, amount, hash]
       );
@@ -339,7 +339,7 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
       try {
         await pool.query(
           `INSERT INTO ton_deposits (
-            player_id, amount, transaction_hash, status, created_at
+            telegram_id, amount, transaction_hash, status, created_at
           ) VALUES ($1, $2, $3, 'pending', NOW())`,
           [
             player_id,
@@ -379,11 +379,11 @@ async function processDeposit(playerId, amount, hash, fromAddress, validationInf
     try {
       // Обновляем статус pending депозита
       const result = await pool.query(
-        `UPDATE ton_deposits 
+        `UPDATE ton_deposits
          SET status = $1
-         WHERE player_id = $2 
-           AND amount = $3 
-           AND status = 'pending' 
+         WHERE telegram_id = $2
+           AND amount = $3
+           AND status = 'pending'
            AND created_at >= NOW() - INTERVAL '1 hour'
          RETURNING id`,
         [status, player_id, parseFloat(amount)]
@@ -630,7 +630,7 @@ router.post('/check-deposits', async (req, res) => {
       const player = playerResult.rows[0];
       
       const existingDeposits = await pool.query(
-        'SELECT * FROM ton_deposits WHERE player_id = $1 ORDER BY created_at DESC LIMIT 10',
+        'SELECT * FROM ton_deposits WHERE telegram_id = $1 ORDER BY created_at DESC LIMIT 10',
         [player_id]
       );
       

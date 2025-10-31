@@ -20,7 +20,7 @@ router.get('/ton-deposits', async (req, res) => {
 
       let query = `
         SELECT
-          id, player_id, amount, transaction_hash, status, created_at
+          id, telegram_id, amount, transaction_hash, status, created_at
         FROM ton_deposits
         WHERE 1=1
       `;
@@ -147,7 +147,7 @@ router.post('/process-ton-deposit', async (req, res) => {
 
         // Обновляем депозит
         await client.query(
-          'UPDATE ton_deposits SET player_id = $1, status = $2 WHERE id = $3',
+          'UPDATE ton_deposits SET telegram_id = $1, status = $2 WHERE id = $3',
           [player_id, 'completed', deposit_id]
         );
 
@@ -226,7 +226,7 @@ router.get('/withdrawals/pending', async (req, res) => {
         p.username, p.first_name, p.ton as current_balance,
         -- Риск-анализ
         (SELECT COUNT(*) FROM withdrawals w2 WHERE w2.telegram_id = w.telegram_id AND w2.created_at > NOW() - INTERVAL '24 hours') as withdrawals_24h,
-        (SELECT COUNT(*) FROM ton_deposits td WHERE td.player_id = w.telegram_id) as total_deposits
+        (SELECT COUNT(*) FROM ton_deposits td WHERE td.telegram_id = w.telegram_id) as total_deposits
       FROM withdrawals w
       JOIN players p ON w.telegram_id = p.telegram_id
       WHERE w.status IN ('pending', 'processing')
@@ -495,7 +495,7 @@ router.post('/deposits/investigate', async (req, res) => {
         SELECT DISTINCT p.telegram_id, p.username, p.first_name,
         td.amount, td.created_at
         FROM players p
-        JOIN ton_deposits td ON td.player_id = p.telegram_id
+        JOIN ton_deposits td ON td.telegram_id = p.telegram_id
         WHERE ABS(td.amount - $1) < 0.001
         AND td.created_at BETWEEN $2 - INTERVAL '6 hours' AND $2 + INTERVAL '6 hours'
         ORDER BY td.created_at DESC
@@ -611,7 +611,7 @@ router.get('/alerts/critical', async (req, res) => {
         'Новый игрок внес ' || td.amount || ' TON через ' ||
         EXTRACT(HOUR FROM (td.created_at - p.created_at)) || ' часов после регистрации' as message
         FROM players p
-        JOIN ton_deposits td ON td.player_id = p.telegram_id
+        JOIN ton_deposits td ON td.telegram_id = p.telegram_id
         WHERE p.created_at > NOW() - INTERVAL '7 days'
         AND td.amount > 20
         AND td.created_at < p.created_at + INTERVAL '6 hours'
