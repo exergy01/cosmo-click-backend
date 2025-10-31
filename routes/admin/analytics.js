@@ -152,7 +152,7 @@ router.get('/top-players', async (req, res) => {
           ELSE 'normal'
         END as risk_profile
       FROM players p
-      LEFT JOIN ton_deposits td ON td.player_id = p.telegram_id
+      LEFT JOIN ton_deposits td ON td.telegram_id = p.telegram_id
         AND td.created_at >= NOW() - INTERVAL '${parseInt(period)} days'
         AND td.status = 'completed'
       WHERE p.created_at >= NOW() - INTERVAL '${parseInt(period) * 2} days'  -- Включаем игроков за больший период
@@ -200,7 +200,7 @@ router.get('/suspicious-patterns', async (req, res) => {
           'duplicate_deposits' as pattern_type,
           td1.amount,
           COUNT(*) as occurrences,
-          ARRAY_AGG(DISTINCT td1.player_id) as players,
+          ARRAY_AGG(DISTINCT td1.telegram_id) as players,
           MIN(td1.created_at) as first_occurrence,
           MAX(td1.created_at) as last_occurrence
         FROM ton_deposits td1
@@ -228,7 +228,7 @@ router.get('/suspicious-patterns', async (req, res) => {
           w.created_at as withdrawal_time,
           EXTRACT(EPOCH FROM (w.created_at - td.created_at))/3600 as hours_difference
         FROM players p
-        JOIN ton_deposits td ON td.player_id = p.telegram_id
+        JOIN ton_deposits td ON td.telegram_id = p.telegram_id
         JOIN withdrawals w ON w.telegram_id = p.telegram_id
         WHERE td.created_at >= NOW() - INTERVAL '7 days'
         AND w.created_at > td.created_at
@@ -279,8 +279,8 @@ router.get('/suspicious-patterns', async (req, res) => {
           OR SIMILARITY(p1.first_name, p2.first_name) > 0.7
           -- Или оба имеют депозиты в первый день
           OR (
-            EXISTS(SELECT 1 FROM ton_deposits td1 WHERE td1.player_id = p1.telegram_id AND td1.created_at < p1.created_at + INTERVAL '24 hours')
-            AND EXISTS(SELECT 1 FROM ton_deposits td2 WHERE td2.player_id = p2.telegram_id AND td2.created_at < p2.created_at + INTERVAL '24 hours')
+            EXISTS(SELECT 1 FROM ton_deposits td1 WHERE td1.telegram_id = p1.telegram_id AND td1.created_at < p1.created_at + INTERVAL '24 hours')
+            AND EXISTS(SELECT 1 FROM ton_deposits td2 WHERE td2.telegram_id = p2.telegram_id AND td2.created_at < p2.created_at + INTERVAL '24 hours')
           )
         )
         ORDER BY hours_apart ASC
@@ -336,7 +336,7 @@ router.post('/export-report', async (req, res) => {
             DATE(created_at) as date,
             'deposit' as type,
             amount,
-            player_id,
+            telegram_id as player_id,
             transaction_hash,
             status
           FROM ton_deposits
@@ -367,7 +367,7 @@ router.post('/export-report', async (req, res) => {
             COALESCE(games.games_count, 0) as games_played,
             p.referrals_count
           FROM players p
-          LEFT JOIN ton_deposits td ON td.player_id = p.telegram_id AND td.status = 'completed'
+          LEFT JOIN ton_deposits td ON td.telegram_id = p.telegram_id AND td.status = 'completed'
           LEFT JOIN withdrawals w ON w.telegram_id = p.telegram_id AND w.status = 'completed'
           LEFT JOIN (
             SELECT telegram_id, COUNT(*) as games_count

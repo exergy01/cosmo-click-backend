@@ -56,7 +56,7 @@ router.post('/search', async (req, res) => {
           SELECT
             'ton_deposit' as result_type,
             id,
-            player_id as telegram_id,
+            telegram_id,
             amount,
             transaction_hash,
             status,
@@ -66,7 +66,7 @@ router.post('/search', async (req, res) => {
           WHERE
             transaction_hash ILIKE $1
             OR from_address ILIKE $1
-            OR player_id::text ILIKE $1
+            OR telegram_id::text ILIKE $1
           ORDER BY created_at DESC
           LIMIT 20
         `, [`%${query}%`])
@@ -176,7 +176,7 @@ router.get('/player-analysis/:telegram_id', async (req, res) => {
           td.status,
           td.from_address as address
         FROM ton_deposits td
-        WHERE td.player_id = $1
+        WHERE td.telegram_id = $1
         UNION ALL
         SELECT
           'withdrawal' as type,
@@ -218,7 +218,7 @@ router.get('/player-analysis/:telegram_id', async (req, res) => {
           p.created_at,
           COALESCE(SUM(td.amount), 0) as total_deposits
         FROM players p
-        LEFT JOIN ton_deposits td ON td.player_id = p.telegram_id AND td.status = 'completed'
+        LEFT JOIN ton_deposits td ON td.telegram_id = p.telegram_id AND td.status = 'completed'
         WHERE p.referrer_id = $1
         GROUP BY p.telegram_id, p.username, p.first_name, p.created_at
         UNION ALL
@@ -231,7 +231,7 @@ router.get('/player-analysis/:telegram_id', async (req, res) => {
           COALESCE(SUM(td.amount), 0) as total_deposits
         FROM players p
         JOIN players ref ON ref.telegram_id = p.referrer_id
-        LEFT JOIN ton_deposits td ON td.player_id = ref.telegram_id AND td.status = 'completed'
+        LEFT JOIN ton_deposits td ON td.telegram_id = ref.telegram_id AND td.status = 'completed'
         WHERE p.telegram_id = $1
         GROUP BY ref.telegram_id, ref.username, ref.first_name, ref.created_at
         ORDER BY total_deposits DESC
@@ -380,19 +380,19 @@ router.post('/connection-analysis', async (req, res) => {
       pool.query(`
         SELECT DISTINCT
           'shared_address' as connection_type,
-          td1.player_id as player1,
+          td1.telegram_id as player1,
           p1.username as username1,
-          td2.player_id as player2,
+          td2.telegram_id as player2,
           p2.username as username2,
           'same_wallet' as relationship,
           0.9 as confidence
         FROM ton_deposits td1
         JOIN ton_deposits td2 ON td1.from_address = td2.from_address
-        JOIN players p1 ON p1.telegram_id = td1.player_id
-        JOIN players p2 ON p2.telegram_id = td2.player_id
-        WHERE td1.player_id != td2.player_id
-        AND td1.player_id = ANY($1)
-        AND td2.player_id = ANY($1)
+        JOIN players p1 ON p1.telegram_id = td1.telegram_id
+        JOIN players p2 ON p2.telegram_id = td2.telegram_id
+        WHERE td1.telegram_id != td2.telegram_id
+        AND td1.telegram_id = ANY($1)
+        AND td2.telegram_id = ANY($1)
       `, [player_ids]),
 
       // 3. Временная корреляция регистраций
@@ -421,19 +421,19 @@ router.post('/connection-analysis', async (req, res) => {
       pool.query(`
         SELECT
           'similar_transactions' as connection_type,
-          td1.player_id as player1,
+          td1.telegram_id as player1,
           p1.username as username1,
-          td2.player_id as player2,
+          td2.telegram_id as player2,
           p2.username as username2,
           'similar_amounts' as relationship,
           0.7 as confidence
         FROM ton_deposits td1
         JOIN ton_deposits td2 ON ABS(td2.amount - td1.amount) < 0.001
-        JOIN players p1 ON p1.telegram_id = td1.player_id
-        JOIN players p2 ON p2.telegram_id = td2.player_id
-        WHERE td1.player_id != td2.player_id
-        AND td1.player_id = ANY($1)
-        AND td2.player_id = ANY($1)
+        JOIN players p1 ON p1.telegram_id = td1.telegram_id
+        JOIN players p2 ON p2.telegram_id = td2.telegram_id
+        WHERE td1.telegram_id != td2.telegram_id
+        AND td1.telegram_id = ANY($1)
+        AND td2.telegram_id = ANY($1)
         AND ABS(EXTRACT(EPOCH FROM (td2.created_at - td1.created_at))) < 7200  -- 2 часа
       `, [player_ids])
     ]);
