@@ -221,14 +221,14 @@ router.get('/withdrawals/pending', async (req, res) => {
 
     const query = `
       SELECT
-        w.id, w.telegram_id, w.amount, w.recipient_address,
+        w.id, w.player_id as telegram_id, w.amount, w.recipient_address,
         w.status, w.created_at, w.transaction_hash,
         p.username, p.first_name, p.ton as current_balance,
         -- Риск-анализ
-        (SELECT COUNT(*) FROM withdrawals w2 WHERE w2.telegram_id = w.telegram_id AND w2.created_at > NOW() - INTERVAL '24 hours') as withdrawals_24h,
-        (SELECT COUNT(*) FROM ton_deposits td WHERE td.telegram_id = w.telegram_id) as total_deposits
+        (SELECT COUNT(*) FROM withdrawals w2 WHERE w2.player_id = w.player_id AND w2.created_at > NOW() - INTERVAL '24 hours') as withdrawals_24h,
+        (SELECT COUNT(*) FROM ton_deposits td WHERE td.telegram_id = w.player_id) as total_deposits
       FROM withdrawals w
-      JOIN players p ON w.telegram_id = p.telegram_id
+      JOIN players p ON w.player_id = p.telegram_id
       WHERE w.status IN ('pending', 'processing')
       ORDER BY
         CASE
